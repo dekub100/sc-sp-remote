@@ -26,7 +26,7 @@ A spicetify extension for remote control/viewing info using websockets.
 2. Clone the Repo:
    
    ```bash
-   git clone [https://github.com/dekub100/spicetify-remote](https://github.com/dekub100/spicetify-remote)
+   git clone https://github.com/dekub100/spicetify-remote
 3. Navigate to the cloned repo directory:
 
    ```bash
