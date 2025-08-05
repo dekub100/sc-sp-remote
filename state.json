@@ -1,9 +1,9 @@
 {
-  "volume": 0.12,
-  "isPlaying": true,
+  "volume": ,
+  "isPlaying": ,
   "currentTrack": {
-    "trackName": "Somnium",
-    "artistName": "Kardashev",
-    "albumArtUrl": "https://i.scdn.co/image/ab67616d00001e02de3702470631049fa2d78891"
+    "trackName": "",
+    "artistName": "",
+    "albumArtUrl": ""
   }
 }
