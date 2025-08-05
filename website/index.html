@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spotify Volume & Playback Remote</title>
+    <!-- Link to the external CSS file -->
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="now-playing">
+        <img id="albumArt" src="" alt="Album Art" />
+        <div class="song-info">
+          <h2 id="songTitle">No song playing</h2>
+          <p id="artistName"></p>
+        </div>
+      </div>
+
+      <!-- New Track Progress Bar Section -->
+      <div class="track-progress-container">
+        <span id="currentTime">0:00</span>
+        <input type="range" id="progressBar" min="0" max="100" value="0" />
+        <span id="durationTime">0:00</span>
+      </div>
+
+      <div class="playback-controls">
+        <button id="previousBtn" class="control-btn">
+          <i class="fas fa-step-backward"></i>
+        </button>
+        <button id="playPauseBtn" class="control-btn main-control">
+          <!-- Play icon is shown by default -->
+          <i class="fas fa-play"></i>
+          <!-- Pause icon is initially hidden -->
+          <i class="fas fa-pause" style="display: none"></i>
+        </button>
+        <button id="nextBtn" class="control-btn">
+          <i class="fas fa-step-forward"></i>
+        </button>
+      </div>
+      <div class="volume-control">
+        <i class="fas fa-volume-down volume-icon"></i>
+        <input
+          type="range"
+          id="volumeSlider"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.5"
+        />
+        <i class="fas fa-volume-up volume-icon"></i>
+        <span id="volumeValue">50%</span>
+      </div>
+    </div>
+    <!-- Link to the external JavaScript file -->
+    <script src="script.js"></script>
+  </body>
+</html>

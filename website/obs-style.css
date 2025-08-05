@@ -1,0 +1,167 @@
+/* Styling for the OBS Music Widget */
+
+body {
+  font-family: "Inter", sans-serif;
+  background-color: transparent; /* Makes the background transparent for OBS */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevents scrollbars */
+  width: 1000px;
+  height: 250px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.widget-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  background: transparent; /* Will be set by JS */
+  border-radius: 15px;
+  box-sizing: border-box;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.5s ease; /* Add transition for a smooth fade */
+}
+
+/* New CSS class for dark text on light backgrounds */
+.widget-container.dark-text {
+  color: #212121; /* Dark gray for text */
+}
+
+.album-art {
+  width: 210px;
+  height: 210px;
+  border-radius: 10px;
+  margin-right: 20px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.info-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between; /* Pushes content to top and bottom */
+  flex-grow: 1;
+  overflow: hidden;
+  height: 100%; /* Ensure it fills the vertical space */
+}
+
+.header-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end; /* Aligns text and time to the bottom */
+  width: 100%;
+}
+
+.text-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Marquee Animation Changes */
+.song-title,
+.artist-name {
+  /* Required for the marquee effect to work */
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee-wrapper {
+  display: flex;
+  width: fit-content; /* This is key - it will be twice the width of the content */
+  animation-duration: var(--marquee-duration, 10s);
+  animation-name: marquee-animation;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  animation-delay: 2s; /* Add a 2s delay at the start */
+  /* Initially paused so it only runs when needed */
+  animation-play-state: paused;
+}
+
+/* New class to activate the animation */
+.marquee-active .marquee-wrapper {
+  animation-play-state: running;
+}
+
+.marquee-content {
+  /* No changes here, the content stays the same */
+  padding-right: 50px; /* Add space between the end of the text and the start of the copy */
+}
+
+@keyframes marquee-animation {
+  from {
+    transform: translateX(0%);
+  }
+  to {
+    /* Moves the text completely off-screen to the left based on its full width */
+    transform: translateX(var(--marquee-distance, -50%));
+  }
+}
+/* End of Marquee Animation Changes */
+
+.song-title {
+  margin: 0;
+  font-size: 3.5rem;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff; /* Ensure title is always white */
+}
+
+.artist-name {
+  margin: 0;
+  font-size: 2.6rem;
+  color: #fff; /* Corrected to match the title for better readability */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* New container for the progress bar and time */
+.progress-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  align-items: flex-end; /* Aligns content to the right */
+  margin-top: 10px; /* Add some space from the text above */
+}
+
+/* This is the container for the time */
+.time-container {
+  margin-bottom: 10px; /* Corrected spacing to bring time closer to the bar */
+}
+
+#currentTime {
+  font-size: 4rem; /* Increased font size to be bigger than the title */
+  color: #fff;
+  white-space: nowrap;
+  line-height: 1; /* Adjusts line height to reduce space */
+}
+
+#progressBar {
+  width: 100%; /* Stretches to fill the space */
+  height: 10px;
+  background: rgba(
+    0,
+    0,
+    0,
+    0.4
+  ); /* Changed to a dark, semi-transparent color */
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #1db954; /* Spotify green */
+  width: 0%;
+  border-radius: 5px;
+  transition: width 0.1s linear; /* Smooth progress bar animation */
+}

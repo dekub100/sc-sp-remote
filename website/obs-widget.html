@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OBS Music Widget</title>
+    <link rel="stylesheet" href="obs-style.css" />
+  </head>
+  <body>
+    <div class="widget-container">
+      <!-- Added a default data URI for the fallback image directly to the src -->
+      <img
+        id="albumArt"
+        src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><rect width='200' height='200' fill='%23535353'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='20' fill='%23FFFFFF'>No Art</text></svg>"
+        alt="Album Art"
+        class="album-art"
+      />
+      <div class="info-container">
+        <!-- New container for song title and artist -->
+        <div class="header-info">
+          <div class="text-info">
+            <!-- Corrected structure for marquee effect -->
+            <h2 id="songTitle" class="song-title">
+              <span class="marquee-wrapper">
+                <span class="marquee-content">No song playing</span>
+              </span>
+            </h2>
+            <div id="artistName" class="artist-name">
+              <span class="marquee-wrapper">
+                <span class="marquee-content"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <!-- New container for the progress bar and time -->
+        <div class="progress-container">
+          <div class="time-container">
+            <span id="currentTime">0:00</span>
+          </div>
+          <!-- Reverted progress bar ID to match the original script -->
+          <div id="progressBar" class="progress-bar">
+            <div id="progressBarFill" class="progress-bar-fill"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="obs-script.js"></script>
+  </body>
+</html>

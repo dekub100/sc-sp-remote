@@ -1,0 +1,230 @@
+/* Main body and container styling */
+body {
+  font-family: "Inter", sans-serif;
+  background-color: #121212;
+  color: #b3b3b3;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  background-color: #181818;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5);
+  max-width: 400px;
+  width: 100%;
+}
+
+/* Now playing section styles */
+.now-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  gap: 1rem;
+}
+
+#albumArt {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.song-info {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+#songTitle {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#artistName {
+  margin: 0;
+  font-size: 1rem;
+  color: #b3b3b3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Track Progress Bar styles */
+.track-progress-container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #b3b3b3;
+}
+
+#progressBar {
+  flex-grow: 1;
+  width: 100%;
+  height: 5px;
+  background: #535353;
+  -webkit-appearance: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+#progressBar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+#progressBar::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+  border: none;
+}
+
+/* Playback controls section styles */
+.playback-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.control-btn {
+  background: none;
+  border: none;
+  color: #b3b3b3;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.control-btn:hover {
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.control-btn.main-control {
+  font-size: 2.5rem;
+  color: #fff;
+}
+
+.control-btn.main-control:hover {
+  transform: scale(1.05);
+}
+
+.control-btn i {
+  pointer-events: none; /* Prevents icon click from interfering with button click */
+}
+
+.control-btn.playing {
+  color: #1db954; /* Spotify green for the playing state */
+}
+
+/* Volume control section styles */
+.volume-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+}
+
+.volume-control input[type="range"] {
+  flex-grow: 1;
+}
+
+.volume-icon {
+  font-size: 1.2rem;
+  color: #b3b3b3;
+}
+
+#volumeSlider {
+  width: 100%;
+  height: 8px; /* Thicker slider track */
+  background: #535353;
+  -webkit-appearance: none;
+  border-radius: 5px;
+}
+
+#volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; /* Larger thumb */
+  height: 20px; /* Larger thumb */
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+}
+
+#volumeSlider::-moz-range-thumb {
+  width: 20px; /* Larger thumb */
+  height: 20px; /* Larger thumb */
+  background: #fff;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+  border: none;
+}
+
+#volumeValue {
+  min-width: 40px;
+  text-align: right;
+  font-size: 0.9rem;
+  color: #b3b3b3;
+}
+
+/* Responsive styles for smaller screens */
+@media (max-width: 480px) {
+  .container {
+    padding: 1.5rem;
+  }
+  #albumArt {
+    width: 150px;
+    height: 150px;
+  }
+  #songTitle {
+    font-size: 1.2rem;
+  }
+  #artistName {
+    font-size: 0.9rem;
+  }
+  .playback-controls {
+    gap: 1rem;
+  }
+  .control-btn.main-control {
+    font-size: 2rem;
+  }
+  .control-btn {
+    font-size: 1.2rem;
+  }
+  .volume-icon {
+    font-size: 1rem;
+  }
+}
