@@ -61,13 +61,13 @@ A spicetify extension for remote control/viewing info using websockets.
 
 ## Usage
 
-1. Test if everything works because this is my first project with node.js
+1. Test if everything has installed correctly
 
    ```bash
    node volume-server.js
    ```
 
-2. If theres no errors open up [http://localhost:8888](http://localhost:8888) and enjoy remote [control](http://localhost:8888)/[viewing](http://localhost:8888/obs)
+2. If there are no errors open up [http://localhost:8888](http://localhost:8888) and enjoy remote [control](http://localhost:8888)/[viewing](http://localhost:8888/obs)
 
 ## Adding the server as a service in Windows (optional)
 
