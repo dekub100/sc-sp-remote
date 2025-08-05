@@ -35,7 +35,8 @@ A spicetify extension for remote control/viewing info using websockets.
 
    ```bash
    npm install
-5. Move the **remoteVolume.js** file into your [extensions folder](https://spicetify.app/docs/advanced-usage/extensions#installing) in Spicetify
+5. - Move the **remoteVolume.js** file into your [extensions folder](https://spicetify.app/docs/advanced-usage/extensions#installing) in Spicetify.
+   - **IMPORTANT!!! YOU WILL NEED TO REPLACE THE remoteVolume.js FILE IN THE FOLDER WITH EVERY UPDATE OF THE REPO**
 6. Open a terminal and add the extension into Spicetify:
 
    ```bash
