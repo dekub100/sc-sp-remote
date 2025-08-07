@@ -2,7 +2,7 @@
 
 A spicetify extension for remote control/viewing info using websockets.
 
-**The code was made entirely with Google Gemini so, don't ask me for any kind of help with the code because i don't know much about coding.**
+**The code was made entirely with AI so, don't ask me for help with the code because it would be faster with AI than trying for me to do something by myself. Will try to learn JavaScript in the future though.**
 
 ## Table of Contents
 
