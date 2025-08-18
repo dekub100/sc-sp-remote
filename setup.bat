@@ -27,21 +27,7 @@ echo.
 echo ===========================================
 echo.
 
-:: Step 1: Clone the repository (if it doesn't already exist)
-if not exist "spicetify-remote" (
-    echo Cloning the spicetify-remote repository...
-    git clone https://github.com/dekub100/spicetify-remote.git
-) else (
-    echo Repository already exists. Skipping clone.
-)
-echo.
-
-:: Step 2: Navigate to the repository directory
-echo Navigating to spicetify-remote directory...
-cd spicetify-remote
-echo.
-
-:: Step 3: Install Node.js dependencies
+:: Step 1: Install Node.js dependencies
 echo Installing Node.js dependencies with npm...
 call npm install
 if %errorlevel% neq 0 (
@@ -54,9 +40,9 @@ if %errorlevel% neq 0 (
 )
 echo.
 
-:: Step 4: Find the Spicetify extensions folder.
+:: Step 2: Find the Spicetify extensions folder.
 echo Finding Spicetify extensions folder...
-set "EXTENSIONS_PATH=%userprofile%\.spicetify\Extensions"
+set "EXTENSIONS_PATH=%AppData%\spicetify\Extensions"
 if not exist "!EXTENSIONS_PATH!" (
     echo Could not automatically find Spicetify extensions folder.
     echo Please enter the full path to your Spicetify extensions directory:
@@ -70,19 +56,18 @@ if not exist "!EXTENSIONS_PATH!" (
 echo Spicetify extensions folder found at: !EXTENSIONS_PATH!
 echo.
 
-:: Step 5: Move the extension file to the Spicetify folder
+:: Step 3: Move the extension file to the Spicetify folder
 echo Moving remoteVolume.js to the extensions folder...
 copy "remoteVolume.js" "!EXTENSIONS_PATH!"
 echo.
 
-:: Step 6: Add and apply the extension using Spicetify CLI
+:: Step 4: Add and apply the extension using Spicetify CLI
 echo Configuring Spicetify to use the extension...
 spicetify config extensions remoteVolume.js
 spicetify apply
 echo.
 
 echo ===========================================
-echo.
-echo Installation complete! You can now test it with 'node volume-server.js' from the spicetify-remote directory.
+echo Installation complete! You can now test it with 'node volume-server.js' from this directory.
 pause
 endlocal
