@@ -1,83 +1,88 @@
 :: setup.bat (for Windows)
 :: This script automates the installation of spicetify-remote on Windows.
+:: This version has improved user feedback and a cleaner display.
 
 @echo off
 setlocal enabledelayedexpansion
 
 echo Starting spicetify-remote installation...
-echo ---
+echo ===========================================
+echo.
 
 :: Step 0: Check for required dependencies
-echo Checking for required dependencies: git, npm, and spicetify-cli...
+echo Checking for required dependencies...
 
-:: Check for Git
-where git >nul 2>nul
+:: The PowerShell command is run silently, so it won't clutter the output.
+powershell -command "function Check-Dependency{param([string]$Name,[string]$Command,[string]$InstallMsg);if(-not(Get-Command -Name $Command -ErrorAction SilentlyContinue)){Write-Host 'Error:' $Name 'is not installed.';Write-Host $InstallMsg;exit 1;}};Check-Dependency 'git' 'git.exe' 'Please install Git from https://git-scm.com/ and try again.';Check-Dependency 'npm' 'npm.cmd' 'Please install Node.js (which includes npm) from https://nodejs.org/ and try again.';Check-Dependency 'spicetify-cli' 'spicetify.exe' 'Please install Spicetify by following the instructions at https://spicetify.app/docs/getting-started/ before running this script.'"
 if %errorlevel% neq 0 (
-    echo Error: 'git' is not installed.
-    echo Please install Git from [https://git-scm.com/](https://git-scm.com/) and try again.
+    echo.
+    echo An error was found during the dependency check.
+    echo Please resolve the issues listed above and run the script again.
+    pause
     exit /b 1
 )
 
-:: Check for npm
-where npm >nul 2>nul
-if %errorlevel% neq 0 (
-    echo Error: 'npm' is not installed.
-    echo Please install Node.js (which includes npm) from [https://nodejs.org/](https://nodejs.org/) and try again.
-    exit /b 1
-)
-
-:: Check for spicetify-cli
-where spicetify >nul 2>nul
-if %errorlevel% neq 0 (
-    echo Error: 'spicetify-cli' is not installed.
-    echo Please install Spicetify by following the instructions at [https://spicetify.app/docs/getting-started/](https://spicetify.app/docs/getting-started/) before running this script.
-    exit /b 1
-)
-
-echo All dependencies found. Proceeding with installation.
+echo All dependencies found.
+echo.
+echo ===========================================
+echo.
 
 :: Step 1: Clone the repository (if it doesn't already exist)
 if not exist "spicetify-remote" (
     echo Cloning the spicetify-remote repository...
-    git clone [https://github.com/dekub100/spicetify-remote.git](https://github.com/dekub100/spicetify-remote.git)
+    git clone https://github.com/dekub100/spicetify-remote.git
 ) else (
     echo Repository already exists. Skipping clone.
 )
+echo.
 
 :: Step 2: Navigate to the repository directory
+echo Navigating to spicetify-remote directory...
 cd spicetify-remote
+echo.
 
 :: Step 3: Install Node.js dependencies
 echo Installing Node.js dependencies with npm...
-npm install
+call npm install
+if %errorlevel% neq 0 (
+    echo.
+    echo Error: The 'npm install' command failed.
+    echo This could be due to a network issue or a permissions problem.
+    echo Try running the script again, or check the npm logs for more details.
+    pause
+    exit /b 1
+)
+echo.
 
 :: Step 4: Find the Spicetify extensions folder.
-:: This is a common location on Windows.
 echo Finding Spicetify extensions folder...
 set "EXTENSIONS_PATH=%userprofile%\.spicetify\Extensions"
-
 if not exist "!EXTENSIONS_PATH!" (
     echo Could not automatically find Spicetify extensions folder.
     echo Please enter the full path to your Spicetify extensions directory:
     set /p "EXTENSIONS_PATH="
     if not exist "!EXTENSIONS_PATH!" (
         echo Error: The provided path does not exist. Exiting.
+        pause
         exit /b 1
     )
 )
-
 echo Spicetify extensions folder found at: !EXTENSIONS_PATH!
+echo.
 
 :: Step 5: Move the extension file to the Spicetify folder
 echo Moving remoteVolume.js to the extensions folder...
 copy "remoteVolume.js" "!EXTENSIONS_PATH!"
+echo.
 
 :: Step 6: Add and apply the extension using Spicetify CLI
 echo Configuring Spicetify to use the extension...
 spicetify config extensions remoteVolume.js
 spicetify apply
+echo.
 
-echo ---
+echo ===========================================
+echo.
 echo Installation complete! You can now test it with 'node volume-server.js' from the spicetify-remote directory.
-
+pause
 endlocal
