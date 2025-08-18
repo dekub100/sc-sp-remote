@@ -7,17 +7,18 @@
 set -e
 
 echo "Starting spicetify-remote installation..."
-echo "---"
+echo "==========================================="
+echo ""
 
 # Step 0: Check for required dependencies
-echo "Checking for required dependencies: git, npm, and spicetify-cli..."
+echo "Checking for required dependencies..."
 
 # Check for Git
 if ! command -v git &> /dev/null
 then
     echo "Error: 'git' is not installed."
     echo "Please install Git and run this script again."
-    echo "On Debian/Ubuntu: sudo apt install git"
+    echo "On Debian/Ubuntu: sudo apt-get install git"
     echo "On Fedora/CentOS: sudo dnf install git"
     echo "On macOS with Homebrew: brew install git"
     exit 1
@@ -37,28 +38,20 @@ if ! command -v spicetify &> /dev/null
 then
     echo "Error: 'spicetify-cli' is not installed."
     echo "Please install Spicetify by following the instructions at https://spicetify.app/docs/getting-started/ before running this script."
-    echo "Also see https://spicetify.app/docs/advanced-usage/installation/#note-for-linux-users"
     exit 1
 fi
 
-echo "All dependencies found. Proceeding with installation."
+echo "All dependencies found."
+echo ""
+echo "==========================================="
+echo ""
 
-# Step 1: Clone the repository (if it doesn't already exist)
-if [ ! -d "spicetify-remote" ]; then
-    echo "Cloning the spicetify-remote repository..."
-    git clone https://github.com/dekub100/spicetify-remote.git
-else
-    echo "Repository already exists. Skipping clone."
-fi
-
-# Step 2: Navigate to the repository directory
-cd spicetify-remote
-
-# Step 3: Install Node.js dependencies
+# Step 1: Install Node.js dependencies
 echo "Installing Node.js dependencies with npm..."
 npm install
+echo ""
 
-# Step 4: Find the Spicetify extensions folder
+# Step 2: Find the Spicetify extensions folder
 # The location can vary, so we'll try a few common paths.
 echo "Finding Spicetify extensions folder..."
 if [ -d "$HOME/.config/spicetify/Extensions" ]; then
@@ -76,17 +69,21 @@ else
 fi
 
 echo "Spicetify extensions folder found at: $EXTENSIONS_PATH"
+echo ""
 
-# Step 5: Move the extension file to the Spicetify folder
+# Step 3: Move the extension file to the Spicetify folder
 echo "Moving remoteVolume.js to the extensions folder..."
 cp remoteVolume.js "$EXTENSIONS_PATH/"
+echo ""
 
-# Step 6: Add and apply the extension using Spicetify CLI
+# Step 4: Add and apply the extension using Spicetify CLI
 echo "Configuring Spicetify to use the extension..."
 spicetify config extensions remoteVolume.js
 spicetify apply
+echo ""
 
-echo "---"
-echo "Installation complete! You can now test it with 'node volume-server.js' from the spicetify-remote directory."
-
-# ---- End of Script ----
+echo "==========================================="
+echo "Installation complete! You can now test it with 'node volume-server.js' from this directory."
+echo "Press Enter to exit."
+read -r
+exit 0
