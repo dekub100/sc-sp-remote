@@ -38,6 +38,7 @@ if ! command -v spicetify &> /dev/null
 then
     echo "Error: 'spicetify-cli' is not installed."
     echo "Please install Spicetify by following the instructions at https://spicetify.app/docs/getting-started/ before running this script."
+    echo "Also see https://spicetify.app/docs/advanced-usage/installation#note-for-linux-users"
     exit 1
 fi
 
