@@ -8,7 +8,7 @@ echo Starting spicetify-remote installation...
 echo ---
 
 :: Step 0: Check for required dependencies
-echo Checking for required dependencies: git and npm...
+echo Checking for required dependencies: git, npm, and spicetify-cli...
 
 :: Check for Git
 where git >nul 2>nul
@@ -26,7 +26,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo Dependencies found. Proceeding with installation.
+:: Check for spicetify-cli
+where spicetify >nul 2>nul
+if %errorlevel% neq 0 (
+    echo Error: 'spicetify-cli' is not installed.
+    echo Please install Spicetify by following the instructions at [https://spicetify.app/docs/getting-started/](https://spicetify.app/docs/getting-started/) before running this script.
+    exit /b 1
+)
+
+echo All dependencies found. Proceeding with installation.
 
 :: Step 1: Clone the repository (if it doesn't already exist)
 if not exist "spicetify-remote" (
