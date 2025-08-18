@@ -75,6 +75,12 @@
                   case "togglePlay":
                     Spicetify.Player.togglePlay();
                     break;
+                  case "stop":
+                    Spicetify.Player.pause();
+                    break;
+                  case "play":
+                    Spicetify.Player.play();
+                    break;
                   case "previous":
                     Spicetify.Player.back();
                     break;

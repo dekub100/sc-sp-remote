@@ -6,40 +6,44 @@ A spicetify extension for remote control/viewing info using websockets.
 
 ## Table of Contents
 
-* [Features](#features)
+- [Features](#features)
 
-* [Requirements](#requirements)
+- [Requirements](#requirements)
 
-* [Installation](#installation)
+- [Installation](#installation)
 
-* [Usage](#usage)
+- [Usage](#usage)
 
-* [Adding the server as a service in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
+- [Adding the server as a service in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
+
+- [Adding Streamer.bot commands (optional)](#adding-streamerbot-commands-optional)
 
 ## Features
 
-* Remote control from a website or using websockets
+- Remote control from a website or using websockets
 
-* Remote viewing from a website
+- Remote viewing from a website
 
-* Built in OBS Widget for streamers
+- Built in OBS Widget for streamers
 
 ## Requirements
 
-* git
+- git
 
 ## Installation
 
 1. Clone the Repo and navigate to the directory:
+
 ```bash
 git clone https://github.com/dekub100/spicetify-remote
 cd spicetify-remote
 ```
+
 2. Run the automated setup script for your operating system:
 
-* **For Windows:** Run `setup.bat` as an **administrator**.
+- **For Windows:** Run `setup.bat` as an **administrator**.
 
-* **For Linux/macOS:** Run `setup.sh` as a regular user.
+- **For Linux/macOS:** Run `setup.sh` as a regular user.
 
 These scripts will tell you if there's any dependencies missing and configure the extension automatically.
 
@@ -50,6 +54,7 @@ These scripts will tell you if there's any dependencies missing and configure th
 ```bash
 node volume-server.js
 ```
+
 2. If there are no errors, open up [http://localhost:8888](http://localhost:8888) or http://localhost:8888/obs
 
 ## Adding the server as a service in Windows (optional)
@@ -57,7 +62,17 @@ node volume-server.js
 Instead of manually installing the service, you can now use the provided automated scripts.
 
 1. **Install the service:**
-Run `install-service.bat`. This script will automatically download and set up the service for you.
+   Run `install-service.bat`. This script will automatically download and set up the service for you.
 
 2. **Remove the service:**
-Run `remove-service.bat`. This script will automatically remove the service for you. You will need to stop it beforehand.
+   Run `remove-service.bat`. This script will automatically remove the service for you. You will need to stop it beforehand.
+
+## Adding Streamer.bot commands (optional)
+
+1. Open up streamerbot.txt and copy the contents into the 'Import' feature in Streamer.bot
+
+- !sstop
+- !splay
+- !snext
+- !sprev
+- !vol 0-100 / !vol 0-1.0
