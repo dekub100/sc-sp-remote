@@ -2,92 +2,62 @@
 
 A spicetify extension for remote control/viewing info using websockets.
 
-**The code was made entirely with AI so, don't ask me for help with the code because it would be faster with AI than trying for me to do something by myself. Will try to learn JavaScript in the future though.**
+**The code was made entirely with AI so, don't ask me for any kind of help with the code because i don't know much about coding, BUT it all should just work out of the box now.**
 
 ## Table of Contents
 
-- [Features](#features)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Adding the server as a serivce in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
+* [Features](#features)
+
+* [Requirements](#requirements)
+
+* [Installation](#installation)
+
+* [Usage](#usage)
+
+* [Adding the server as a service in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
 
 ## Features
 
-- Remote control from a website or using websockets
-- Remote viewing from a website
-- Built in OBS Widget for streamers
+* Remote control from a website or using websockets
+
+* Remote viewing from a website
+
+* Built in OBS Widget for streamers
 
 ## Requirements
 
-- [node.js](https://nodejs.org/en)
-- npm
-- [spicetify](https://spicetify.app/)
+* git
 
-## Installation:
+## Installation
 
-1. Install [Spicetify](https://spicetify.app/docs/getting-started/#windows)
-2. Clone the Repo:
+1. Clone the Repo and navigate to the directory:
+```bash
+git clone https://github.com/dekub100/spicetify-remote
+cd spicetify-remote
+```
+2. Run the automated setup script for your operating system:
 
-   ```bash
-   git clone https://github.com/dekub100/spicetify-remote
-   ```
+* **For Windows:** Run `setup.bat` as an **administrator**.
 
-3. Navigate to the cloned repo directory:
+* **For Linux/macOS:** Run `setup.sh` as a regular user.
 
-   ```bash
-   cd spicetify-remote
-   ```
-
-4. Install dependencies:
-
-   ```bash
-   npm install
-   ```
-
-5. - Move the **remoteVolume.js** file into your [extensions folder](https://spicetify.app/docs/advanced-usage/extensions#installing) in Spicetify.
-   - **IMPORTANT!!! YOU WILL NEED TO REPLACE THE remoteVolume.js FILE IN THE FOLDER WITH EVERY UPDATE OF THE REPO**
-6. Open a terminal and add the extension into Spicetify:
-
-   ```bash
-   spicetify config extensions remoteVolume.js
-   ```
-
-7. Apply spicetify new settings:
-
-   ```bash
-   spicetify apply
-   ```
+These scripts will tell you if there's any dependencies missing and configure the extension automatically.
 
 ## Usage
 
-1. Test if everything has installed correctly
+1. Test if everything has installed correctly by running the server:
 
-   ```bash
-   node volume-server.js
-   ```
-
-2. If there are no errors open up [http://localhost:8888](http://localhost:8888) and enjoy remote [control](http://localhost:8888)/[viewing](http://localhost:8888/obs)
+```bash
+node volume-server.js
+```
+2. If there are no errors, open up [http://localhost:8888](http://localhost:8888) or http://localhost:8888/obs
 
 ## Adding the server as a service in Windows (optional)
 
-1. Download [nssm](https://nssm.cc/download)
-2. Navigate to the cloned repo directory:
-3. Un-zip the nssm.exe from the /win64/nssm.exe position into the root directory of the cloned repo
-4. Open a terminal/cmd with administrator priviledges in the cloned repo directory
-5. Install the service:
+Instead of manually installing the service, you can now use the provided automated scripts.
 
-   ```bash
-   nssm.exe install YourServiceName
-   ```
+1. **Install the service:**
+Run `install-service.bat`. This script will automatically download and set up the service for you.
 
-6. Now there will be a window popup.
-7. - In the **"Path"** directory select your directory where node.exe file is
-   - In the **"Startup directory"** select your cloned repo directory
-   - In the **"Arguments"** type in **"remoteVolume.js"**
-8. Now install the service and you are good to go!
-9. To remove the service if you ever need to open a terminal/cmd with administrator priviledges and type in:
-
-   ```bash
-   nssm.exe remove YourServiceName
-   ```
+2. **Remove the service:**
+Run `remove-service.bat`. This script will automatically remove the service for you. You will need to stop it beforehand.
