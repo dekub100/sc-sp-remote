@@ -69,8 +69,20 @@ Instead of manually installing the service, you can now use the provided automat
 
 ## Adding Streamer.bot commands (optional)
 
-1. Open up streamerbot.txt and copy the contents into the 'Import' feature in Streamer.bot
+1. Open up streamerbot/streamerbot.txt and copy the contents into the 'Import' feature in Streamer.bot
 
+2. **Update file paths in 'Show Music - Chat Message' Action (Important):**
+   - Newtonsoft.Json.dll: In the 'Execute Code' sub-action references, update the path for Newtonsoft.Json.dll. The current path is D:\Stream.bot\Newtonsoft.Json.dll. Change this to the location of the file in your Streamer.bot installation folder. (Image 1)
+   - state.json: In the 'Read Lines (state.json)' Sub-Action, update the path for the state.json file. The current path is C:\spicetify-remote\state.json. Change this to the location of the file in your spicetify-remote folder. (Image 2)
+
+<div style="display: flex; gap: 10px;">
+    <img src="streamerbot/references.jpg" alt="Image 1" style="width: 50%;">
+    <img src="streamerbot/file_location.jpg" alt="Image 2" style="width: 50%;">
+</div><br>
+
+3. Test out the commands in twitch chat:
+
+- !music
 - !sstop
 - !splay
 - !snext
