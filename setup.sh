@@ -1,3 +1,6 @@
+# setup.sh (for Linux/macOS)
+# This script automates the installation of spicetify-remote.
+
 # ---- Start of Script ----
 
 # Exit immediately if a command exits with a non-zero status.
@@ -5,6 +8,40 @@ set -e
 
 echo "Starting spicetify-remote installation..."
 echo "---"
+
+# Step 0: Check for required dependencies
+echo "Checking for required dependencies: git, npm, and spicetify-cli..."
+
+# Check for Git
+if ! command -v git &> /dev/null
+then
+    echo "Error: 'git' is not installed."
+    echo "Please install Git and run this script again."
+    echo "On Debian/Ubuntu: sudo apt install git"
+    echo "On Fedora/CentOS: sudo dnf install git"
+    echo "On macOS with Homebrew: brew install git"
+    exit 1
+fi
+
+# Check for npm
+if ! command -v npm &> /dev/null
+then
+    echo "Error: 'npm' is not installed."
+    echo "Please install npm (part of Node.js) and run this script again."
+    echo "On most systems, you can download Node.js from https://nodejs.org/"
+    exit 1
+fi
+
+# Check for spicetify-cli
+if ! command -v spicetify &> /dev/null
+then
+    echo "Error: 'spicetify-cli' is not installed."
+    echo "Please install Spicetify by following the instructions at https://spicetify.app/docs/getting-started/ before running this script."
+    echo "Also see https://spicetify.app/docs/advanced-usage/installation/#note-for-linux-users"
+    exit 1
+fi
+
+echo "All dependencies found. Proceeding with installation."
 
 # Step 1: Clone the repository (if it doesn't already exist)
 if [ ! -d "spicetify-remote" ]; then
