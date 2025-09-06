@@ -2,7 +2,11 @@
 // It sends local changes and applies remote changes using a polling mechanism.
 
 (function remoteVolume() {
-  const SERVER_URL = "ws://localhost:8888";
+  // User: Set your local server address here!
+  const SERVER_HOST = "127.0.0.1";
+  const SERVER_PORT = 8888; // Change this to match your config.json
+
+  let SERVER_URL = null;
   const POLLING_INTERVAL = 500; // milliseconds
   let ws;
 
@@ -20,12 +24,26 @@
      * Connects to the WebSocket server and sets up event listeners.
      */
     function connectWebSocket() {
+      if (!SERVER_URL) {
+        fetch("http://localhost:54321/api/config")
+          .then((res) => res.json())
+          .then((cfg) => {
+            // Always use localhost and only the port from config
+            SERVER_URL = `ws://localhost:${cfg.port}`;
+            connectWebSocket();
+          })
+          .catch((err) => {
+            console.error("Remote Volume: Failed to fetch server config:", err);
+            setTimeout(connectWebSocket, 5000);
+          });
+        return;
+      }
+
       try {
         ws = new WebSocket(SERVER_URL);
 
         ws.onopen = () => {
           console.log("Remote Volume: Connected to server.");
-          // After a successful connection, send the current state to sync the server.
           sendLocalUpdates(true); // Force send on connect
         };
 

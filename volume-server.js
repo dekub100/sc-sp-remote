@@ -6,8 +6,31 @@ const WebSocket = require("ws");
 const http = require("http");
 const fs = require("fs");
 
-// Define the port for the web server and WebSocket server
-const port = 8888;
+// Load config
+const configPath = path.join(__dirname, "config.json");
+let config = {
+  port: 8888,
+  configPort: 54321,
+  allowedOrigins: ["*"],
+  defaultVolume: 0.5,
+  enableOBS: true,
+};
+try {
+  if (fs.existsSync(configPath)) {
+    config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  }
+} catch (err) {
+  console.error("Failed to read config.json, using defaults.", err);
+}
+
+const port = config.port;
+const configPort = config.configPort;
+const allowedOrigins = config.allowedOrigins;
+const enableOBS = config.enableOBS;
+
+// Use defaultVolume from config
+let volume = config.defaultVolume;
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -19,7 +42,6 @@ let spicetifyClient = null;
 
 // Store the current state of the player on the server
 let isPlaying = false;
-let volume = 0.5;
 let currentTrack = {
   trackName: "No song playing",
   artistName: "",
@@ -145,15 +167,25 @@ startProgressBroadcasting(); // Start the progress broadcaster on server startup
  * Configure Express to serve static files from the 'website' directory.
  * This is crucial for serving index.html, style.css, and script.js.
  */
+// Serve normal website files
 app.use(express.static(path.join(__dirname, "website")));
 
-// New route for the OBS widget
-app.get("/obs", (req, res) => {
-  res.sendFile(path.join(__dirname, "website", "obs-widget.html"));
-});
+// Serve OBS widget files only if enabled
+if (enableOBS) {
+  app.use("/obs", express.static(path.join(__dirname, "obs-widget")));
+  app.get("/obs", (req, res) => {
+    res.sendFile(path.join(__dirname, "obs-widget", "obs-widget.html"));
+  });
+}
 
+// Route for the main website
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "website", "index.html"));
+});
+
+// Endpoint to get server config (port)
+app.get("/api/config", (req, res) => {
+  res.json({ port });
 });
 
 // WebSocket server setup
@@ -303,8 +335,37 @@ wss.on("connection", (ws) => {
   });
 });
 
+// Dedicated config server for Spicetify extension
+const configServer = http.createServer((req, res) => {
+  if (req.url === "/api/config") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": allowedOrigins.join(","),
+    });
+    res.end(
+      JSON.stringify({
+        port,
+        configPort,
+        allowedOrigins,
+        defaultVolume: config.defaultVolume,
+        enableOBS,
+      })
+    );
+  } else {
+    res.writeHead(404, {
+      "Access-Control-Allow-Origin": allowedOrigins.join(","),
+    });
+    res.end();
+  }
+});
+configServer.listen(configPort, "127.0.0.1", () => {
+  console.log(
+    `Config server running at http://127.0.0.1:${configPort}/api/config`
+  );
+});
+
 // Start the server
-server.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`);
-  console.log(`WebSocket server is listening on port ${port}`);
+server.listen(port, "127.0.0.1", () => {
+  console.log(`Server is running at http://127.0.0.1:${port}`);
+  console.log(`WebSocket server is listening on 127.0.0.1:${port}`);
 });

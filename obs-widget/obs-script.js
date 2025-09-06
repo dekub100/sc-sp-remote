@@ -2,7 +2,8 @@
 // This version ensures all DOM elements are loaded before attempting to connect
 // or add event listeners, which fixes issues with button functionality.
 
-const SERVER_URL = "ws://localhost:8888";
+let SERVER_URL = null;
+
 // Use a Data URI for the fallback image. This embeds the image data directly in the code,
 // making it impossible for ad blockers to block.
 const FALLBACK_ALBUM_ART =
@@ -158,6 +159,18 @@ function handleMarquee(element, textContent) {
  * Connects to the WebSocket server and sets up event listeners.
  */
 function connectWebSocket() {
+  if (!SERVER_URL) {
+    // Fetch config first
+    fetch("/api/config")
+      .then((res) => res.json())
+      .then((cfg) => {
+        // Use the current location's hostname for the WebSocket connection
+        SERVER_URL = `ws://${window.location.hostname}:${cfg.port}`;
+        connectWebSocket(); // Retry connection with correct URL
+      });
+    return;
+  }
+
   try {
     ws = new WebSocket(SERVER_URL);
 

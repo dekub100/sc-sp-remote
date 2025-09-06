@@ -1,0 +1,7 @@
+{
+  "port": 8080,
+  "configPort": 54321,
+  "allowedOrigins": ["*"],
+  "defaultVolume": 0.5,
+  "enableOBS": true
+}

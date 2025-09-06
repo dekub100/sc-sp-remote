@@ -2,29 +2,24 @@
 
 A spicetify extension for remote control/viewing info using websockets.
 
-**The code was made entirely with AI so, don't ask me for any kind of help with the code because i don't know much about coding, BUT it all should just work out of the box now.**
+_Code was made with the help of AI, but its honestly so simple i think it just works_
 
 ## Table of Contents
 
 - [Features](#features)
-
 - [Requirements](#requirements)
-
 - [Installation](#installation)
-
+- [Configuration](#configuration)
 - [Usage](#usage)
-
 - [Adding the server as a service in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
-
 - [Adding Streamer.bot commands (optional)](#adding-streamerbot-commands-optional)
 
 ## Features
 
 - Remote control from a website or using websockets
-
 - Remote viewing from a website
-
 - Built in OBS Widget for streamers
+- Dynamic configuration for host, ports, CORS, and more
 
 ## Requirements
 
@@ -42,10 +37,41 @@ cd spicetify-remote
 2. Run the automated setup script for your operating system:
 
 - **For Windows:** Run `setup.bat` as an **administrator**.
-
-- **For Linux/macOS:** Run `setup.sh` as a regular user.
+- **For Linux/macOS:** Run `setup.sh` as a regular user. (have not tried macOS)
 
 These scripts will tell you if there's any dependencies missing and configure the extension automatically.
+
+## Configuration
+
+The server uses a `config.json` file for all major settings.  
+You can edit this file to change the ports, allowed origins, default volume, and OBS widget support.
+
+**Example `config.json`:**
+
+```json
+{
+  "port": 8080,
+  "configPort": 54321,
+  "allowedOrigins": ["*"],
+  "defaultVolume": 0.5,
+  "enableOBS": true
+}
+```
+
+- `port`: Main server port (for website and websocket)
+- `configPort`: Dedicated port for config server (used by extensions/widgets to fetch config)
+- `allowedOrigins`: List of allowed origins for CORS (default: `["*"]`)
+- `defaultVolume`: Initial volume value when the server starts
+- `enableOBS`: Enable or disable the OBS widget routes
+
+**Notes:**
+
+- If you change the `configPort` , update your Spicetify extension to fetch config from the correct `configPort`.
+- If you change the `port` , be sure to restart your server and do
+
+```bash
+spicetify apply
+```
 
 ## Usage
 
@@ -55,7 +81,9 @@ These scripts will tell you if there's any dependencies missing and configure th
 node volume-server.js
 ```
 
-2. If there are no errors, open up [http://localhost:8888](http://localhost:8888) or http://localhost:8888/obs
+2. If there are no errors, open up [http://localhost:8080](http://localhost:8080) or [http://localhost:8080/obs](http://localhost:8080/obs) (if OBS widget is enabled).
+
+3. The Spicetify extension and OBS widget will automatically fetch the correct host and port from the config server running at `http://127.0.0.1:54321/api/config`.
 
 ## Adding the server as a service in Windows (optional)
 
@@ -96,3 +124,10 @@ Instead of manually installing the service, you can now use the provided automat
 - !snext
 - !sprev
 - !vol 0-100 / !vol 0-1.0
+
+## Notes
+
+- The server is localhost-only due to the Spicetify extension requiring https to workout outside of localhost.
+- All configuration is handled via `config.json`.
+- CORS is configurable via `allowedOrigins` in `config.json`.
+- The Spicetify extension and widgets fetch server config from the dedicated config server.
