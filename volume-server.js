@@ -27,6 +27,7 @@ const port = config.port;
 const configPort = config.configPort;
 const allowedOrigins = config.allowedOrigins;
 const enableOBS = config.enableOBS;
+const volumeStep = config.volumeStep || 0.05;
 
 // Use defaultVolume from config
 let volume = config.defaultVolume;
@@ -221,19 +222,54 @@ wss.on("connection", (ws) => {
       console.log("Received message:", data);
 
       if (data.type === "volumeUpdate") {
-        volume = data.volume;
-        saveStateToFile(); // Save state on change
-        // Broadcast to all other clients, but not the sender.
-        wss.clients.forEach((c) => {
-          if (c !== ws && c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                volume: volume,
-              })
-            );
-          }
-        });
+        // Handle volume change commands (volumeUp/volumeDown) from Spicetify hotkeys
+        if (data.command === "volumeUp") {
+          volume = Math.min(1.0, volume + volumeStep);
+          saveStateToFile();
+          console.log(`Server: Volume increased to ${volume}`);
+          // Broadcast state update with new volume to all clients (including Spicetify)
+          wss.clients.forEach((c) => {
+            if (c.readyState === WebSocket.OPEN) {
+              c.send(
+                JSON.stringify({
+                  type: "stateUpdate",
+                  volume: volume,
+                })
+              );
+            }
+          });
+        } else if (data.command === "volumeDown") {
+          volume = Math.max(0.0, volume - volumeStep);
+          saveStateToFile();
+          console.log(`Server: Volume decreased to ${volume}`);
+          // Broadcast state update with new volume to all clients (including Spicetify)
+          wss.clients.forEach((c) => {
+            if (c.readyState === WebSocket.OPEN) {
+              c.send(
+                JSON.stringify({
+                  type: "stateUpdate",
+                  volume: volume,
+                })
+              );
+            }
+          });
+        }
+        // Handle direct volume level update (from Spicetify volume slider/sync)
+        else if (data.volume !== undefined) {
+          volume = data.volume;
+          saveStateToFile(); // Save state on change
+          // Broadcast to all other clients, but not the sender (Spicetify client already set it).
+          wss.clients.forEach((c) => {
+            if (c !== ws && c.readyState === WebSocket.OPEN) {
+              c.send(
+                JSON.stringify({
+                  type: "stateUpdate",
+                  volume: volume,
+                })
+              );
+            }
+          });
+        }
       } else if (data.type === "playbackUpdate") {
         isPlaying = data.isPlaying;
         saveStateToFile(); // Save state on change
@@ -301,21 +337,24 @@ wss.on("connection", (ws) => {
         });
       } else if (data.type === "playbackControl") {
         // This is a playback control message from the website.
-        // We now broadcast it to all clients, but specifically expect the Spicetify client to handle it.
+        // The volumeUp/volumeDown logic has been moved to the 'volumeUpdate' handler.
         console.log(
           `Server: Broadcasting playback control command: ${data.command}`
         );
-        wss.clients.forEach((c) => {
-          if (c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "playbackControl",
-                command: data.command,
-                position: data.position, // Forward the new position for the 'seek' command
-              })
-            );
-          }
-        });
+        // Only broadcast non-volume commands here.
+        if (data.command !== "volumeUp" && data.command !== "volumeDown") {
+          wss.clients.forEach((c) => {
+            if (c.readyState === WebSocket.OPEN) {
+              c.send(
+                JSON.stringify({
+                  type: "playbackControl",
+                  command: data.command,
+                  position: data.position, // Forward the new position for the 'seek' command
+                })
+              );
+            }
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to parse message:", error);

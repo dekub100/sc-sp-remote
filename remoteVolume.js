@@ -265,6 +265,25 @@
     setInterval(() => sendLocalUpdates(), POLLING_INTERVAL);
 
     connectWebSocket();
+
+    // Expose volume control functions globally for Spicetify hotkeys or other extensions
+    Spicetify.Player.volumeUp = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // CHANGED: type is now "volumeUpdate"
+        ws.send(JSON.stringify({ type: "volumeUpdate", command: "volumeUp" }));
+        console.log("Remote Volume: Sent volumeUp command.");
+      }
+    };
+
+    Spicetify.Player.volumeDown = () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // CHANGED: type is now "volumeUpdate"
+        ws.send(
+          JSON.stringify({ type: "volumeUpdate", command: "volumeDown" })
+        );
+        console.log("Remote Volume: Sent volumeDown command.");
+      }
+    };
   }
 
   /**

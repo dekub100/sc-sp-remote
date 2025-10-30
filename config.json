@@ -3,5 +3,6 @@
   "configPort": 54321,
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
-  "enableOBS": true
+  "enableOBS": true,
+  "volumeStep": 0.05
 }
