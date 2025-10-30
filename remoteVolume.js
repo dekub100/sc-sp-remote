@@ -14,6 +14,8 @@
   let lastKnownLocalIsPlaying = false;
   let lastKnownLocalTrackUri = null;
   let lastKnownLocalProgress = -1;
+  let lastKnownLocalShuffle = false; // NEW: Track local shuffle state
+  let lastKnownLocalRepeat = 0; // NEW: Track local repeat state (0: off, 1: context, 2: track)
 
   /**
    * The main function that runs once the Spicetify Player API and Platform API is ready.
@@ -83,6 +85,28 @@
                   lastKnownLocalIsPlaying = data.isPlaying;
                 }
               }
+              // NEW: Handle shuffle state update from server
+              if (data.isShuffling !== undefined) {
+                const currentIsShuffling = Spicetify.Player.getShuffle();
+                if (currentIsShuffling !== data.isShuffling) {
+                  Spicetify.Player.toggleShuffle(); // Toggle to match server state
+                  console.log(
+                    `Remote Volume: Shuffle toggled to ${data.isShuffling} from server.`
+                  );
+                  lastKnownLocalShuffle = data.isShuffling;
+                }
+              }
+              // NEW: Handle repeat state update from server
+              if (data.repeatStatus !== undefined) {
+                const currentRepeatStatus = Spicetify.Player.getRepeat();
+                if (currentRepeatStatus !== data.repeatStatus) {
+                  Spicetify.Player.setRepeat(data.repeatStatus);
+                  console.log(
+                    `Remote Volume: Repeat set to ${data.repeatStatus} from server.`
+                  );
+                  lastKnownLocalRepeat = data.repeatStatus;
+                }
+              }
             } else if (data.type === "playbackControl") {
               // Execute a playback command from the server.
               if (Spicetify.Player) {
@@ -107,6 +131,14 @@
                     break;
                   case "seek":
                     Spicetify.Player.seek(data.position);
+                    break;
+                  case "toggleShuffle": // NEW: Handle shuffle command
+                    Spicetify.Player.toggleShuffle();
+                    break;
+                  case "toggleRepeat": // NEW: Handle repeat command (client-side toggle logic)
+                    const currentRepeatMode = Spicetify.Player.getRepeat();
+                    let nextRepeatMode = (currentRepeatMode + 1) % 3; // 0 (off) -> 1 (context) -> 2 (track) -> 0
+                    Spicetify.Player.setRepeat(nextRepeatMode);
                     break;
                   default:
                     console.warn(
@@ -219,12 +251,42 @@
         lastKnownLocalIsPlaying = currentIsPlaying;
       }
 
+      // Check for shuffle state change
+      const currentShuffle = Spicetify.Player.getShuffle();
+      if (forceSend || currentShuffle !== lastKnownLocalShuffle) {
+        console.log(
+          `Remote Volume: Shuffle change detected! Current: ${currentShuffle}, Last Known: ${lastKnownLocalShuffle}`
+        );
+        ws.send(
+          JSON.stringify({
+            type: "shuffleUpdate",
+            isShuffling: currentShuffle,
+          })
+        );
+        lastKnownLocalShuffle = currentShuffle;
+      }
+
+      // Check for repeat state change
+      const currentRepeat = Spicetify.Player.getRepeat(); // 0, 1, or 2
+      if (forceSend || currentRepeat !== lastKnownLocalRepeat) {
+        console.log(
+          `Remote Volume: Repeat change detected! Current: ${currentRepeat}, Last Known: ${lastKnownLocalRepeat}`
+        );
+        ws.send(
+          JSON.stringify({
+            type: "repeatUpdate",
+            repeatStatus: currentRepeat,
+          })
+        );
+        lastKnownLocalRepeat = currentRepeat;
+      }
+
       // Check for track progress change
       const currentProgress = Spicetify.Player.getProgress();
       const currentDuration = Spicetify.Player.getDuration();
       if (
         forceSend ||
-        Math.abs(currentProgress - lastKnownLocalProgress) > 250 // Send update every second
+        Math.abs(currentProgress - lastKnownLocalProgress) > 250 // Send update every quarter second
       ) {
         if (currentProgress !== null && currentDuration !== null) {
           // console.log(

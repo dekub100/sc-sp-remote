@@ -54,6 +54,9 @@ let progressUpdateInterval; // Holds the setInterval for progress updates
 let trackProgressStartTimestamp = 0; // Timestamp when the current track started
 let backgroundPalette = null; // New variable to store the color palette
 
+let isShuffling = false; // NEW: Track server-side shuffle state
+let repeatStatus = 0; // NEW: Track server-side repeat state
+
 /**
  * Reads the state from the state.json file on server startup.
  */
@@ -66,6 +69,8 @@ function readStateFromFile() {
       volume = savedState.volume || volume;
       isPlaying = savedState.isPlaying || isPlaying;
       currentTrack = savedState.currentTrack || currentTrack;
+      isShuffling = savedState.isShuffling || isShuffling; // NEW: Load shuffle state
+      repeatStatus = savedState.repeatStatus || repeatStatus; // NEW: Load repeat state
       // Do not load trackProgress or trackDuration from the file to avoid stale data
       console.log("Server: Loaded state from state.json");
     } else {
@@ -87,6 +92,8 @@ function saveStateToFile() {
     volume: roundedVolume,
     isPlaying,
     currentTrack,
+    isShuffling, // NEW: Save shuffle state
+    repeatStatus, // NEW: Save repeat state
   };
   try {
     fs.writeFileSync(
@@ -212,6 +219,8 @@ wss.on("connection", (ws) => {
       progress: trackProgress,
       duration: trackDuration,
       backgroundPalette: backgroundPalette, // Send the current color palette
+      isShuffling: isShuffling, // NEW: Send shuffle state
+      repeatStatus: repeatStatus, // NEW: Send repeat state
     })
   );
 
@@ -287,6 +296,34 @@ wss.on("connection", (ws) => {
               JSON.stringify({
                 type: "stateUpdate",
                 isPlaying: isPlaying,
+              })
+            );
+          }
+        });
+      } else if (data.type === "shuffleUpdate") {
+        // NEW: Handle shuffle state from Spicetify
+        isShuffling = data.isShuffling;
+        saveStateToFile();
+        wss.clients.forEach((c) => {
+          if (c !== ws && c.readyState === WebSocket.OPEN) {
+            c.send(
+              JSON.stringify({
+                type: "stateUpdate",
+                isShuffling: isShuffling,
+              })
+            );
+          }
+        });
+      } else if (data.type === "repeatUpdate") {
+        // NEW: Handle repeat state from Spicetify
+        repeatStatus = data.repeatStatus;
+        saveStateToFile();
+        wss.clients.forEach((c) => {
+          if (c !== ws && c.readyState === WebSocket.OPEN) {
+            c.send(
+              JSON.stringify({
+                type: "stateUpdate",
+                repeatStatus: repeatStatus,
               })
             );
           }
