@@ -18,6 +18,9 @@ let nextBtn;
 let albumArtImg;
 let songTitleElem;
 let artistNameElem;
+let likeBtn;
+let shuffleBtn;
+let repeatBtn;
 
 // New elements for the progress bar
 let progressBar;
@@ -26,6 +29,9 @@ let durationTimeElem;
 
 let ws;
 let isPlaying = false;
+let isLiked = false;
+let isShuffling = false;
+let repeatStatus = 0;
 let isSeeking = false; // Prevents the progress bar from updating while the user is dragging it.
 
 /**
@@ -64,6 +70,18 @@ function connectWebSocket() {
           if (data.isPlaying !== undefined) {
             isPlaying = data.isPlaying;
             updatePlayPauseButton(isPlaying);
+          }
+          if (data.isLiked !== undefined) {
+            isLiked = data.isLiked;
+            updateLikeButton(isLiked);
+          }
+          if (data.isShuffling !== undefined) {
+            isShuffling = data.isShuffling;
+            updateShuffleButton(isShuffling);
+          }
+          if (data.repeatStatus !== undefined) {
+            repeatStatus = data.repeatStatus;
+            updateRepeatButton(repeatStatus);
           }
           // Update track information if available.
           if (data.trackName !== undefined) {
@@ -153,6 +171,30 @@ function updatePlayPauseButton(isPlayingState) {
   }
 }
 
+function updateLikeButton(isLikedState) {
+  if (isLikedState) {
+    likeBtn.classList.add("liked");
+  } else {
+    likeBtn.classList.remove("liked");
+  }
+}
+
+function updateShuffleButton(isShufflingState) {
+  if (isShufflingState) {
+    shuffleBtn.classList.add("active");
+  } else {
+    shuffleBtn.classList.remove("active");
+  }
+}
+
+function updateRepeatButton(repeatStatusState) {
+  if (repeatStatusState === 0) {
+    repeatBtn.classList.remove("active");
+  } else {
+    repeatBtn.classList.add("active");
+  }
+}
+
 /**
  * Formats a time in milliseconds into a readable minute:second string.
  * @param {number} ms - Time in milliseconds.
@@ -176,6 +218,9 @@ document.addEventListener("DOMContentLoaded", () => {
   albumArtImg = document.getElementById("albumArt");
   songTitleElem = document.getElementById("songTitle");
   artistNameElem = document.getElementById("artistName");
+  likeBtn = document.getElementById("likeBtn");
+  shuffleBtn = document.getElementById("shuffleBtn");
+  repeatBtn = document.getElementById("repeatBtn");
 
   // New elements for the progress bar
   progressBar = document.getElementById("progressBar");
@@ -213,6 +258,27 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("Website: Sending 'next' command to server.");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "playbackControl", command: "next" }));
+    }
+  });
+
+  likeBtn.addEventListener("click", () => {
+    console.log("Website: Sending 'like' command to server.");
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "like" }));
+    }
+  });
+
+  shuffleBtn.addEventListener("click", () => {
+    console.log("Website: Sending 'toggleShuffle' command to server.");
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "playbackControl", command: "toggleShuffle" }));
+    }
+  });
+
+  repeatBtn.addEventListener("click", () => {
+    console.log("Website: Sending 'toggleRepeat' command to server.");
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "playbackControl", command: "toggleRepeat" }));
     }
   });
 

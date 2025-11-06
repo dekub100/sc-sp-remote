@@ -38,6 +38,16 @@ body {
   border-radius: 10px;
   margin-right: 20px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.3s ease;
+}
+
+.song-title,
+.artist-name {
+  transition: opacity 0.3s ease;
+}
+
+.fade-out {
+  opacity: 0;
 }
 
 .info-container {
@@ -91,7 +101,7 @@ body {
 
 .marquee-content {
   /* No changes here, the content stays the same */
-  padding-right: 50px; /* Add space between the end of the text and the start of the copy */
+  padding-right: 100px; /* Add space between the end of the text and the start of the copy */
 }
 
 @keyframes marquee-animation {
@@ -100,7 +110,7 @@ body {
   }
   to {
     /* Moves the text completely off-screen to the left based on its full width */
-    transform: translateX(var(--marquee-distance, -50%));
+    transform: translateX(var(--marquee-distance));
   }
 }
 /* End of Marquee Animation Changes */

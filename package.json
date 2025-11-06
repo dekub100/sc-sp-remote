@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "remoteVolume.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "node setup.js"
   },
   "keywords": [],
   "author": "",
@@ -13,5 +14,10 @@
     "express": "^5.1.0",
     "node-vibrant": "^4.0.3",
     "ws": "^8.18.3"
+  },
+  "optionalDependencies": {
+    "node-linux": "^0.1.12",
+    "node-mac": "^0.1.10",
+    "node-windows": "^1.0.0-beta.8"
   }
 }

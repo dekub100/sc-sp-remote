@@ -1,6 +1,6 @@
 # spicetify-remote
 
-A spicetify extension for remote control/viewing info using websockets.
+A spicetify extension for remote control/viewing info using websockets. Without the use of Spotify Premium.
 
 _Code was made with the help of AI, but its honestly so simple i think it just works_
 
@@ -10,9 +10,9 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [Usage](#usage)
-- [Adding the server as a service in Windows (optional)](#adding-the-server-as-a-service-in-windows-optional)
-- [Adding Streamer.bot commands (optional)](#adding-streamerbot-commands-optional)
+- [Service Management](#service-management)
+- [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
+- [Notes](#notes)
 
 ## Features
 
@@ -23,7 +23,9 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 
 ## Requirements
 
+- npm
 - git
+- spicetify-cli
 
 ## Installation
 
@@ -34,12 +36,42 @@ git clone https://github.com/dekub100/spicetify-remote
 cd spicetify-remote
 ```
 
-2. Run the automated setup script for your operating system:
+2. Run the setup script:
 
-- **For Windows:** Run `setup.bat` as an **administrator**.
-- **For Linux/macOS:** Run `setup.sh` as a regular user. (have not tried macOS)
+```bash
+npm run setup
+```
 
-These scripts will tell you if there's any dependencies missing and configure the extension automatically.
+This script will check for dependencies, install Node.js packages, and set up the Spicetify extension.
+
+**Note:** The current setup script (`npm run setup`) is largely untested and may not work as expected on all systems (especially on macOS since i dont have a mac device). Manual installation steps are provided below.
+
+### Manual Installation
+
+If the `npm run setup` script fails, you can follow these steps for a manual installation:
+
+1.  **Install Node.js Dependencies:**
+    Navigate to the project directory and run:
+
+    ```bash
+    npm install
+    ```
+
+2.  **Locate Spicetify Extensions Folder:**
+    The Spicetify extensions folder is usually located at:
+
+    - **Windows:** `%APPDATA%\spicetify\Extensions` (e.g., `C:\Users\YOUR_USERNAME\AppData\Roaming\spicetify\Extensions`)
+    - **Linux/macOS:** `~/.config/spicetify/Extensions` (e.g., `/home/YOUR_USERNAME/.config/spicetify/Extensions`)
+
+3.  **Copy Extension File:**
+    Copy the `remoteVolume.js` file from the cloned repository to the Spicetify extensions folder.
+
+4.  **Configure Spicetify:**
+    Run the following commands in your terminal:
+    ```bash
+    spicetify config extensions remoteVolume.js
+    spicetify apply
+    ```
 
 ## Configuration
 
@@ -54,7 +86,8 @@ You can edit this file to change the ports, allowed origins, default volume, and
   "configPort": 54321,
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
-  "enableOBS": true
+  "enableOBS": true,
+  "volumeStep": 0.05
 }
 ```
 
@@ -73,57 +106,53 @@ You can edit this file to change the ports, allowed origins, default volume, and
 spicetify apply
 ```
 
-## Usage
+## Service Management
 
-1. Test if everything has installed correctly by running the server:
+You can also use the setup script to install or remove the server as a system service.
+
+### Install Service
+
+To install the server as a service, run:
 
 ```bash
-node volume-server.js
+node setup.js --install-service
 ```
 
-2. If there are no errors, open up [http://localhost:8080](http://localhost:8080) or [http://localhost:8080/obs](http://localhost:8080/obs) (if OBS widget is enabled).
+### Remove Service
 
-3. The Spicetify extension and OBS widget will automatically fetch the correct host and port from the config server running at `http://127.0.0.1:54321/api/config`.
+To remove the service, run:
 
-## Adding the server as a service in Windows (optional)
+```bash
+node setup.js --remove-service
+```
 
-Instead of manually installing the service, you can now use the provided automated scripts.
+## Elgato Stream Deck Integration
 
-1. **Install the service:**
-   Run `install-service.bat`. This script will automatically download and set up the service for you.
+You can control your Spotify player directly from an Elgato Stream Deck using the ["Web Requests" plugin by Adrian Mullings on the Elgato Marketplace](https://marketplace.elgato.com/product/web-requests-d7d46868-f9c8-4fa5-b775-ab3b9a7c8add). This allows full control (e.g., play/pause, next/previous, like, shuffle, repeat, volume) without needing Spotify Premium.
 
-2. **Remove the service:**
-   Run `remove-service.bat`. This script will automatically remove the service for you. You will need to stop it beforehand.
+To send commands, you will need to send a POST request to `http://localhost:8080` with a JSON body. Here are some examples:
 
-## Adding Streamer.bot commands (optional)
+- **Playback Control (e.g., Play/Pause, Next, Previous, Like, Shuffle, Repeat):**
 
-1. Open up streamerbot/streamerbot.txt and copy the contents into the 'Import' feature in Streamer.bot
+  ```json
+  { "type": "playbackControl", "command": "togglePlay" }
+  ```
 
-2. **Update file paths in 'Show Music - Chat Message' Action (Important):**
-   - Newtonsoft.Json.dll: In the 'Execute Code' sub-action references, update the path for Newtonsoft.Json.dll. The current path is D:\Stream.bot\Newtonsoft.Json.dll. Change this to the location of the file in your Streamer.bot installation folder. (Image 1)
-   - state.json: In the 'Read Lines (state.json)' Sub-Action, update the path for the state.json file. The current path is C:\spicetify-remote\state.json. Change this to the location of the file in your spicetify-remote folder. (Image 2)
+  Replace `togglePlay` with `next`, `previous`, `like`, `toggleShuffle`, or `toggleRepeat`.
 
-<table>
-  <tr>
-    <td>
-    <img src="streamerbot/references.jpg" alt="Image 1">
-      </td>
-       <td>
-    <img src="streamerbot/file_location.jpg" alt="Image 2">
-    </td>
-  </tr>
-</table>
-   
-<br>
+- **Set Specific Volume Level:**
 
-3. Test out the commands in twitch chat:
+  ```json
+  { "type": "volumeUpdate", "volume": 0.5 }
+  ```
 
-- !music
-- !sstop
-- !splay
-- !snext
-- !sprev
-- !vol 0-100 / !vol 0-1.0
+  Replace `0.5` with your desired volume level (a float between 0.0 and 1.0).
+
+- **Adjust Volume Up/Down:**
+  ```json
+  { "type": "volumeUpdate", "command": "volumeUp" }
+  ```
+  Replace `volumeUp` with `volumeDown` to decrease the volume.
 
 ## Notes
 

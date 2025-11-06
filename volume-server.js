@@ -56,6 +56,7 @@ let backgroundPalette = null; // New variable to store the color palette
 
 let isShuffling = false; // NEW: Track server-side shuffle state
 let repeatStatus = 0; // NEW: Track server-side repeat state
+let isLiked = false; // NEW: Track server-side liked state
 
 /**
  * Reads the state from the state.json file on server startup.
@@ -71,6 +72,7 @@ function readStateFromFile() {
       currentTrack = savedState.currentTrack || currentTrack;
       isShuffling = savedState.isShuffling || isShuffling; // NEW: Load shuffle state
       repeatStatus = savedState.repeatStatus || repeatStatus; // NEW: Load repeat state
+      isLiked = savedState.isLiked || isLiked; // NEW: Load liked state
       // Do not load trackProgress or trackDuration from the file to avoid stale data
       console.log("Server: Loaded state from state.json");
     } else {
@@ -94,6 +96,7 @@ function saveStateToFile() {
     currentTrack,
     isShuffling, // NEW: Save shuffle state
     repeatStatus, // NEW: Save repeat state
+    isLiked, // NEW: Save liked state
   };
   try {
     fs.writeFileSync(
@@ -164,6 +167,7 @@ async function getPaletteFromUrl(url) {
   } catch (error) {
     console.error("Server: Failed to get color palette:", error);
     backgroundPalette = null;
+    broadcast({ type: "error", message: "Failed to get color palette" });
   }
 }
 
@@ -196,6 +200,175 @@ app.get("/api/config", (req, res) => {
   res.json({ port });
 });
 
+/**
+ * Broadcasts a message to all connected WebSocket clients.
+ * @param {object} message - The message to broadcast.
+ */
+function broadcast(message) {
+  wss.clients.forEach((c) => {
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(message));
+    }
+  });
+}
+
+/**
+ * Broadcasts a message to all connected WebSocket clients except the sender.
+ * @param {object} ws - The WebSocket connection of the sender.
+ * @param {object} message - The message to broadcast.
+ */
+function broadcastToOthers(ws, message) {
+  wss.clients.forEach((c) => {
+    if (c !== ws && c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(message));
+    }
+  });
+}
+
+async function handleMessage(ws, message) {
+  try {
+    const data = JSON.parse(message);
+    console.log("Received message:", data);
+
+    switch (data.type) {
+      case "volumeUpdate":
+        handleVolumeUpdate(ws, data);
+        break;
+      case "playbackUpdate":
+        handlePlaybackUpdate(ws, data);
+        break;
+      case "shuffleUpdate":
+        handleShuffleUpdate(ws, data);
+        break;
+      case "repeatUpdate":
+        handleRepeatUpdate(ws, data);
+        break;
+      case "likeUpdate":
+        handleLikeUpdate(ws, data);
+        break;
+      case "trackUpdate":
+        await handleTrackUpdate(ws, data);
+        break;
+      case "progressUpdate":
+        handleProgressUpdate(ws, data);
+        break;
+      case "like":
+        handleLike(ws, data);
+        break;
+      case "playbackControl":
+        handlePlaybackControl(ws, data);
+        break;
+      default:
+        console.warn(`Unknown message type: ${data.type}`);
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: `Unknown message type: ${data.type}`,
+          })
+        );
+    }
+  } catch (error) {
+    console.error("Failed to parse message:", error);
+    ws.send(JSON.stringify({ type: "error", message: "Invalid JSON format" }));
+  }
+}
+
+function handleVolumeUpdate(ws, data) {
+  if (data.command === "volumeUp") {
+    volume = Math.min(1.0, volume + volumeStep);
+    saveStateToFile();
+    console.log(`Server: Volume increased to ${volume}`);
+    broadcast({ type: "stateUpdate", volume: volume });
+  } else if (data.command === "volumeDown") {
+    volume = Math.max(0.0, volume - volumeStep);
+    saveStateToFile();
+    console.log(`Server: Volume decreased to ${volume}`);
+    broadcast({ type: "stateUpdate", volume: volume });
+  } else if (data.volume !== undefined) {
+    volume = data.volume;
+    saveStateToFile();
+    broadcastToOthers(ws, { type: "stateUpdate", volume: volume });
+  }
+}
+
+function handlePlaybackUpdate(ws, data) {
+  isPlaying = data.isPlaying;
+  saveStateToFile();
+  if (isPlaying) {
+    trackProgressStartTimestamp = Date.now();
+  } else {
+    trackProgress = data.progress;
+  }
+  broadcastToOthers(ws, { type: "stateUpdate", isPlaying: isPlaying });
+}
+
+function handleShuffleUpdate(ws, data) {
+  isShuffling = data.isShuffling;
+  saveStateToFile();
+  broadcastToOthers(ws, { type: "stateUpdate", isShuffling: isShuffling });
+}
+
+function handleRepeatUpdate(ws, data) {
+  repeatStatus = data.repeatStatus;
+  saveStateToFile();
+  broadcastToOthers(ws, { type: "stateUpdate", repeatStatus: repeatStatus });
+}
+
+function handleLikeUpdate(ws, data) {
+  isLiked = data.isLiked;
+  saveStateToFile();
+  broadcastToOthers(ws, { type: "stateUpdate", isLiked: isLiked });
+}
+
+async function handleTrackUpdate(ws, data) {
+  currentTrack = {
+    trackName: data.trackName,
+    artistName: data.artistName,
+    albumArtUrl: data.albumArtUrl,
+  };
+  trackDuration = data.duration;
+  trackProgress = data.progress;
+  trackProgressStartTimestamp = Date.now();
+
+  await getPaletteFromUrl(currentTrack.albumArtUrl);
+  saveStateToFile();
+
+  broadcast({
+    type: "stateUpdate",
+    trackName: currentTrack.trackName,
+    artistName: currentTrack.artistName,
+    albumArtUrl: currentTrack.albumArtUrl,
+    duration: trackDuration,
+    backgroundPalette: backgroundPalette,
+  });
+}
+
+function handleProgressUpdate(ws, data) {
+  trackProgress = data.progress;
+  trackDuration = data.duration;
+  trackProgressStartTimestamp = Date.now();
+  broadcastToOthers(ws, {
+    type: "stateUpdate",
+    progress: trackProgress,
+    duration: trackDuration,
+  });
+}
+
+function handleLike(ws, data) {
+  broadcast({ type: "playbackControl", command: "like" });
+}
+
+function handlePlaybackControl(ws, data) {
+  console.log(`Server: Broadcasting playback control command: ${data.command}`);
+  if (data.command !== "volumeUp" && data.command !== "volumeDown") {
+    broadcast({
+      type: "playbackControl",
+      command: data.command,
+      position: data.position,
+    });
+  }
+}
+
 // WebSocket server setup
 wss.on("connection", (ws) => {
   console.log("Client connected.");
@@ -221,182 +394,12 @@ wss.on("connection", (ws) => {
       backgroundPalette: backgroundPalette, // Send the current color palette
       isShuffling: isShuffling, // NEW: Send shuffle state
       repeatStatus: repeatStatus, // NEW: Send repeat state
+      isLiked: isLiked, // NEW: Send liked state
     })
   );
 
   // The message listener is now 'async' so we can use 'await' inside.
-  ws.on("message", async (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log("Received message:", data);
-
-      if (data.type === "volumeUpdate") {
-        // Handle volume change commands (volumeUp/volumeDown) from Spicetify hotkeys
-        if (data.command === "volumeUp") {
-          volume = Math.min(1.0, volume + volumeStep);
-          saveStateToFile();
-          console.log(`Server: Volume increased to ${volume}`);
-          // Broadcast state update with new volume to all clients (including Spicetify)
-          wss.clients.forEach((c) => {
-            if (c.readyState === WebSocket.OPEN) {
-              c.send(
-                JSON.stringify({
-                  type: "stateUpdate",
-                  volume: volume,
-                })
-              );
-            }
-          });
-        } else if (data.command === "volumeDown") {
-          volume = Math.max(0.0, volume - volumeStep);
-          saveStateToFile();
-          console.log(`Server: Volume decreased to ${volume}`);
-          // Broadcast state update with new volume to all clients (including Spicetify)
-          wss.clients.forEach((c) => {
-            if (c.readyState === WebSocket.OPEN) {
-              c.send(
-                JSON.stringify({
-                  type: "stateUpdate",
-                  volume: volume,
-                })
-              );
-            }
-          });
-        }
-        // Handle direct volume level update (from Spicetify volume slider/sync)
-        else if (data.volume !== undefined) {
-          volume = data.volume;
-          saveStateToFile(); // Save state on change
-          // Broadcast to all other clients, but not the sender (Spicetify client already set it).
-          wss.clients.forEach((c) => {
-            if (c !== ws && c.readyState === WebSocket.OPEN) {
-              c.send(
-                JSON.stringify({
-                  type: "stateUpdate",
-                  volume: volume,
-                })
-              );
-            }
-          });
-        }
-      } else if (data.type === "playbackUpdate") {
-        isPlaying = data.isPlaying;
-        saveStateToFile(); // Save state on change
-        // Update the timestamp if the playback state changes.
-        if (isPlaying) {
-          trackProgressStartTimestamp = Date.now();
-        } else {
-          // Store the last known progress when paused
-          trackProgress = data.progress;
-        }
-
-        wss.clients.forEach((c) => {
-          if (c !== ws && c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                isPlaying: isPlaying,
-              })
-            );
-          }
-        });
-      } else if (data.type === "shuffleUpdate") {
-        // NEW: Handle shuffle state from Spicetify
-        isShuffling = data.isShuffling;
-        saveStateToFile();
-        wss.clients.forEach((c) => {
-          if (c !== ws && c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                isShuffling: isShuffling,
-              })
-            );
-          }
-        });
-      } else if (data.type === "repeatUpdate") {
-        // NEW: Handle repeat state from Spicetify
-        repeatStatus = data.repeatStatus;
-        saveStateToFile();
-        wss.clients.forEach((c) => {
-          if (c !== ws && c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                repeatStatus: repeatStatus,
-              })
-            );
-          }
-        });
-      } else if (data.type === "trackUpdate") {
-        currentTrack = {
-          trackName: data.trackName,
-          artistName: data.artistName,
-          albumArtUrl: data.albumArtUrl,
-        };
-        trackDuration = data.duration;
-        trackProgress = data.progress; // Initial progress from Spicetify
-        trackProgressStartTimestamp = Date.now(); // Reset timestamp for new track
-
-        // Asynchronously get the new color palette from the album art
-        await getPaletteFromUrl(currentTrack.albumArtUrl);
-        saveStateToFile(); // Save state after palette is generated
-        wss.clients.forEach((c) => {
-          if (c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                trackName: currentTrack.trackName,
-                artistName: currentTrack.artistName,
-                albumArtUrl: currentTrack.albumArtUrl,
-                duration: trackDuration,
-                backgroundPalette: backgroundPalette, // Send the new color palette
-              })
-            );
-          }
-        });
-      } else if (data.type === "progressUpdate") {
-        // We no longer rely on the client for continuous progress updates.
-        // This is only used for the initial state and seeking.
-        trackProgress = data.progress;
-        trackDuration = data.duration;
-        trackProgressStartTimestamp = Date.now();
-        wss.clients.forEach((c) => {
-          if (c !== ws && c.readyState === WebSocket.OPEN) {
-            c.send(
-              JSON.stringify({
-                type: "stateUpdate",
-                progress: trackProgress,
-                duration: trackDuration,
-              })
-            );
-          }
-        });
-      } else if (data.type === "playbackControl") {
-        // This is a playback control message from the website.
-        // The volumeUp/volumeDown logic has been moved to the 'volumeUpdate' handler.
-        console.log(
-          `Server: Broadcasting playback control command: ${data.command}`
-        );
-        // Only broadcast non-volume commands here.
-        if (data.command !== "volumeUp" && data.command !== "volumeDown") {
-          wss.clients.forEach((c) => {
-            if (c.readyState === WebSocket.OPEN) {
-              c.send(
-                JSON.stringify({
-                  type: "playbackControl",
-                  command: data.command,
-                  position: data.position, // Forward the new position for the 'seek' command
-                })
-              );
-            }
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Failed to parse message:", error);
-    }
-  });
+  ws.on("message", (message) => handleMessage(ws, message));
 
   ws.on("close", () => {
     console.log("Client disconnected.");

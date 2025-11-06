@@ -147,6 +147,10 @@ body {
   color: #1db954; /* Spotify green for the playing state */
 }
 
+.control-btn.active {
+  color: #1db954;
+}
+
 /* Volume control section styles */
 .volume-control {
   display: flex;
@@ -227,4 +231,8 @@ body {
   .volume-icon {
     font-size: 1rem;
   }
+}
+
+.playback-controls .control-btn.liked {
+  color: #1db954;
 }

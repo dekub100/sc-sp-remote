@@ -140,6 +140,9 @@
                     let nextRepeatMode = (currentRepeatMode + 1) % 3; // 0 (off) -> 1 (context) -> 2 (track) -> 0
                     Spicetify.Player.setRepeat(nextRepeatMode);
                     break;
+                  case "like":
+                    Spicetify.Player.toggleHeart();
+                    break;
                   default:
                     console.warn(
                       `Remote Volume: Unknown playback command received: ${data.command}`
@@ -219,6 +222,15 @@
         return;
       }
 
+      checkVolume(forceSend);
+      checkPlayback(forceSend);
+      checkShuffle(forceSend);
+      checkRepeat(forceSend);
+      checkProgress(forceSend);
+      checkTrack(forceSend);
+    }
+
+    function checkVolume(forceSend) {
       // Check for volume change
       const currentVolume = Spicetify.Player.getVolume();
       // Only send if the volume has changed significantly or we are forcing a send.
@@ -235,7 +247,9 @@
         );
         lastKnownLocalVolume = currentVolume;
       }
+    }
 
+    function checkPlayback(forceSend) {
       // Check for playback state change
       const currentIsPlaying = !Spicetify.Player.origin._state.isPaused;
       if (forceSend || currentIsPlaying !== lastKnownLocalIsPlaying) {
@@ -250,7 +264,9 @@
         );
         lastKnownLocalIsPlaying = currentIsPlaying;
       }
+    }
 
+    function checkShuffle(forceSend) {
       // Check for shuffle state change
       const currentShuffle = Spicetify.Player.getShuffle();
       if (forceSend || currentShuffle !== lastKnownLocalShuffle) {
@@ -265,7 +281,9 @@
         );
         lastKnownLocalShuffle = currentShuffle;
       }
+    }
 
+    function checkRepeat(forceSend) {
       // Check for repeat state change
       const currentRepeat = Spicetify.Player.getRepeat(); // 0, 1, or 2
       if (forceSend || currentRepeat !== lastKnownLocalRepeat) {
@@ -280,7 +298,9 @@
         );
         lastKnownLocalRepeat = currentRepeat;
       }
+    }
 
+    function checkProgress(forceSend) {
       // Check for track progress change
       const currentProgress = Spicetify.Player.getProgress();
       const currentDuration = Spicetify.Player.getDuration();
@@ -302,10 +322,19 @@
           lastKnownLocalProgress = currentProgress;
         }
       }
+    }
 
+    function checkTrack(forceSend) {
       // Check for track change
       const currentTrack = Spicetify.Player.data.item;
       const currentTrackUri = currentTrack?.uri;
+
+      ws.send(
+        JSON.stringify({
+          type: "likeUpdate",
+          isLiked: Spicetify.Player.getHeart(),
+        })
+      );
       if (
         currentTrackUri &&
         (forceSend || currentTrackUri !== lastKnownLocalTrackUri)
@@ -324,7 +353,15 @@
     console.log(
       "Remote Volume: Extension is fully loaded and ready. Starting state polling."
     );
-    setInterval(() => sendLocalUpdates(), POLLING_INTERVAL);
+    setInterval(() => {
+      checkVolume();
+      checkShuffle();
+      checkRepeat();
+      checkProgress();
+    }, 1000);
+
+    Spicetify.Player.addEventListener("songchange", () => checkTrack(true));
+    Spicetify.Player.addEventListener("onplaypause", () => checkPlayback(true));
 
     connectWebSocket();
 

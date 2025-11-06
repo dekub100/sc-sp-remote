@@ -21,6 +21,7 @@ let timeContainer;
 
 let ws;
 let isDomReady = false; // New flag to track if the DOM is ready
+let currentTrackId = null; // New variable to store the current track ID for transitions
 
 /**
  * Helper function to format milliseconds to a mm:ss string.
@@ -119,40 +120,44 @@ function handleMarquee(element, textContent) {
     return;
   }
 
-  // Set the text for both content elements
-  contentElements.forEach((content) => {
-    content.textContent = textContent;
-  });
+  // Only update textContent if it has actually changed
+  if (contentElements[0].textContent !== textContent) {
+    contentElements.forEach((content) => {
+      content.textContent = textContent;
+    });
 
-  // Use a small delay to ensure the DOM has rendered the new content before measuring.
-  setTimeout(() => {
-    // Check if the text overflows its container
-    // We check the first content element's scrollWidth against the parent's clientWidth
-    const firstContent = contentElements[0];
-    if (firstContent.scrollWidth > element.clientWidth) {
-      // Duplicate the content to create a seamless loop
-      if (contentElements.length < 2) {
-        const secondContent = firstContent.cloneNode(true);
-        wrapper.appendChild(secondContent);
+    // Use a small delay to ensure the DOM has rendered the new content before measuring.
+    setTimeout(() => {
+      // Check if the text overflows its container
+      // We check the first content element's scrollWidth against the parent's clientWidth
+      const firstContent = contentElements[0];
+      if (firstContent.scrollWidth > element.clientWidth) {
+        // Duplicate the content to create a seamless loop
+        if (contentElements.length < 2) {
+          const secondContent = firstContent.cloneNode(true);
+          wrapper.appendChild(secondContent);
+        }
+
+        // Calculate the animation duration and distance based on the content width
+        const contentWidth = firstContent.scrollWidth;
+        const animationDuration = contentWidth / 100; // Adjust speed as needed
+        wrapper.style.setProperty('--marquee-duration', `${animationDuration}s`);
+        wrapper.style.setProperty('--marquee-distance', `-${contentWidth}px`);
+
+        // Add the class to start the animation
+        element.classList.add("marquee-active");
+      } else {
+        // If it doesn't overflow, remove the marquee effect
+        element.classList.remove("marquee-active");
+        wrapper.style.width = "100%";
+        wrapper.style.setProperty('--marquee-duration', "0s");
+        // Remove the duplicate content if it exists
+        if (contentElements.length > 1) {
+          contentElements[1].remove();
+        }
       }
-
-      // Calculate the animation duration based on the content width
-      const animationDuration = firstContent.scrollWidth / 175; // change this to make it go faster or slower
-      wrapper.style.animationDuration = `${animationDuration}s`;
-
-      // Add the class to start the animation
-      element.classList.add("marquee-active");
-    } else {
-      // If it doesn't overflow, remove the marquee effect
-      element.classList.remove("marquee-active");
-      wrapper.style.width = "100%";
-      wrapper.style.animationDuration = "0s";
-      // Remove the duplicate content if it exists
-      if (contentElements.length > 1) {
-        contentElements[1].remove();
-      }
-    }
-  }, 50); // Increased delay slightly for better reliability
+    }, 50); // Increased delay slightly for better reliability
+  }
 }
 
 /**
@@ -194,18 +199,63 @@ function connectWebSocket() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "stateUpdate") {
-          // Update the track information and album art.
-          if (data.trackName !== undefined) {
-            handleMarquee(songTitleElem, data.trackName);
-            if (artistNameElem) {
-              handleMarquee(artistNameElem, data.artistName);
-            }
-            if (albumArtImg) {
-              albumArtImg.src = data.albumArtUrl || FALLBACK_ALBUM_ART;
-            }
+          const newTrackIdentifier = (data.trackName || '').trim() + (data.artistName || '').trim() + (data.albumArtUrl || '').trim();
+          const isNewTrack = newTrackIdentifier !== currentTrackId;
+
+          if (isNewTrack) {
+            currentTrackId = newTrackIdentifier; // Update immediately to prevent double triggers
+
+            // Apply fade-out effect to main elements
+            if (albumArtImg) albumArtImg.classList.add('fade-out');
+            if (songTitleElem) songTitleElem.classList.add('fade-out');
+            if (artistNameElem) artistNameElem.classList.add('fade-out');
+
+            // Pause marquee animations during fade-out
+            if (songTitleElem) songTitleElem.classList.remove("marquee-active");
+            if (artistNameElem) artistNameElem.classList.remove("marquee-active");
+
+            // Use a promise to wait for the transition to end
+            const transitionPromise = new Promise(resolve => {
+              if (albumArtImg) {
+                albumArtImg.addEventListener('transitionend', function handler() {
+                  albumArtImg.removeEventListener('transitionend', handler);
+                  resolve();
+                }, { once: true });
+              } else {
+                resolve(); // Resolve immediately if no album art to transition
+              }
+            });
+
+            transitionPromise.then(() => {
+              // Update the track information and album art.
+              if (data.trackName !== undefined) {
+                // Only call handleMarquee if the text content has actually changed
+                if (songTitleElem && songTitleElem.querySelector('.marquee-content').textContent !== data.trackName) {
+                  handleMarquee(songTitleElem, data.trackName);
+                }
+                if (artistNameElem && artistNameElem.querySelector('.marquee-content').textContent !== data.artistName) {
+                  handleMarquee(artistNameElem, data.artistName);
+                }
+                if (albumArtImg && albumArtImg.src !== (data.albumArtUrl || FALLBACK_ALBUM_ART)) {
+                  albumArtImg.src = data.albumArtUrl || FALLBACK_ALBUM_ART;
+                }
+              }
+
+              // Update the background with the new palette
+              if (data.backgroundPalette !== undefined) {
+                updateBackground(data.backgroundPalette);
+              }
+
+              // Remove fade-out class to fade in new content
+              if (albumArtImg) albumArtImg.classList.remove('fade-out');
+              if (songTitleElem) songTitleElem.classList.remove('fade-out');
+              if (artistNameElem) artistNameElem.classList.remove('fade-out');
+
+              currentTrackId = newTrackIdentifier;
+            });
           }
 
-          // Update progress bar
+          // Always update progress bar and time, even if it's not a new track
           if (data.progress !== undefined && data.duration !== undefined) {
             updateProgressBar(data.progress, data.duration);
             if (currentTimeElem) {
@@ -214,11 +264,6 @@ function connectWebSocket() {
             if (totalTimeElem) {
               totalTimeElem.textContent = formatTime(data.duration);
             }
-          }
-
-          // Update the background with the new palette
-          if (data.backgroundPalette !== undefined) {
-            updateBackground(data.backgroundPalette);
           }
         }
       } catch (error) {
