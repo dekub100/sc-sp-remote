@@ -1,10 +1,10 @@
 {
-  "volume": 0.19,
-  "isPlaying": false,
+  "volume": ,
+  "isPlaying": ,
   "currentTrack": {
-    "trackName": "I LOVE YOU SO",
-    "artistName": "Softwilly",
-    "albumArtUrl": "https://i.scdn.co/image/ab67616d00001e02172b1d8c9d65e6823d59d77d"
+    "trackName": "",
+    "artistName": "",
+    "albumArtUrl": ""
   },
   "isShuffling": false,
   "repeatStatus": 0,
