@@ -5,6 +5,44 @@ const { execSync } = require('child_process');
 
 const spicetifyRemotePath = __dirname;
 
+async function main() {
+  const args = process.argv.slice(2);
+
+  if (args.includes('--install-service')) {
+    await installService();
+    return;
+  }
+
+  if (args.includes('--remove-service')) {
+    await removeService();
+    return;
+  }
+
+  checkDependencies();
+  installNpmDependencies();
+  const extensionsPath = getSpicetifyExtensionsPath();
+  copyExtensionFile(extensionsPath);
+  configureSpicetify();
+
+  const inquirer = require('inquirer');
+  const questions = [
+    {
+      type: 'confirm',
+      name: 'installService',
+      message: 'Do you want to install the server as a service to run on startup?',
+      default: false
+    }
+  ];
+
+  const answers = await inquirer.prompt(questions);
+
+  if (answers.installService) {
+    await installService();
+  }
+
+  console.log('Installation complete! You can now test it with \'npm start\' from this directory.');
+}
+
 function checkDependencies() {
   console.log('Checking for required dependencies...');
   try {
@@ -60,122 +98,115 @@ function configureSpicetify() {
   execSync('spicetify apply');
 }
 
-function installService() {
+async function installService() {
   console.log('Installing the server as a service...');
   const platform = os.platform();
+  const serviceName = 'SpicetifyRemoteServer';
+  const scriptPath = path.join(spicetifyRemotePath, 'volume-server.js');
 
-  if (platform === 'win32') {
-    const { Service } = require('node-windows');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      description: 'Spicetify Remote Server',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+  try {
+    if (platform === 'win32') {
+      const { Service } = require('node-windows');
+      const svc = new Service({
+        name: serviceName,
+        description: 'Spicetify Remote Server',
+        script: scriptPath,
+      });
 
-    svc.on('install', () => {
-      svc.start();
-      console.log('Service installed and started.');
-    });
+      svc.on('install', () => {
+        svc.start();
+        console.log('Service installed and started.');
+      });
 
-    svc.install();
-  } else if (platform === 'linux') {
-    const { Service } = require('node-linux');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      description: 'Spicetify Remote Server',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+      svc.install();
+    } else if (platform === 'linux') {
+      const { Service } = require('node-linux');
+      const svc = new Service({
+        name: serviceName,
+        description: 'Spicetify Remote Server',
+        script: scriptPath,
+      });
 
-    svc.on('install', () => {
-      svc.start();
-      console.log('Service installed and started.');
-    });
+      svc.on('install', () => {
+        svc.start();
+        console.log('Service installed and started.');
+      });
 
-    svc.install();
-  } else if (platform === 'darwin') {
-    const { Service } = require('node-mac');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      description: 'Spicetify Remote Server',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+      svc.install();
+    } else if (platform === 'darwin') {
+      const { Service } = require('node-mac');
+      const svc = new Service({
+        name: serviceName,
+        description: 'Spicetify Remote Server',
+        script: scriptPath,
+      });
 
-    svc.on('install', () => {
-      svc.start();
-      console.log('Service installed and started.');
-    });
+      svc.on('install', () => {
+        svc.start();
+        console.log('Service installed and started.');
+      });
 
-    svc.install();
-  } else {
-    console.warn('Service installation is not supported on this platform.');
+      svc.install();
+    } else {
+      console.warn('Service installation is not supported on this platform.');
+    }
+  } catch (error) {
+    console.error('Failed to install the service.');
+    console.error('Please make sure you have the required permissions to install services.');
+    console.error('You may also need to install the optional dependencies for your platform.');
   }
 }
 
-function removeService() {
+async function removeService() {
   console.log('Removing the service...');
   const platform = os.platform();
+  const serviceName = 'SpicetifyRemoteServer';
+  const scriptPath = path.join(spicetifyRemotePath, 'volume-server.js');
 
-  if (platform === 'win32') {
-    const { Service } = require('node-windows');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+  try {
+    if (platform === 'win32') {
+      const { Service } = require('node-windows');
+      const svc = new Service({
+        name: serviceName,
+        script: scriptPath,
+      });
 
-    svc.on('uninstall', () => {
-      console.log('Service uninstalled.');
-    });
+      svc.on('uninstall', () => {
+        console.log('Service uninstalled.');
+      });
 
-    svc.uninstall();
-  } else if (platform === 'linux') {
-    const { Service } = require('node-linux');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+      svc.uninstall();
+    } else if (platform === 'linux') {
+      const { Service } = require('node-linux');
+      const svc = new Service({
+        name: serviceName,
+        script: scriptPath,
+      });
 
-    svc.on('uninstall', () => {
-      console.log('Service uninstalled.');
-    });
+      svc.on('uninstall', () => {
+        console.log('Service uninstalled.');
+      });
 
-    svc.uninstall();
-  } else if (platform === 'darwin') {
-    const { Service } = require('node-mac');
-    const svc = new Service({
-      name: 'SpicetifyRemoteServer',
-      script: path.join(spicetifyRemotePath, 'volume-server.js'),
-    });
+      svc.uninstall();
+    } else if (platform === 'darwin') {
+      const { Service } = require('node-mac');
+      const svc = new Service({
+        name: serviceName,
+        script: scriptPath,
+      });
 
-    svc.on('uninstall', () => {
-      console.log('Service uninstalled.');
-    });
+      svc.on('uninstall', () => {
+        console.log('Service uninstalled.');
+      });
 
-    svc.uninstall();
-  } else {
-    console.warn('Service removal is not supported on this platform.');
+      svc.uninstall();
+    } else {
+      console.warn('Service removal is not supported on this platform.');
+    }
+  } catch (error) {
+    console.error('Failed to remove the service.');
+    console.error('Please make sure you have the required permissions to remove services.');
   }
-}
-
-function main() {
-  const args = process.argv.slice(2);
-
-  if (args.includes('--install-service')) {
-    installService();
-    return;
-  }
-
-  if (args.includes('--remove-service')) {
-    removeService();
-    return;
-  }
-
-  checkDependencies();
-  installNpmDependencies();
-  const extensionsPath = getSpicetifyExtensionsPath();
-  copyExtensionFile(extensionsPath);
-  configureSpicetify();
-
-  console.log('Installation complete! You can now test it with \'node volume-server.js\' from this directory.');
 }
 
 main();

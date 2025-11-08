@@ -42,40 +42,11 @@ cd spicetify-remote
 npm run setup
 ```
 
-This script will check for dependencies, install Node.js packages, and set up the Spicetify extension.
-
-**Note:** The current setup script (`npm run setup`) is largely untested and may not work as expected on all systems (especially on macOS since i dont have a mac device). Manual installation steps are provided below.
-
-### Manual Installation
-
-If the `npm run setup` script fails, you can follow these steps for a manual installation:
-
-1.  **Install Node.js Dependencies:**
-    Navigate to the project directory and run:
-
-    ```bash
-    npm install
-    ```
-
-2.  **Locate Spicetify Extensions Folder:**
-    The Spicetify extensions folder is usually located at:
-
-    - **Windows:** `%APPDATA%\spicetify\Extensions` (e.g., `C:\Users\YOUR_USERNAME\AppData\Roaming\spicetify\Extensions`)
-    - **Linux/macOS:** `~/.config/spicetify/Extensions` (e.g., `/home/YOUR_USERNAME/.config/spicetify/Extensions`)
-
-3.  **Copy Extension File:**
-    Copy the `remoteVolume.js` file from the cloned repository to the Spicetify extensions folder.
-
-4.  **Configure Spicetify:**
-    Run the following commands in your terminal:
-    ```bash
-    spicetify config extensions remoteVolume.js
-    spicetify apply
-    ```
+This script will check for dependencies, install Node.js packages, and set up the Spicetify extension. It will also ask you if you want to install the server as a service to run on startup.
 
 ## Configuration
 
-The server uses a `config.json` file for all major settings.  
+The server uses a `config.json` file for all major settings.
 You can edit this file to change the ports, allowed origins, default volume, and OBS widget support.
 
 **Example `config.json`:**
@@ -115,7 +86,7 @@ You can also use the setup script to install or remove the server as a system se
 To install the server as a service, run:
 
 ```bash
-node setup.js --install-service
+npm run service-install
 ```
 
 ### Remove Service
@@ -123,7 +94,7 @@ node setup.js --install-service
 To remove the service, run:
 
 ```bash
-node setup.js --remove-service
+npm run service-uninstall
 ```
 
 ## Elgato Stream Deck Integration
