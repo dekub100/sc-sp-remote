@@ -99,31 +99,51 @@ npm run service-uninstall
 
 ## Elgato Stream Deck Integration
 
-You can control your Spotify player directly from an Elgato Stream Deck using the ["Web Requests" plugin by Adrian Mullings on the Elgato Marketplace](https://marketplace.elgato.com/product/web-requests-d7d46868-f9c8-4fa5-b775-ab3b9a7c8add). This allows full control (e.g., play/pause, next/previous, like, shuffle, repeat, volume) without needing Spotify Premium.
+This project now includes a dedicated Elgato Stream Deck Plugin (`com.dekub.spicetify-remote.sdPlugin`) for direct control of Spotify via your local `spicetify-remote` server. This offers a more seamless experience compared to generic web request plugins, providing custom actions that reflect the current state and allow for direct input.
 
-To send commands, you will need to send a POST request to `http://localhost:8080` with a JSON body. Here are some examples:
+### Plugin Installation
 
-- **Playback Control (e.g., Play/Pause, Next, Previous, Like, Shuffle, Repeat):**
+1. Just open the file i think it will install
 
-  ```json
-  { "type": "playbackControl", "command": "togglePlay" }
-  ```
+### Available Actions
 
-  Replace `togglePlay` with `next`, `previous`, `like`, `toggleShuffle`, or `toggleRepeat`.
+#### 1. Set Volume
 
-- **Set Specific Volume Level:**
+This action allows you to set Spotify's volume to a specific, customizable level.
 
-  ```json
-  { "type": "volumeUpdate", "volume": 0.5 }
-  ```
+- **Customizable**: When you drag the "Set Volume" action onto a key, a Property Inspector will appear, allowing you to type in the exact volume percentage (0-100) you want to set.
 
-  Replace `0.5` with your desired volume level (a float between 0.0 and 1.0).
+- **Dynamic Display**: The button on your Stream Deck will dynamically display the configured volume percentage (e.g., "75%") instead of a static icon, updating in real-time as you adjust it in the Property Inspector.
 
-- **Adjust Volume Up/Down:**
-  ```json
-  { "type": "volumeUpdate", "command": "volumeUp" }
-  ```
-  Replace `volumeUp` with `volumeDown` to decrease the volume.
+- **Instance-Specific**: You can configure multiple "Set Volume" buttons, each with a different volume percentage, and they will all function independently.
+
+#### Other Actions (Playback Control, Toggle Shuffle, etc.)
+
+The plugin also includes native actions for:
+
+- Play/Pause
+
+- Next Track
+
+- Previous Track
+
+- Volume Up
+
+- Volume Down
+
+- Toggle Shuffle
+
+- Toggle Repeat
+
+- Toggle Like
+
+- Volume Display (shows current Spotify volume dynamically)
+
+These actions are available directly within the Stream Deck software once the plugin is installed.
+
+### Server Communication
+
+The Stream Deck plugin communicates with the `spicetify-remote` server via WebSockets. Ensure your `spicetify-remote` server is running (`npm start` or as a service) for the Stream Deck actions to function.
 
 ## Notes
 

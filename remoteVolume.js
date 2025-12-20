@@ -16,6 +16,7 @@
   let lastKnownLocalProgress = -1;
   let lastKnownLocalShuffle = false; // NEW: Track local shuffle state
   let lastKnownLocalRepeat = 0; // NEW: Track local repeat state (0: off, 1: context, 2: track)
+  let lastKnownLocalIsLiked = false; // NEW: Track local liked state
 
   /**
    * The main function that runs once the Spicetify Player API and Platform API is ready.
@@ -228,9 +229,14 @@
       checkRepeat(forceSend);
       checkProgress(forceSend);
       checkTrack(forceSend);
+      checkLike(forceSend); // NEW: Always check like status when sending local updates
     }
 
     function checkVolume(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping volume update.");
+        return;
+      }
       // Check for volume change
       const currentVolume = Spicetify.Player.getVolume();
       // Only send if the volume has changed significantly or we are forcing a send.
@@ -250,6 +256,10 @@
     }
 
     function checkPlayback(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping playback update.");
+        return;
+      }
       // Check for playback state change
       const currentIsPlaying = !Spicetify.Player.origin._state.isPaused;
       if (forceSend || currentIsPlaying !== lastKnownLocalIsPlaying) {
@@ -267,6 +277,10 @@
     }
 
     function checkShuffle(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping shuffle update.");
+        return;
+      }
       // Check for shuffle state change
       const currentShuffle = Spicetify.Player.getShuffle();
       if (forceSend || currentShuffle !== lastKnownLocalShuffle) {
@@ -284,6 +298,10 @@
     }
 
     function checkRepeat(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping repeat update.");
+        return;
+      }
       // Check for repeat state change
       const currentRepeat = Spicetify.Player.getRepeat(); // 0, 1, or 2
       if (forceSend || currentRepeat !== lastKnownLocalRepeat) {
@@ -301,6 +319,10 @@
     }
 
     function checkProgress(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping progress update.");
+        return;
+      }
       // Check for track progress change
       const currentProgress = Spicetify.Player.getProgress();
       const currentDuration = Spicetify.Player.getDuration();
@@ -325,16 +347,16 @@
     }
 
     function checkTrack(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping track update.");
+        return;
+      }
       // Check for track change
       const currentTrack = Spicetify.Player.data.item;
       const currentTrackUri = currentTrack?.uri;
 
-      ws.send(
-        JSON.stringify({
-          type: "likeUpdate",
-          isLiked: Spicetify.Player.getHeart(),
-        })
-      );
+      // Removed redundant likeUpdate here as checkLike will handle it with polling and event listener
+
       if (
         currentTrackUri &&
         (forceSend || currentTrackUri !== lastKnownLocalTrackUri)
@@ -350,6 +372,27 @@
       }
     }
 
+    function checkLike(forceSend) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // console.log("Remote Volume: WebSocket not connected. Skipping like update.");
+        return;
+      }
+      // Check for liked status change
+      const currentIsLiked = Spicetify.Player.getHeart();
+      if (forceSend || currentIsLiked !== lastKnownLocalIsLiked) {
+        console.log(
+          `Remote Volume: Liked status change detected! Current: ${currentIsLiked}, Last Known: ${lastKnownLocalIsLiked}`
+        );
+        ws.send(
+          JSON.stringify({
+            type: "likeUpdate",
+            isLiked: currentIsLiked,
+          })
+        );
+        lastKnownLocalIsLiked = currentIsLiked;
+      }
+    }
+
     console.log(
       "Remote Volume: Extension is fully loaded and ready. Starting state polling."
     );
@@ -358,10 +401,12 @@
       checkShuffle();
       checkRepeat();
       checkProgress();
+      checkLike(); // NEW: Include checkLike in the polling loop
     }, 1000);
 
     Spicetify.Player.addEventListener("songchange", () => checkTrack(true));
     Spicetify.Player.addEventListener("onplaypause", () => checkPlayback(true));
+    Spicetify.Player.addEventListener("toggleheart", () => checkLike(true));
 
     connectWebSocket();
 

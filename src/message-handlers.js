@@ -1,5 +1,5 @@
 const { state, saveStateToFile } = require("./state");
-const { broadcast, broadcastToOthers, getPaletteFromUrl } = require("./utils");
+const { broadcast, broadcastCurrentState, getPaletteFromUrl } = require("./utils"); // Import broadcastCurrentState
 const config = require("./config");
 
 async function handleMessage(ws, message) {
@@ -56,16 +56,16 @@ function handleVolumeUpdate(ws, data) {
     state.volume = Math.min(1.0, state.volume + volumeStep);
     saveStateToFile();
     console.log(`Server: Volume increased to ${state.volume}`);
-    broadcast({ type: "stateUpdate", volume: state.volume });
+    broadcastCurrentState(); // Use broadcastCurrentState
   } else if (data.command === "volumeDown") {
     state.volume = Math.max(0.0, state.volume - volumeStep);
     saveStateToFile();
     console.log(`Server: Volume decreased to ${state.volume}`);
-    broadcast({ type: "stateUpdate", volume: state.volume });
+    broadcastCurrentState(); // Use broadcastCurrentState
   } else if (data.volume !== undefined) {
     state.volume = data.volume;
     saveStateToFile();
-    broadcastToOthers(ws, { type: "stateUpdate", volume: state.volume });
+    broadcastCurrentState(); // Use broadcastCurrentState
   }
 }
 
@@ -77,25 +77,25 @@ function handlePlaybackUpdate(ws, data) {
   } else {
     state.trackProgress = data.progress;
   }
-  broadcastToOthers(ws, { type: "stateUpdate", isPlaying: state.isPlaying });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 function handleShuffleUpdate(ws, data) {
   state.isShuffling = data.isShuffling;
   saveStateToFile();
-  broadcastToOthers(ws, { type: "stateUpdate", isShuffling: state.isShuffling });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 function handleRepeatUpdate(ws, data) {
   state.repeatStatus = data.repeatStatus;
   saveStateToFile();
-  broadcastToOthers(ws, { type: "stateUpdate", repeatStatus: state.repeatStatus });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 function handleLikeUpdate(ws, data) {
   state.isLiked = data.isLiked;
   saveStateToFile();
-  broadcastToOthers(ws, { type: "stateUpdate", isLiked: state.isLiked });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 async function handleTrackUpdate(ws, data) {
@@ -111,25 +111,14 @@ async function handleTrackUpdate(ws, data) {
   await getPaletteFromUrl(state.currentTrack.albumArtUrl);
   saveStateToFile();
 
-  broadcast({
-    type: "stateUpdate",
-    trackName: state.currentTrack.trackName,
-    artistName: state.currentTrack.artistName,
-    albumArtUrl: state.currentTrack.albumArtUrl,
-    duration: state.trackDuration,
-    backgroundPalette: state.backgroundPalette,
-  });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 function handleProgressUpdate(ws, data) {
   state.trackProgress = data.progress;
   state.trackDuration = data.duration;
   state.trackProgressStartTimestamp = Date.now();
-  broadcastToOthers(ws, {
-    type: "stateUpdate",
-    progress: state.trackProgress,
-    duration: state.trackDuration,
-  });
+  broadcastCurrentState(); // Use broadcastCurrentState
 }
 
 function handleLike(ws, data) {

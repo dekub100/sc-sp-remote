@@ -32,7 +32,10 @@ let isPlaying = false;
 let isLiked = false;
 let isShuffling = false;
 let repeatStatus = 0;
-let isSeeking = false; // Prevents the progress bar from updating while the user is dragging it.
+let isSeeking = false;
+
+// New flag for connection status
+let connectionSuccessfullyOpened = false; // Prevents the progress bar from updating while the user is dragging it.
 
 /**
  * Connects to the WebSocket server and sets up event listeners.
@@ -46,6 +49,15 @@ function connectWebSocket() {
         // Use the current location's hostname for the WebSocket connection
         SERVER_URL = `ws://${window.location.hostname}:${cfg.port}`;
         connectWebSocket(); // Retry connection with correct URL
+      })
+      .catch((error) => {
+        console.error("Website: Failed to fetch configuration:", error);
+        if (!connectionSuccessfullyOpened) {
+          displayConnectionErrorAndDisableUI();
+        } else {
+          // If we were previously connected, try to reconnect
+          setTimeout(connectWebSocket, 5000);
+        }
       });
     return;
   }
@@ -55,6 +67,8 @@ function connectWebSocket() {
 
     ws.onopen = () => {
       console.log("Website: Connected to server.");
+      connectionSuccessfullyOpened = true; // Set flag to true on successful connection
+      enableUI(); // Enable UI elements
     };
 
     ws.onmessage = (event) => {
@@ -111,19 +125,25 @@ function connectWebSocket() {
       console.log(
         "Website: Disconnected from server. Attempting to reconnect in 5 seconds..."
       );
-      // Attempt to reconnect after a delay.
+      connectionSuccessfullyOpened = false; // Set flag to false on close
+      // Always attempt to reconnect after a delay, as the server might come back online
       setTimeout(connectWebSocket, 5000);
     };
 
     ws.onerror = (error) => {
       console.error("Website: WebSocket error:", error);
-      // Close the connection explicitly if an error occurs.
+      connectionSuccessfullyOpened = false; // Set flag to false on error
+      // Close the connection explicitly if an error occurs. This will trigger onclose.
       ws.close();
     };
   } catch (error) {
     console.error("Website: Could not connect to WebSocket server:", error);
-    // Attempt to reconnect after a delay.
-    setTimeout(connectWebSocket, 5000);
+    if (!connectionSuccessfullyOpened) {
+      displayConnectionErrorAndDisableUI();
+    } else {
+      // If we were previously connected, try to reconnect
+      setTimeout(connectWebSocket, 5000);
+    }
   }
 }
 
@@ -310,4 +330,35 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   connectWebSocket();
-});
+});});
+
+// Function to disable UI and show error
+function displayConnectionErrorAndDisableUI() {
+  console.error("Website: Initial connection failed or lost. Disabling UI.");
+  if (volumeSlider) volumeSlider.disabled = true;
+  if (previousBtn) previousBtn.disabled = true;
+  if (playPauseBtn) playPauseBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
+  if (likeBtn) likeBtn.disabled = true;
+  if (shuffleBtn) shuffleBtn.disabled = true;
+  if (repeatBtn) repeatBtn.disabled = true;
+  if (progressBar) progressBar.disabled = true;
+  if (songTitleElem) songTitleElem.textContent = "Server Offline";
+  if (artistNameElem) artistNameElem.textContent = "Please ensure the server is running.";
+  setAlbumArt(null);
+}
+
+function enableUI() {
+  console.log("Website: Connection re-established. Enabling UI.");
+  if (volumeSlider) volumeSlider.disabled = false;
+  if (previousBtn) previousBtn.disabled = false;
+  if (playPauseBtn) playPauseBtn.disabled = false;
+  if (nextBtn) nextBtn.disabled = false;
+  if (likeBtn) likeBtn.disabled = false;
+  if (shuffleBtn) shuffleBtn.disabled = false;
+  if (repeatBtn) repeatBtn.disabled = false;
+  if (progressBar) progressBar.disabled = false;
+  if (songTitleElem) songTitleElem.textContent = "Connecting...";
+  if (artistNameElem) artistNameElem.textContent = "Waiting for Spicetify...";
+}
+

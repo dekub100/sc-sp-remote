@@ -7,7 +7,7 @@ function setWss(webSocketServer) {
   wss = webSocketServer;
 }
 
-function broadcast(message) {
+function broadcast(message) { // Kept for non-stateUpdate messages like errors
   if (!wss) return;
   wss.clients.forEach((c) => {
     if (c.readyState === WebSocket.OPEN) {
@@ -16,11 +16,25 @@ function broadcast(message) {
   });
 }
 
-function broadcastToOthers(ws, message) {
+function broadcastCurrentState() {
   if (!wss) return;
+  const fullStateMessage = {
+    type: "stateUpdate",
+    volume: state.volume,
+    isPlaying: state.isPlaying,
+    trackName: state.currentTrack.trackName,
+    artistName: state.currentTrack.artistName,
+    albumArtUrl: state.currentTrack.albumArtUrl,
+    progress: state.trackProgress,
+    duration: state.trackDuration,
+    backgroundPalette: state.backgroundPalette,
+    isShuffling: state.isShuffling,
+    repeatStatus: state.repeatStatus,
+    isLiked: state.isLiked,
+  };
   wss.clients.forEach((c) => {
-    if (c !== ws && c.readyState === WebSocket.OPEN) {
-      c.send(JSON.stringify(message));
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(fullStateMessage));
     }
   });
 }
@@ -45,7 +59,7 @@ async function getPaletteFromUrl(url) {
   } catch (error) {
     console.error("Server: Failed to get color palette:", error);
     state.backgroundPalette = null;
-    broadcast({ type: "error", message: "Failed to get color palette" });
+    broadcast({ type: "error", message: "Failed to get color palette" }); // Use generic broadcast for errors
   }
 }
 
@@ -63,11 +77,7 @@ function startProgressBroadcasting() {
       );
       if (newProgress !== state.trackProgress) {
         state.trackProgress = newProgress;
-        broadcast({
-          type: "stateUpdate",
-          progress: state.trackProgress,
-          duration: state.trackDuration,
-        });
+        broadcastCurrentState(); // Broadcast full state on progress update
       }
       state.trackProgressStartTimestamp = Date.now();
     }
@@ -76,8 +86,8 @@ function startProgressBroadcasting() {
 
 module.exports = {
   setWss,
-  broadcast,
-  broadcastToOthers,
+  broadcast, // Keep broadcast for errors
+  broadcastCurrentState, // Export new function
   getPaletteFromUrl,
   startProgressBroadcasting,
 };
