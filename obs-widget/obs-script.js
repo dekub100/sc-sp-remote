@@ -141,8 +141,11 @@ function handleMarquee(element, textContent) {
         // Calculate the animation duration and distance based on the content width
         const contentWidth = firstContent.scrollWidth;
         const animationDuration = contentWidth / 100; // Adjust speed as needed
-        wrapper.style.setProperty('--marquee-duration', `${animationDuration}s`);
-        wrapper.style.setProperty('--marquee-distance', `-${contentWidth}px`);
+        wrapper.style.setProperty(
+          "--marquee-duration",
+          `${animationDuration}s`
+        );
+        wrapper.style.setProperty("--marquee-distance", `-${contentWidth}px`);
 
         // Add the class to start the animation
         element.classList.add("marquee-active");
@@ -150,7 +153,7 @@ function handleMarquee(element, textContent) {
         // If it doesn't overflow, remove the marquee effect
         element.classList.remove("marquee-active");
         wrapper.style.width = "100%";
-        wrapper.style.setProperty('--marquee-duration', "0s");
+        wrapper.style.setProperty("--marquee-duration", "0s");
         // Remove the duplicate content if it exists
         if (contentElements.length > 1) {
           contentElements[1].remove();
@@ -179,18 +182,6 @@ function connectWebSocket() {
   try {
     ws = new WebSocket(SERVER_URL);
 
-    ws.onopen = () => {
-      console.log(
-        "OBS Widget: Connected to server. Requesting initial state..."
-      );
-      // Wait a moment before requesting state to ensure the server is fully ready.
-      setTimeout(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "requestState" }));
-        }
-      }, 200); // 200ms delay
-    };
-
     ws.onmessage = (event) => {
       // Only process messages if the DOM is ready
       if (!isDomReady) {
@@ -199,28 +190,36 @@ function connectWebSocket() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "stateUpdate") {
-          const newTrackIdentifier = (data.trackName || '').trim() + (data.artistName || '').trim() + (data.albumArtUrl || '').trim();
+          const newTrackIdentifier =
+            (data.trackName || "").trim() +
+            (data.artistName || "").trim() +
+            (data.albumArtUrl || "").trim();
           const isNewTrack = newTrackIdentifier !== currentTrackId;
 
           if (isNewTrack) {
             currentTrackId = newTrackIdentifier; // Update immediately to prevent double triggers
 
             // Apply fade-out effect to main elements
-            if (albumArtImg) albumArtImg.classList.add('fade-out');
-            if (songTitleElem) songTitleElem.classList.add('fade-out');
-            if (artistNameElem) artistNameElem.classList.add('fade-out');
+            if (albumArtImg) albumArtImg.classList.add("fade-out");
+            if (songTitleElem) songTitleElem.classList.add("fade-out");
+            if (artistNameElem) artistNameElem.classList.add("fade-out");
 
             // Pause marquee animations during fade-out
             if (songTitleElem) songTitleElem.classList.remove("marquee-active");
-            if (artistNameElem) artistNameElem.classList.remove("marquee-active");
+            if (artistNameElem)
+              artistNameElem.classList.remove("marquee-active");
 
             // Use a promise to wait for the transition to end
-            const transitionPromise = new Promise(resolve => {
+            const transitionPromise = new Promise((resolve) => {
               if (albumArtImg) {
-                albumArtImg.addEventListener('transitionend', function handler() {
-                  albumArtImg.removeEventListener('transitionend', handler);
-                  resolve();
-                }, { once: true });
+                albumArtImg.addEventListener(
+                  "transitionend",
+                  function handler() {
+                    albumArtImg.removeEventListener("transitionend", handler);
+                    resolve();
+                  },
+                  { once: true }
+                );
               } else {
                 resolve(); // Resolve immediately if no album art to transition
               }
@@ -230,13 +229,24 @@ function connectWebSocket() {
               // Update the track information and album art.
               if (data.trackName !== undefined) {
                 // Only call handleMarquee if the text content has actually changed
-                if (songTitleElem && songTitleElem.querySelector('.marquee-content').textContent !== data.trackName) {
+                if (
+                  songTitleElem &&
+                  songTitleElem.querySelector(".marquee-content")
+                    .textContent !== data.trackName
+                ) {
                   handleMarquee(songTitleElem, data.trackName);
                 }
-                if (artistNameElem && artistNameElem.querySelector('.marquee-content').textContent !== data.artistName) {
+                if (
+                  artistNameElem &&
+                  artistNameElem.querySelector(".marquee-content")
+                    .textContent !== data.artistName
+                ) {
                   handleMarquee(artistNameElem, data.artistName);
                 }
-                if (albumArtImg && albumArtImg.src !== (data.albumArtUrl || FALLBACK_ALBUM_ART)) {
+                if (
+                  albumArtImg &&
+                  albumArtImg.src !== (data.albumArtUrl || FALLBACK_ALBUM_ART)
+                ) {
                   albumArtImg.src = data.albumArtUrl || FALLBACK_ALBUM_ART;
                 }
               }
@@ -247,15 +257,25 @@ function connectWebSocket() {
               }
 
               // Remove fade-out class to fade in new content
-              if (albumArtImg) albumArtImg.classList.remove('fade-out');
-              if (songTitleElem) songTitleElem.classList.remove('fade-out');
-              if (artistNameElem) artistNameElem.classList.remove('fade-out');
+              if (albumArtImg) albumArtImg.classList.remove("fade-out");
+              if (songTitleElem) songTitleElem.classList.remove("fade-out");
+              if (artistNameElem) artistNameElem.classList.remove("fade-out");
 
               currentTrackId = newTrackIdentifier;
             });
           }
 
           // Always update progress bar and time, even if it's not a new track
+          if (data.progress !== undefined && data.duration !== undefined) {
+            updateProgressBar(data.progress, data.duration);
+            if (currentTimeElem) {
+              currentTimeElem.textContent = formatTime(data.progress);
+            }
+            if (totalTimeElem) {
+              totalTimeElem.textContent = formatTime(data.duration);
+            }
+          }
+        } else if (data.type === "progressUpdate") {
           if (data.progress !== undefined && data.duration !== undefined) {
             updateProgressBar(data.progress, data.duration);
             if (currentTimeElem) {

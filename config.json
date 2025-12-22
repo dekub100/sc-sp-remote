@@ -4,5 +4,6 @@
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
   "enableOBS": true,
+  "enableWebsite": true,
   "volumeStep": 0.05
 }

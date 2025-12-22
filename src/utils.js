@@ -63,6 +63,20 @@ async function getPaletteFromUrl(url) {
   }
 }
 
+function broadcastProgressUpdate() {
+  if (!wss) return;
+  const progressMessage = {
+    type: "progressUpdate",
+    progress: state.trackProgress,
+    duration: state.trackDuration,
+  };
+  wss.clients.forEach((c) => {
+    if (c.readyState === WebSocket.OPEN) {
+      c.send(JSON.stringify(progressMessage));
+    }
+  });
+}
+
 function startProgressBroadcasting() {
   if (state.progressUpdateInterval) {
     clearInterval(state.progressUpdateInterval);
@@ -77,7 +91,7 @@ function startProgressBroadcasting() {
       );
       if (newProgress !== state.trackProgress) {
         state.trackProgress = newProgress;
-        broadcastCurrentState(); // Broadcast full state on progress update
+        broadcastProgressUpdate(); // Use the new, specific broadcast function
       }
       state.trackProgressStartTimestamp = Date.now();
     }
@@ -88,6 +102,7 @@ module.exports = {
   setWss,
   broadcast, // Keep broadcast for errors
   broadcastCurrentState, // Export new function
+  broadcastProgressUpdate,
   getPaletteFromUrl,
   startProgressBroadcasting,
 };

@@ -12,20 +12,21 @@ function startServer() {
   setupWebSocket(server);
 
   app.use(express.static(path.join(__dirname, "..", "website")));
-
-  if (config.enableOBS) {
-    app.use("/obs", express.static(path.join(__dirname, "..", "obs-widget")));
-    app.get("/obs", (req, res) => {
-      res.sendFile(path.join(__dirname, "..", "obs-widget", "obs-widget.html"));
-    });
-  }
-
   app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "..", "website", "index.html"));
   });
 
+  app.use("/obs", express.static(path.join(__dirname, "..", "obs-widget")));
+  app.get("/obs", (req, res) => {
+    res.sendFile(path.join(__dirname, "..", "obs-widget", "obs-widget.html"));
+  });
+
   app.get("/api/config", (req, res) => {
-    res.json({ port: config.port });
+    res.json({
+      port: config.port,
+      enableWebsite: config.enableWebsite,
+      enableOBS: config.enableOBS,
+    });
   });
 
   const configServer = http.createServer((req, res) => {
@@ -41,6 +42,7 @@ function startServer() {
           allowedOrigins: config.allowedOrigins,
           defaultVolume: config.defaultVolume,
           enableOBS: config.enableOBS,
+          enableWebsite: config.enableWebsite,
         })
       );
     } else {

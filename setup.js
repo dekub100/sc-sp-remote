@@ -98,11 +98,31 @@ function configureSpicetify() {
   execSync('spicetify apply');
 }
 
+// Helper function to check if the current process is running with elevated privileges on Windows
+function isElevated() {
+  if (os.platform() !== 'win32') {
+    return true; // Not applicable on non-Windows platforms
+  }
+  try {
+    execSync('net session', { stdio: 'pipe' });
+    return true; // Command succeeded, process is elevated
+  } catch (error) {
+    return false; // Command failed, process is not elevated
+  }
+}
+
 async function installService() {
   console.log('Installing the server as a service...');
   const platform = os.platform();
   const serviceName = 'SpicetifyRemoteServer';
   const scriptPath = path.join(spicetifyRemotePath, 'volume-server.js');
+
+  if (platform === 'win32' && !isElevated()) {
+    console.log('Requesting elevated privileges for service installation...');
+    const setupScriptPath = path.join(__dirname, 'setup.js');
+    execSync(`powershell.exe -Command "Start-Process node -Verb RunAs -ArgumentList '${setupScriptPath}', '--install-service'"`, { stdio: 'inherit' });
+    process.exit(0);
+  }
 
   try {
     if (platform === 'win32') {
@@ -163,6 +183,13 @@ async function removeService() {
   const serviceName = 'SpicetifyRemoteServer';
   const scriptPath = path.join(spicetifyRemotePath, 'volume-server.js');
 
+  if (platform === 'win32' && !isElevated()) {
+    console.log('Requesting elevated privileges for service removal...');
+    const setupScriptPath = path.join(__dirname, 'setup.js');
+    execSync(`powershell.exe -Command "Start-Process node -Verb RunAs -ArgumentList '${setupScriptPath}', '--remove-service'"`, { stdio: 'inherit' });
+    process.exit(0);
+  }
+
   try {
     if (platform === 'win32') {
       const { Service } = require('node-windows');
@@ -208,5 +235,6 @@ async function removeService() {
     console.error('Please make sure you have the required permissions to remove services.');
   }
 }
+
 
 main();

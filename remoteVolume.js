@@ -1,455 +1,328 @@
-// Spicetify extension to sync Spotify's volume, playback state, and current track with a remote server.
-// It sends local changes and applies remote changes using a polling mechanism.
+// Spicetify extension to sync Spotify's state with a remote server.
+// This version is refactored for better readability and organization.
 
 (function remoteVolume() {
-  // User: Set your local server address here!
-  const SERVER_HOST = "127.0.0.1";
-  const SERVER_PORT = 8888; // Change this to match your config.json
-
-  let SERVER_URL = null;
-  const POLLING_INTERVAL = 500; // milliseconds
-  let ws;
-
-  let lastKnownLocalVolume = -1;
-  let lastKnownLocalIsPlaying = false;
-  let lastKnownLocalTrackUri = null;
-  let lastKnownLocalProgress = -1;
-  let lastKnownLocalShuffle = false; // NEW: Track local shuffle state
-  let lastKnownLocalRepeat = 0; // NEW: Track local repeat state (0: off, 1: context, 2: track)
-  let lastKnownLocalIsLiked = false; // NEW: Track local liked state
-
   /**
-   * The main function that runs once the Spicetify Player API and Platform API is ready.
-   * This is where all the core logic is placed.
+   * The main application object that encapsulates all state and functionality.
    */
-  function main() {
+  const SpotifyRemote = {
     /**
-     * Connects to the WebSocket server and sets up event listeners.
+     * Configuration for the remote server and polling.
      */
-    function connectWebSocket() {
-      if (!SERVER_URL) {
-        fetch("http://localhost:54321/api/config")
-          .then((res) => res.json())
-          .then((cfg) => {
-            // Always use localhost and only the port from config
-            SERVER_URL = `ws://localhost:${cfg.port}`;
-            connectWebSocket();
-          })
-          .catch((err) => {
-            console.error("Remote Volume: Failed to fetch server config:", err);
-            setTimeout(connectWebSocket, 5000);
-          });
+    config: {
+      SERVER_URL: null,
+      CONFIG_URL: "http://localhost:54321/api/config",
+      POLLING_INTERVAL_MS: 250,
+      RECONNECT_INTERVAL_MS: 5000,
+    },
+
+    /**
+     * Stores the last known state of the Spotify player to detect changes.
+     */
+    localState: {
+      volume: -1,
+      isPlaying: false,
+      trackUri: null,
+      progress: -1,
+      isShuffling: false,
+      repeatStatus: 0,
+      isLiked: false,
+    },
+
+    /**
+     * The WebSocket instance.
+     */
+    ws: null,
+
+    /**
+     * Initializes the extension by waiting for Spicetify to be ready,
+     * then fetching the server config and starting the main logic.
+     */
+    init() {
+      if (
+        !Spicetify.Player ||
+        !Spicetify.Platform ||
+        !Spicetify.Platform.PlaybackAPI
+      ) {
+        setTimeout(this.init.bind(this), 300);
         return;
       }
+      console.log("Remote Volume: Spicetify ready. Initializing...");
+      this.fetchServerConfig();
+    },
 
-      try {
-        ws = new WebSocket(SERVER_URL);
-
-        ws.onopen = () => {
-          console.log("Remote Volume: Connected to server.");
-          sendLocalUpdates(true); // Force send on connect
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === "stateUpdate") {
-              // Update volume and playback state if they are different.
-              if (data.volume !== undefined) {
-                // Use Spicetify.Player.getVolume() for the most accurate comparison
-                const currentSpicetifyVolume =
-                  Math.round(Spicetify.Player.getVolume() * 100) / 100;
-                const serverVolume = Math.round(data.volume * 100) / 100;
-                if (currentSpicetifyVolume !== serverVolume) {
-                  Spicetify.Player.setVolume(data.volume);
-                  console.log(
-                    `Remote Volume: Volume set to ${data.volume} from server.`
-                  );
-                  // Update our local tracking variable to prevent sending this change back
-                  lastKnownLocalVolume = data.volume;
-                }
-              }
-              if (data.isPlaying !== undefined) {
-                const currentIsPlaying =
-                  !Spicetify.Player.origin._state.isPaused;
-                if (currentIsPlaying !== data.isPlaying) {
-                  // Spicetify.Player.togglePlay() doesn't always work reliably
-                  // We directly call play or pause
-                  if (data.isPlaying) {
-                    Spicetify.Player.play();
-                  } else {
-                    Spicetify.Player.pause();
-                  }
-                  console.log(
-                    `Remote Volume: Playback toggled to ${data.isPlaying} from server.`
-                  );
-                  lastKnownLocalIsPlaying = data.isPlaying;
-                }
-              }
-              // NEW: Handle shuffle state update from server
-              if (data.isShuffling !== undefined) {
-                const currentIsShuffling = Spicetify.Player.getShuffle();
-                if (currentIsShuffling !== data.isShuffling) {
-                  Spicetify.Player.toggleShuffle(); // Toggle to match server state
-                  console.log(
-                    `Remote Volume: Shuffle toggled to ${data.isShuffling} from server.`
-                  );
-                  lastKnownLocalShuffle = data.isShuffling;
-                }
-              }
-              // NEW: Handle repeat state update from server
-              if (data.repeatStatus !== undefined) {
-                const currentRepeatStatus = Spicetify.Player.getRepeat();
-                if (currentRepeatStatus !== data.repeatStatus) {
-                  Spicetify.Player.setRepeat(data.repeatStatus);
-                  console.log(
-                    `Remote Volume: Repeat set to ${data.repeatStatus} from server.`
-                  );
-                  lastKnownLocalRepeat = data.repeatStatus;
-                }
-              }
-            } else if (data.type === "playbackControl") {
-              // Execute a playback command from the server.
-              if (Spicetify.Player) {
-                console.log(
-                  `Remote Volume: Received command '${data.command}'.`
-                );
-                switch (data.command) {
-                  case "togglePlay":
-                    Spicetify.Player.togglePlay();
-                    break;
-                  case "stop":
-                    Spicetify.Player.pause();
-                    break;
-                  case "play":
-                    Spicetify.Player.play();
-                    break;
-                  case "previous":
-                    Spicetify.Player.back();
-                    break;
-                  case "next":
-                    Spicetify.Player.next();
-                    break;
-                  case "seek":
-                    Spicetify.Player.seek(data.position);
-                    break;
-                  case "toggleShuffle": // NEW: Handle shuffle command
-                    Spicetify.Player.toggleShuffle();
-                    break;
-                  case "toggleRepeat": // NEW: Handle repeat command (client-side toggle logic)
-                    const currentRepeatMode = Spicetify.Player.getRepeat();
-                    let nextRepeatMode = (currentRepeatMode + 1) % 3; // 0 (off) -> 1 (context) -> 2 (track) -> 0
-                    Spicetify.Player.setRepeat(nextRepeatMode);
-                    break;
-                  case "like":
-                    Spicetify.Player.toggleHeart();
-                    break;
-                  default:
-                    console.warn(
-                      `Remote Volume: Unknown playback command received: ${data.command}`
-                    );
-                    break;
-                }
-              }
-            }
-          } catch (error) {
-            console.error(
-              "Remote Volume: Failed to parse message from server:",
-              error
-            );
-          }
-        };
-
-        ws.onclose = () => {
-          console.log(
-            "Remote Volume: Disconnected from server. Attempting to reconnect in 5 seconds..."
+    /**
+     * Fetches the server port from the config server.
+     */
+    fetchServerConfig() {
+      fetch(this.config.CONFIG_URL)
+        .then((res) => res.json())
+        .then((cfg) => {
+          this.config.SERVER_URL = `ws://localhost:${cfg.port}`;
+          this.main();
+        })
+        .catch((err) => {
+          console.error(
+            "Remote Volume: Failed to fetch server config. Retrying...",
+            err
           );
-          setTimeout(connectWebSocket, 5000);
-        };
-
-        ws.onerror = (error) => {
-          console.error("Remote Volume: WebSocket error:", error);
-          ws.close();
-        };
-      } catch (error) {
-        console.error(
-          "Remote Volume: Could not connect to WebSocket server:",
-          error
-        );
-        setTimeout(connectWebSocket, 5000);
-      }
-    }
+          setTimeout(() => this.fetchServerConfig(), this.config.RECONNECT_INTERVAL_MS);
+        });
+    },
 
     /**
-     * Extracts track information and ensures the album art URL is valid.
-     * This function now correctly handles Spotify URIs.
-     * @param {object} track - The track object from Spicetify.Player.data.item.
-     * @returns {object} The cleaned track data.
+     * The main logic of the extension. Connects to the WebSocket and
+     * sets up polling and event listeners.
      */
-    function getTrackInfo(track) {
-      let albumArtUrl = "";
-      // Ensure track.images exists and is a non-empty array before trying to access its elements.
-      if (
-        track.images &&
-        Array.isArray(track.images) &&
-        track.images.length > 0
-      ) {
-        // Get the URL from the first image in the array.
-        albumArtUrl = track.images[0].url || "";
-      }
-      // Check if the URL is a Spotify URI and convert it to a valid HTTPS URL.
-      if (albumArtUrl.startsWith("spotify:image:")) {
-        const imageHash = albumArtUrl.replace("spotify:image:", "");
-        albumArtUrl = `https://i.scdn.co/image/${imageHash}`;
-      }
-      const finalAlbumArtUrl =
-        albumArtUrl ||
-        "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><rect width='200' height='200' fill='%23535353'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='20' fill='%23FFFFFF'>No Art</text></svg>";
-      const trackData = {
-        trackName: track.name || "Unknown Track",
-        artistName: track.artists[0]?.name || "Unknown Artist",
-        albumArtUrl: finalAlbumArtUrl,
-      };
-      return trackData;
-    }
+    main() {
+      this.websocket.connect();
+      this.setupEventListeners();
+      this.startPolling();
+      this.exposeGlobalControls();
+    },
 
     /**
-     * Checks the current local state of the player and sends updates to the server if a change is detected.
-     * @param {boolean} forceSend - If true, sends all state updates regardless of change detection.
+     * Handles all interactions with the WebSocket server.
      */
-    function sendLocalUpdates(forceSend = false) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.log("Remote Volume: WebSocket not connected. Skipping update.");
-        return;
-      }
-
-      checkVolume(forceSend);
-      checkPlayback(forceSend);
-      checkShuffle(forceSend);
-      checkRepeat(forceSend);
-      checkProgress(forceSend);
-      checkTrack(forceSend);
-      checkLike(forceSend); // NEW: Always check like status when sending local updates
-    }
-
-    function checkVolume(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping volume update.");
-        return;
-      }
-      // Check for volume change
-      const currentVolume = Spicetify.Player.getVolume();
-      // Only send if the volume has changed significantly or we are forcing a send.
-      if (
-        forceSend ||
-        (currentVolume !== null &&
-          Math.abs(currentVolume - lastKnownLocalVolume) > 0.01)
-      ) {
-        console.log(
-          `Remote Volume: Volume change detected! Current: ${currentVolume}, Last Known: ${lastKnownLocalVolume}`
-        );
-        ws.send(
-          JSON.stringify({ type: "volumeUpdate", volume: currentVolume })
-        );
-        lastKnownLocalVolume = currentVolume;
-      }
-    }
-
-    function checkPlayback(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping playback update.");
-        return;
-      }
-      // Check for playback state change
-      const currentIsPlaying = !Spicetify.Player.origin._state.isPaused;
-      if (forceSend || currentIsPlaying !== lastKnownLocalIsPlaying) {
-        console.log(
-          `Remote Volume: Playback change detected! Current: ${currentIsPlaying}, Last Known: ${lastKnownLocalIsPlaying}`
-        );
-        ws.send(
-          JSON.stringify({
-            type: "playbackUpdate",
-            isPlaying: currentIsPlaying,
-          })
-        );
-        lastKnownLocalIsPlaying = currentIsPlaying;
-      }
-    }
-
-    function checkShuffle(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping shuffle update.");
-        return;
-      }
-      // Check for shuffle state change
-      const currentShuffle = Spicetify.Player.getShuffle();
-      if (forceSend || currentShuffle !== lastKnownLocalShuffle) {
-        console.log(
-          `Remote Volume: Shuffle change detected! Current: ${currentShuffle}, Last Known: ${lastKnownLocalShuffle}`
-        );
-        ws.send(
-          JSON.stringify({
-            type: "shuffleUpdate",
-            isShuffling: currentShuffle,
-          })
-        );
-        lastKnownLocalShuffle = currentShuffle;
-      }
-    }
-
-    function checkRepeat(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping repeat update.");
-        return;
-      }
-      // Check for repeat state change
-      const currentRepeat = Spicetify.Player.getRepeat(); // 0, 1, or 2
-      if (forceSend || currentRepeat !== lastKnownLocalRepeat) {
-        console.log(
-          `Remote Volume: Repeat change detected! Current: ${currentRepeat}, Last Known: ${lastKnownLocalRepeat}`
-        );
-        ws.send(
-          JSON.stringify({
-            type: "repeatUpdate",
-            repeatStatus: currentRepeat,
-          })
-        );
-        lastKnownLocalRepeat = currentRepeat;
-      }
-    }
-
-    function checkProgress(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping progress update.");
-        return;
-      }
-      // Check for track progress change
-      const currentProgress = Spicetify.Player.getProgress();
-      const currentDuration = Spicetify.Player.getDuration();
-      if (
-        forceSend ||
-        Math.abs(currentProgress - lastKnownLocalProgress) > 250 // Send update every quarter second
-      ) {
-        if (currentProgress !== null && currentDuration !== null) {
-          // console.log(
-          //  `Remote Volume: Progress change detected! Current: ${currentProgress}, Last Known: ${lastKnownLocalProgress}`
-          // );
-          ws.send(
-            JSON.stringify({
-              type: "progressUpdate",
-              progress: currentProgress,
-              duration: currentDuration,
-            })
-          );
-          lastKnownLocalProgress = currentProgress;
+    websocket: {
+      connect() {
+        console.log(`Remote Volume: Connecting to ${SpotifyRemote.config.SERVER_URL}...`);
+        try {
+          SpotifyRemote.ws = new WebSocket(SpotifyRemote.config.SERVER_URL);
+          SpotifyRemote.ws.onopen = this.onOpen;
+          SpotifyRemote.ws.onmessage = this.onMessage;
+          SpotifyRemote.ws.onclose = this.onClose;
+          SpotifyRemote.ws.onerror = this.onError;
+        } catch (error) {
+          console.error("Remote Volume: WebSocket connection error:", error);
+          setTimeout(() => this.connect(), SpotifyRemote.config.RECONNECT_INTERVAL_MS);
         }
+      },
+
+      onOpen() {
+        console.log("Remote Volume: Connected to server.");
+        SpotifyRemote.sendAllLocalUpdates(true); // Force send on connect
+      },
+
+      onMessage(event) {
+        try {
+          const data = JSON.parse(event.data);
+          switch (data.type) {
+            case "stateUpdate":
+              SpotifyRemote.handleStateUpdate(data);
+              break;
+            case "playbackControl":
+              SpotifyRemote.handlePlaybackControl(data);
+              break;
+          }
+        } catch (error) {
+          console.error("Remote Volume: Failed to parse server message:", error);
+        }
+      },
+
+      onClose() {
+        console.log("Remote Volume: Disconnected. Reconnecting...");
+        setTimeout(() => SpotifyRemote.websocket.connect(), SpotifyRemote.config.RECONNECT_INTERVAL_MS);
+      },
+
+      onError(error) {
+        console.error("Remote Volume: WebSocket error:", error);
+        SpotifyRemote.ws.close();
+      },
+
+      send(data) {
+        if (SpotifyRemote.ws && SpotifyRemote.ws.readyState === WebSocket.OPEN) {
+          SpotifyRemote.ws.send(JSON.stringify(data));
+        }
+      },
+    },
+
+    /**
+     * Handles a `stateUpdate` message from the server, syncing the local
+     * Spotify client to the server's state if necessary.
+     * @param {object} serverState The state object from the server.
+     */
+    handleStateUpdate(serverState) {
+        // Volume
+        if (serverState.volume !== undefined) {
+            const currentVolume = Math.round(Spicetify.Player.getVolume() * 100) / 100;
+            const newVolume = Math.round(serverState.volume * 100) / 100;
+            if (currentVolume !== newVolume) {
+                Spicetify.Player.setVolume(newVolume);
+                this.localState.volume = newVolume;
+            }
+        }
+        // Playback
+        if (serverState.isPlaying !== undefined) {
+            const isCurrentlyPlaying = !Spicetify.Player.origin._state.isPaused;
+            if (isCurrentlyPlaying !== serverState.isPlaying) {
+                Spicetify.Player.togglePlay();
+                this.localState.isPlaying = serverState.isPlaying;
+            }
+        }
+        // Shuffle
+        if (serverState.isShuffling !== undefined && Spicetify.Player.getShuffle() !== serverState.isShuffling) {
+            Spicetify.Player.toggleShuffle();
+            this.localState.isShuffling = serverState.isShuffling;
+        }
+        // Repeat
+        if (serverState.repeatStatus !== undefined && Spicetify.Player.getRepeat() !== serverState.repeatStatus) {
+            Spicetify.Player.setRepeat(serverState.repeatStatus);
+            this.localState.repeatStatus = serverState.repeatStatus;
+        }
+    },
+
+    /**
+     * Handles a `playbackControl` message from the server, executing the command.
+     * @param {object} commandData The command object from the server.
+     */
+    handlePlaybackControl(commandData) {
+        console.log(`Remote Volume: Received command '${commandData.command}'.`);
+        switch (commandData.command) {
+            case "togglePlay": Spicetify.Player.togglePlay(); break;
+            case "play": Spicetify.Player.play(); break;
+            case "pause": Spicetify.Player.pause(); break;
+            case "previous": Spicetify.Player.back(); break;
+            case "next": Spicetify.Player.next(); break;
+            case "seek": Spicetify.Player.seek(commandData.position); break;
+            case "toggleShuffle": Spicetify.Player.toggleShuffle(); break;
+            case "toggleRepeat":
+                const nextRepeat = (Spicetify.Player.getRepeat() + 1) % 3;
+                Spicetify.Player.setRepeat(nextRepeat);
+                break;
+            case "like": Spicetify.Player.toggleHeart(); break;
+            default:
+                console.warn(`Remote Volume: Unknown playback command: ${commandData.command}`);
+        }
+    },
+
+    /**
+     * Sets up listeners for Spicetify player events.
+     */
+    setupEventListeners() {
+      Spicetify.Player.addEventListener("songchange", () => this.checkForTrackChange(true));
+      Spicetify.Player.addEventListener("onplaypause", () => this.checkForPlaybackChange(true));
+      Spicetify.Player.addEventListener("onprogress", () => this.checkForProgressChange());
+      Spicetify.Player.addEventListener("toggleheart", () => this.checkForLikeChange(true));
+    },
+
+    /**
+     * Starts the polling mechanism to periodically check for state changes.
+     */
+    startPolling() {
+      setInterval(() => {
+        this.checkForVolumeChange();
+        this.checkForShuffleChange();
+        this.checkForRepeatChange();
+        this.checkForLikeChange();
+      }, this.config.POLLING_INTERVAL_MS);
+    },
+
+    /**
+     * A wrapper to send all local state updates to the server.
+     * @param {boolean} force - If true, sends updates regardless of change.
+     */
+    sendAllLocalUpdates(force = false) {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this.checkForVolumeChange(force);
+      this.checkForPlaybackChange(force);
+      this.checkForShuffleChange(force);
+      this.checkForRepeatChange(force);
+      this.checkForProgressChange(force);
+      this.checkForTrackChange(force);
+      this.checkForLikeChange(force);
+    },
+
+    // --- Individual State Checkers ---
+
+    checkForVolumeChange(force = false) {
+      const current = Spicetify.Player.getVolume();
+      if (force || Math.abs(current - this.localState.volume) > 0.01) {
+        this.localState.volume = current;
+        this.websocket.send({ type: "volumeUpdate", volume: current });
       }
+    },
+
+    checkForPlaybackChange(force = false) {
+      const current = !Spicetify.Player.origin._state.isPaused;
+      if (force || current !== this.localState.isPlaying) {
+        this.localState.isPlaying = current;
+        this.websocket.send({ type: "playbackUpdate", isPlaying: current });
+      }
+    },
+
+    checkForShuffleChange(force = false) {
+      const current = Spicetify.Player.getShuffle();
+      if (force || current !== this.localState.isShuffling) {
+        this.localState.isShuffling = current;
+        this.websocket.send({ type: "shuffleUpdate", isShuffling: current });
+      }
+    },
+
+    checkForRepeatChange(force = false) {
+      const current = Spicetify.Player.getRepeat();
+      if (force || current !== this.localState.repeatStatus) {
+        this.localState.repeatStatus = current;
+        this.websocket.send({ type: "repeatUpdate", repeatStatus: current });
+      }
+    },
+
+    checkForProgressChange(force = false) {
+      const current = Spicetify.Player.getProgress();
+      if (force || Math.abs(current - this.localState.progress) > this.config.POLLING_INTERVAL_MS) {
+        this.localState.progress = current;
+        this.websocket.send({
+          type: "progressUpdate",
+          progress: current,
+          duration: Spicetify.Player.getDuration(),
+        });
+      }
+    },
+
+    checkForTrackChange(force = false) {
+      const track = Spicetify.Player.data.item;
+      if (!track) return;
+      const current = track.uri;
+      if (force || current !== this.localState.trackUri) {
+        this.localState.trackUri = current;
+        const trackData = this.getTrackInfo(track);
+        this.websocket.send({ type: "trackUpdate", ...trackData });
+      }
+    },
+
+    checkForLikeChange(force = false) {
+      const current = Spicetify.Player.getHeart();
+      if (force || current !== this.localState.isLiked) {
+        this.localState.isLiked = current;
+        this.websocket.send({ type: "likeUpdate", isLiked: current });
+      }
+    },
+
+    /**
+     * Extracts and formats track information.
+     * @param {object} track - The track object from Spicetify.
+     * @returns {object} Cleaned track data.
+     */
+    getTrackInfo(track) {
+      let albumArtUrl = track.images?.[0]?.url || "";
+      if (albumArtUrl.startsWith("spotify:image:")) {
+        albumArtUrl = `https://i.scdn.co/image/${albumArtUrl.replace("spotify:image:", "")}`;
+      }
+      return {
+        trackName: track.name || "Unknown Track",
+        artistName: track.artists?.[0]?.name || "Unknown Artist",
+        albumArtUrl: albumArtUrl || "",
+      };
+    },
+
+    /**
+     * Exposes global controls for hotkeys or other extensions.
+     */
+    exposeGlobalControls() {
+        Spicetify.Player.volumeUp = () => this.websocket.send({ type: "volumeUpdate", command: "volumeUp" });
+        Spicetify.Player.volumeDown = () => this.websocket.send({ type: "volumeUpdate", command: "volumeDown" });
     }
+  };
 
-    function checkTrack(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping track update.");
-        return;
-      }
-      // Check for track change
-      const currentTrack = Spicetify.Player.data.item;
-      const currentTrackUri = currentTrack?.uri;
-
-      // Removed redundant likeUpdate here as checkLike will handle it with polling and event listener
-
-      if (
-        currentTrackUri &&
-        (forceSend || currentTrackUri !== lastKnownLocalTrackUri)
-      ) {
-        console.log(
-          `Remote Volume: Track change detected! Current: ${currentTrackUri}, Last Known: ${lastKnownLocalTrackUri}`
-        );
-        const trackData = getTrackInfo(currentTrack);
-        ws.send(JSON.stringify({ type: "trackUpdate", ...trackData }));
-        lastKnownLocalTrackUri = currentTrackUri;
-      } else {
-        // console.log("Remote Volume: No track change detected.");
-      }
-    }
-
-    function checkLike(forceSend) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        // console.log("Remote Volume: WebSocket not connected. Skipping like update.");
-        return;
-      }
-      // Check for liked status change
-      const currentIsLiked = Spicetify.Player.getHeart();
-      if (forceSend || currentIsLiked !== lastKnownLocalIsLiked) {
-        console.log(
-          `Remote Volume: Liked status change detected! Current: ${currentIsLiked}, Last Known: ${lastKnownLocalIsLiked}`
-        );
-        ws.send(
-          JSON.stringify({
-            type: "likeUpdate",
-            isLiked: currentIsLiked,
-          })
-        );
-        lastKnownLocalIsLiked = currentIsLiked;
-      }
-    }
-
-    console.log(
-      "Remote Volume: Extension is fully loaded and ready. Starting state polling."
-    );
-    setInterval(() => {
-      checkVolume();
-      checkShuffle();
-      checkRepeat();
-      checkProgress();
-      checkLike(); // NEW: Include checkLike in the polling loop
-    }, 1000);
-
-    Spicetify.Player.addEventListener("songchange", () => checkTrack(true));
-    Spicetify.Player.addEventListener("onplaypause", () => checkPlayback(true));
-    Spicetify.Player.addEventListener("toggleheart", () => checkLike(true));
-
-    connectWebSocket();
-
-    // Expose volume control functions globally for Spicetify hotkeys or other extensions
-    Spicetify.Player.volumeUp = () => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        // CHANGED: type is now "volumeUpdate"
-        ws.send(JSON.stringify({ type: "volumeUpdate", command: "volumeUp" }));
-        console.log("Remote Volume: Sent volumeUp command.");
-      }
-    };
-
-    Spicetify.Player.volumeDown = () => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        // CHANGED: type is now "volumeUpdate"
-        ws.send(
-          JSON.stringify({ type: "volumeUpdate", command: "volumeDown" })
-        );
-        console.log("Remote Volume: Sent volumeDown command.");
-      }
-    };
-  }
-
-  /**
-   * Polls Spicetify.Player and Spicetify.Platform.PlaybackAPI until they are ready before
-   * starting the main logic.
-   */
-  function waitForSpicetify() {
-    if (
-      Spicetify.Player &&
-      Spicetify.Player.setVolume &&
-      Spicetify.Platform &&
-      Spicetify.Platform.PlaybackAPI
-    ) {
-      console.log(
-        "Remote Volume: Spicetify Player and Platform APIs are ready. Starting extension..."
-      );
-      main();
-    } else {
-      // Re-check after a short delay
-      setTimeout(waitForSpicetify, 300);
-    }
-  }
-
-  waitForSpicetify();
+  SpotifyRemote.init();
 })();

@@ -82,7 +82,6 @@ body {
   width: 100%;
   height: 5px;
   background: #535353;
-  -webkit-appearance: none;
   border-radius: 5px;
   cursor: pointer;
 }
@@ -173,7 +172,6 @@ body {
   width: 100%;
   height: 8px; /* Thicker slider track */
   background: #535353;
-  -webkit-appearance: none;
   border-radius: 5px;
 }
 
@@ -235,4 +233,19 @@ body {
 
 .playback-controls .control-btn.liked {
   color: #1db954;
+}
+
+/* New: Styles for hidden elements and connection error messages */
+.hidden {
+  display: none !important;
+}
+
+.connection-error {
+  color: #ff4d4d;
+  font-size: 1.2rem;
+  text-align: center;
+  padding: 20px;
+  background-color: #333;
+  border-radius: 8px;
+  margin-top: 20px;
 }

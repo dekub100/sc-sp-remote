@@ -1,6 +1,9 @@
 const { state, saveStateToFile } = require("./state");
-const { broadcast, broadcastCurrentState, getPaletteFromUrl } = require("./utils"); // Import broadcastCurrentState
+const { broadcast, broadcastCurrentState, getPaletteFromUrl, broadcastProgressUpdate } = require("./utils");
 const config = require("./config");
+
+const debounceTimeouts = {};
+const DEBOUNCE_DELAY = 50; // ms
 
 async function handleMessage(ws, message) {
   try {
@@ -56,16 +59,16 @@ function handleVolumeUpdate(ws, data) {
     state.volume = Math.min(1.0, state.volume + volumeStep);
     saveStateToFile();
     console.log(`Server: Volume increased to ${state.volume}`);
-    broadcastCurrentState(); // Use broadcastCurrentState
+    broadcastCurrentState();
   } else if (data.command === "volumeDown") {
     state.volume = Math.max(0.0, state.volume - volumeStep);
     saveStateToFile();
     console.log(`Server: Volume decreased to ${state.volume}`);
-    broadcastCurrentState(); // Use broadcastCurrentState
+    broadcastCurrentState();
   } else if (data.volume !== undefined) {
     state.volume = data.volume;
     saveStateToFile();
-    broadcastCurrentState(); // Use broadcastCurrentState
+    broadcastCurrentState();
   }
 }
 
@@ -77,25 +80,34 @@ function handlePlaybackUpdate(ws, data) {
   } else {
     state.trackProgress = data.progress;
   }
-  broadcastCurrentState(); // Use broadcastCurrentState
+  broadcastCurrentState();
 }
 
 function handleShuffleUpdate(ws, data) {
-  state.isShuffling = data.isShuffling;
-  saveStateToFile();
-  broadcastCurrentState(); // Use broadcastCurrentState
+    clearTimeout(debounceTimeouts.shuffle);
+    debounceTimeouts.shuffle = setTimeout(() => {
+        state.isShuffling = data.isShuffling;
+        saveStateToFile();
+        broadcastCurrentState();
+    }, DEBOUNCE_DELAY);
 }
 
 function handleRepeatUpdate(ws, data) {
-  state.repeatStatus = data.repeatStatus;
-  saveStateToFile();
-  broadcastCurrentState(); // Use broadcastCurrentState
+    clearTimeout(debounceTimeouts.repeat);
+    debounceTimeouts.repeat = setTimeout(() => {
+        state.repeatStatus = data.repeatStatus;
+        saveStateToFile();
+        broadcastCurrentState();
+    }, DEBOUNCE_DELAY);
 }
 
 function handleLikeUpdate(ws, data) {
-  state.isLiked = data.isLiked;
-  saveStateToFile();
-  broadcastCurrentState(); // Use broadcastCurrentState
+    clearTimeout(debounceTimeouts.like);
+    debounceTimeouts.like = setTimeout(() => {
+        state.isLiked = data.isLiked;
+        saveStateToFile();
+        broadcastCurrentState();
+    }, DEBOUNCE_DELAY);
 }
 
 async function handleTrackUpdate(ws, data) {
@@ -111,14 +123,14 @@ async function handleTrackUpdate(ws, data) {
   await getPaletteFromUrl(state.currentTrack.albumArtUrl);
   saveStateToFile();
 
-  broadcastCurrentState(); // Use broadcastCurrentState
+  broadcastCurrentState();
 }
 
 function handleProgressUpdate(ws, data) {
   state.trackProgress = data.progress;
   state.trackDuration = data.duration;
   state.trackProgressStartTimestamp = Date.now();
-  broadcastCurrentState(); // Use broadcastCurrentState
+  broadcastProgressUpdate();
 }
 
 function handleLike(ws, data) {

@@ -37,6 +37,33 @@ let isSeeking = false;
 // New flag for connection status
 let connectionSuccessfullyOpened = false; // Prevents the progress bar from updating while the user is dragging it.
 
+function displayConnectionErrorAndDisableUI(message) {
+  const container = document.querySelector(".container");
+  if (container) {
+    container.classList.add("hidden");
+  }
+  let errorDiv = document.querySelector(".connection-error");
+  if (!errorDiv) {
+    errorDiv = document.createElement("div");
+    errorDiv.classList.add("connection-error");
+    document.body.appendChild(errorDiv);
+  }
+  errorDiv.textContent =
+    message ||
+    "Could not connect to server. Please ensure the server is running and configured correctly.";
+}
+
+function enableUI() {
+  const container = document.querySelector(".container");
+  if (container) {
+    container.classList.remove("hidden");
+  }
+  const errorDiv = document.querySelector(".connection-error");
+  if (errorDiv) {
+    errorDiv.remove();
+  }
+}
+
 /**
  * Connects to the WebSocket server and sets up event listeners.
  */
@@ -46,6 +73,11 @@ function connectWebSocket() {
     fetch("/api/config")
       .then((res) => res.json())
       .then((cfg) => {
+        if (cfg.enableWebsite === false) {
+          console.log("Website: Website is disabled by configuration.");
+          displayConnectionErrorAndDisableUI("Website is disabled by configuration.");
+          return;
+        }
         // Use the current location's hostname for the WebSocket connection
         SERVER_URL = `ws://${window.location.hostname}:${cfg.port}`;
         connectWebSocket(); // Retry connection with correct URL
@@ -74,6 +106,17 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        // Helper function to update the progress display
+        const updateProgressDisplay = (progress, duration) => {
+          if (progress !== undefined && duration !== undefined && !isSeeking) {
+            progressBar.max = duration; // Set max to total duration
+            progressBar.value = progress; // Set current progress
+            currentTimeElem.textContent = formatTime(progress);
+            durationTimeElem.textContent = formatTime(duration);
+          }
+        };
+
         if (data.type === "stateUpdate") {
           // Update volume and playback state if they are different.
           if (data.volume !== undefined) {
@@ -104,17 +147,11 @@ function connectWebSocket() {
             // Use a dedicated function to handle image loading
             setAlbumArt(data.albumArtUrl);
           }
-          // Update track progress if available.
-          if (
-            data.progress !== undefined &&
-            data.duration !== undefined &&
-            !isSeeking
-          ) {
-            progressBar.max = data.duration;
-            progressBar.value = data.progress;
-            currentTimeElem.textContent = formatTime(data.progress);
-            durationTimeElem.textContent = formatTime(data.duration);
-          }
+          // Update track progress if available, using the new helper
+          updateProgressDisplay(data.progress, data.duration);
+
+        } else if (data.type === "progressUpdate") { // Handle dedicated progress updates
+          updateProgressDisplay(data.progress, data.duration);
         }
       } catch (error) {
         console.error("Website: Failed to parse message from server:", error);
@@ -291,14 +328,18 @@ document.addEventListener("DOMContentLoaded", () => {
   shuffleBtn.addEventListener("click", () => {
     console.log("Website: Sending 'toggleShuffle' command to server.");
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "playbackControl", command: "toggleShuffle" }));
+      ws.send(
+        JSON.stringify({ type: "playbackControl", command: "toggleShuffle" })
+      );
     }
   });
 
   repeatBtn.addEventListener("click", () => {
     console.log("Website: Sending 'toggleRepeat' command to server.");
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "playbackControl", command: "toggleRepeat" }));
+      ws.send(
+        JSON.stringify({ type: "playbackControl", command: "toggleRepeat" })
+      );
     }
   });
 
@@ -330,35 +371,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   connectWebSocket();
-});});
-
-// Function to disable UI and show error
-function displayConnectionErrorAndDisableUI() {
-  console.error("Website: Initial connection failed or lost. Disabling UI.");
-  if (volumeSlider) volumeSlider.disabled = true;
-  if (previousBtn) previousBtn.disabled = true;
-  if (playPauseBtn) playPauseBtn.disabled = true;
-  if (nextBtn) nextBtn.disabled = true;
-  if (likeBtn) likeBtn.disabled = true;
-  if (shuffleBtn) shuffleBtn.disabled = true;
-  if (repeatBtn) repeatBtn.disabled = true;
-  if (progressBar) progressBar.disabled = true;
-  if (songTitleElem) songTitleElem.textContent = "Server Offline";
-  if (artistNameElem) artistNameElem.textContent = "Please ensure the server is running.";
-  setAlbumArt(null);
-}
-
-function enableUI() {
-  console.log("Website: Connection re-established. Enabling UI.");
-  if (volumeSlider) volumeSlider.disabled = false;
-  if (previousBtn) previousBtn.disabled = false;
-  if (playPauseBtn) playPauseBtn.disabled = false;
-  if (nextBtn) nextBtn.disabled = false;
-  if (likeBtn) likeBtn.disabled = false;
-  if (shuffleBtn) shuffleBtn.disabled = false;
-  if (repeatBtn) repeatBtn.disabled = false;
-  if (progressBar) progressBar.disabled = false;
-  if (songTitleElem) songTitleElem.textContent = "Connecting...";
-  if (artistNameElem) artistNameElem.textContent = "Waiting for Spicetify...";
-}
-
+});
