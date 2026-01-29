@@ -43,7 +43,7 @@ function startServer() {
           defaultVolume: config.defaultVolume,
           enableOBS: config.enableOBS,
           enableWebsite: config.enableWebsite,
-        })
+        }),
       );
     } else {
       res.writeHead(404, {
@@ -53,13 +53,13 @@ function startServer() {
     }
   });
 
-  configServer.listen(config.configPort, "127.0.0.1", () => {
+  configServer.listen(config.configPort, "0.0.0.0", () => {
     console.log(
-      `Config server running at http://127.0.0.1:${config.configPort}/api/config`
+      `Config server running at http://127.0.0.1:${config.configPort}/api/config`,
     );
   });
 
-  server.listen(config.port, "127.0.0.1", () => {
+  server.listen(config.port, "0.0.0.0", () => {
     console.log(`Server is running at http://127.0.0.1:${config.port}`);
     console.log(`WebSocket server is listening on 127.0.0.1:${config.port}`);
   });

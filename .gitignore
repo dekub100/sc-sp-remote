@@ -2,3 +2,4 @@ nssm.exe
 node_modules/
 .git
 com.dekub.spicetify-remote.streamDeckPlugin
+daemon/

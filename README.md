@@ -147,7 +147,6 @@ The Stream Deck plugin communicates with the `spicetify-remote` server via WebSo
 
 ## Notes
 
-- The server is localhost-only due to the Spicetify extension requiring https to workout outside of localhost.
 - All configuration is handled via `config.json`.
 - CORS is configurable via `allowedOrigins` in `config.json`.
 - The Spicetify extension and widgets fetch server config from the dedicated config server.

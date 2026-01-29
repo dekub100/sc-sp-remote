@@ -1,6 +1,6 @@
 {
-  "volume": ,
-  "isPlaying": ,
+  "volume": 0.5,
+  "isPlaying": false,
   "currentTrack": {
     "trackName": "",
     "artistName": "",
