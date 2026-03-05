@@ -1,4 +1,4 @@
-// Simplified Main Website Script
+// Simplified Main Website Script with Client-Side Color Extraction
 let ws;
 let serverUrl = null;
 let isSeeking = false;
@@ -19,6 +19,10 @@ const ui = {
     repeatBtn: document.getElementById('repeatBtn'),
     likeBtn: document.getElementById('likeBtn')
 };
+
+// Canvas for color extraction (hidden)
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
 function formatTime(ms) {
     const s = Math.floor(ms / 1000);
@@ -44,6 +48,49 @@ function updateMarquee(element, text) {
     }, 50);
 }
 
+function updateDynamicColors(img) {
+    try {
+        canvas.width = 50;
+        canvas.height = 50;
+        ctx.drawImage(img, 0, 0, 50, 50);
+        
+        const imageData = ctx.getImageData(0, 0, 50, 50).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        
+        for (let i = 0; i < imageData.length; i += 16) {
+            r += imageData[i];
+            g += imageData[i+1];
+            b += imageData[i+2];
+            count++;
+        }
+        
+        r = Math.floor(r / count);
+        g = Math.floor(g / count);
+        b = Math.floor(b / count);
+        
+        // Darken for container background
+        const bgR = Math.floor(r * 0.2);
+        const bgG = Math.floor(g * 0.2);
+        const bgB = Math.floor(b * 0.2);
+        
+        ui.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.95)`;
+        
+        // Update green accent elements to match song
+        const accent = `rgb(${r}, ${g}, ${b})`;
+        document.documentElement.style.setProperty('--accent-color', accent);
+        
+        // Use a brightness check for text contrast if needed
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        if (brightness < 40) {
+            // If color is too dark, use a brighter version for the accent
+            const brightAccent = `rgb(${Math.min(255, r+100)}, ${Math.min(255, g+100)}, ${Math.min(255, b+100)})`;
+            document.documentElement.style.setProperty('--accent-color', brightAccent);
+        }
+    } catch (e) {
+        console.error("Color extraction failed:", e);
+    }
+}
+
 function connect() {
     if (!serverUrl) {
         fetch('/api/config').then(r => r.json()).then(cfg => {
@@ -66,37 +113,37 @@ function connect() {
         if (data.type === 'stateUpdate') {
             if (data.trackName) updateMarquee(ui.songTitle, data.trackName);
             if (data.artistName) updateMarquee(ui.artistName, data.artistName);
-            if (data.albumArtUrl) ui.albumArt.src = data.albumArtUrl;
+            
+            if (data.albumArtUrl && ui.albumArt.src !== data.albumArtUrl) {
+                ui.albumArt.crossOrigin = "Anonymous";
+                ui.albumArt.src = data.albumArtUrl;
+                ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
+            }
             
             if (data.volume !== undefined) {
                 ui.volumeSlider.value = data.volume;
                 ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
             }
 
-            // Play/Pause
             ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
             ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
-            
-            // Shuffle
             ui.shuffleBtn.classList.toggle('active', data.isShuffling);
             
-            // Repeat Logic (0: Off, 1: Context, 2: Track)
             const repeatIcon = ui.repeatBtn.querySelector('i');
             ui.repeatBtn.classList.toggle('active', data.repeatStatus > 0);
             if (data.repeatStatus === 2) {
-                repeatIcon.className = 'fas fa-redo-alt'; // Change to redo with '1' indicator if using Pro, but for free FA we use a different style or just stick to one icon
+                repeatIcon.className = 'fas fa-redo-alt';
                 ui.repeatBtn.setAttribute('data-mode', 'track');
             } else {
-                repeatIcon.className = 'fas fa-redo';
+                repeatIcon.className = 'fas fa-repeat';
                 ui.repeatBtn.removeAttribute('data-mode');
             }
             
-            // Like
             ui.likeBtn.classList.toggle('liked', data.isLiked);
         }
 
         if ((data.progress !== undefined || data.type === 'progressUpdate') && !isSeeking) {
-            const progress = data.progress ?? data.progress;
+            const progress = data.progress;
             const duration = data.duration ?? ui.progressBar.max;
             ui.progressBar.max = duration;
             ui.progressBar.value = progress;

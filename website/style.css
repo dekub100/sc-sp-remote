@@ -1,3 +1,7 @@
+:root {
+    --accent-color: #1db954; /* Default Spotify Green */
+}
+
 /* Simplified Main Website Style with Spotify Sliders */
 body {
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -20,6 +24,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    transition: background 0.5s ease;
 }
 
 .now-playing {
@@ -124,9 +129,9 @@ input[type="range"]:hover::-moz-range-thumb {
     transform: scale(1.2);
 }
 
-/* Fill effect (Standard HTML range can't do this easily without JS, but we use accent-color for partial support) */
+/* Fill effect */
 input[type="range"] {
-    accent-color: #1db954;
+    accent-color: var(--accent-color);
 }
 
 /* --- Progress --- */
@@ -157,7 +162,7 @@ input[type="range"] {
 
 .control-btn:hover { color: #fff; transform: scale(1.1); }
 .control-btn.main-control { font-size: 2.5rem; color: #fff; }
-.control-btn.active, .control-btn.liked { color: #1db954; }
+.control-btn.active, .control-btn.liked { color: var(--accent-color); }
 
 /* Repeat Dot Logic */
 .control-btn.active::after {
@@ -180,7 +185,7 @@ input[type="range"] {
     font-size: 0.55rem;
     font-weight: 900;
     color: #121212; /* Darker to show inside green icon */
-    background: #1db954; /* Match active color to fill center */
+    background: var(--accent-color); /* Match active color to fill center */
     width: 10px;
     height: 10px;
     border-radius: 50%;

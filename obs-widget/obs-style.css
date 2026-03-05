@@ -1,7 +1,13 @@
 /* Simplified Styling for the OBS Music Widget */
 
 body {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   background-color: transparent; /* Transparent for OBS */
   margin: 0;
   padding: 0;
@@ -18,7 +24,7 @@ body {
   height: 100%;
   padding: 20px;
   /* Simple semi-transparent dark background */
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0);
   border-radius: 15px;
   box-sizing: border-box;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -53,7 +59,8 @@ body {
   width: 100%;
 }
 
-.song-title, .artist-name {
+.song-title,
+.artist-name {
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -69,7 +76,6 @@ body {
 .artist-name {
   font-size: 2.2rem;
   font-weight: 400;
-  opacity: 0.9;
   margin-bottom: 15px;
 }
 
@@ -95,8 +101,12 @@ body {
 }
 
 @keyframes marquee-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); } /* Halfway point of [original + duplicate] */
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  } /* Halfway point of [original + duplicate] */
 }
 
 /* --- Progress Section --- */
