@@ -19,6 +19,8 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
     _svc_name_ = "SpicetifyRemotePython"
     _svc_display_name_ = "Spicetify Remote Server (Python)"
     _svc_description_ = "Relay server for Spicetify remote control and OBS widget"
+    # Setting the default startup type to Automatic
+    _svc_startup_type_ = win32service.SERVICE_AUTO_START
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
@@ -66,13 +68,11 @@ if __name__ == '__main__':
     if is_elevated_process:
         sys.argv.remove("--elevated")
 
-    # Request admin privileges if not already admin
     if len(sys.argv) > 1 and sys.argv[1] in ['install', 'update', 'start', 'stop', 'remove', 'restart']:
         if not is_admin():
             print("Requesting administrator privileges...")
             args = sys.argv[:]
             args.append("--elevated")
-            # Re-run the script as administrator
             ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(args), None, 1)
             sys.exit()
 
@@ -82,9 +82,19 @@ if __name__ == '__main__':
         print(f"Executing: {command}...")
         
         try:
-            # win32serviceutil.HandleCommandLine handles the heavy lifting
-            # but it usually calls sys.exit(). We'll try to catch it to show a message.
             win32serviceutil.HandleCommandLine(SpicetifyRemoteService)
+            
+            # Manual override for Automatic startup
+            if command == 'install':
+                hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
+                hs = win32service.OpenService(hscm, SpicetifyRemoteService._svc_name_, win32service.SERVICE_CHANGE_CONFIG)
+                win32service.ChangeServiceConfig(
+                    hs, win32service.SERVICE_NO_CHANGE, 
+                    win32service.SERVICE_AUTO_START,
+                    win32service.SERVICE_NO_CHANGE, None, None, 0, None, None, None, None
+                )
+                print("Startup type forced to: Automatic")
+                
             print(f"\nSUCCESS: Command '{command}' completed.")
         except SystemExit as e:
             if e.code == 0:
@@ -94,13 +104,11 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"\nCRITICAL ERROR: {e}")
 
-        # If we were in an elevated window, keep it open so the user can see the result
         if is_elevated_process:
             print("\n" + "="*40)
             print("Operation complete. Press Enter to close this window.")
             input()
     else:
-        # Standard service start (triggered by Windows SCM)
         servicemanager.Initialize()
         servicemanager.PrepareToHostSingle(SpicetifyRemoteService)
         servicemanager.StartServiceCtrlDispatcher()
