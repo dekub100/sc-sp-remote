@@ -1,342 +1,119 @@
-// This script connects to the Node.js server to sync volume and playback.
-// This version ensures all DOM elements are loaded before attempting to connect
-// or add event listeners, which fixes issues with button functionality.
-
-let SERVER_URL = null;
-
-// Use a Data URI for the fallback image. This embeds the image data directly in the code,
-// making it impossible for ad blockers to block.
-const FALLBACK_ALBUM_ART =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><rect width='200' height='200' fill='%23535353'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='20' fill='%23FFFFFF'>No Art</text></svg>";
-
-// Get DOM elements. This must be done inside the DOMContentLoaded listener to guarantee they exist.
-let albumArtImg;
-let songTitleElem;
-let artistNameElem;
-let progressBarFill;
-let currentTimeElem;
-let totalTimeElem;
-let widgetContainer;
-let timeContainer;
-
+// Simplified OBS Widget Script with Client-Side Color Extraction
 let ws;
-let isDomReady = false; // New flag to track if the DOM is ready
-let currentTrackId = null; // New variable to store the current track ID for transitions
+let serverUrl = null;
 
-/**
- * Helper function to format milliseconds to a mm:ss string.
- * @param {number} ms - The time in milliseconds.
- * @returns {string} - The formatted time string.
- */
+const elements = {
+  albumArt: document.getElementById("albumArt"),
+  songTitle: document.getElementById("songTitle"),
+  artistName: document.getElementById("artistName"),
+  progressBarFill: document.getElementById("progressBarFill"),
+  currentTime: document.getElementById("currentTime"),
+  totalTime: document.getElementById("totalTime"),
+  container: document.querySelector(".widget-container"),
+};
+
+// Canvas for color extraction (hidden)
+const canvas = document.createElement("canvas");
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
 function formatTime(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+}
+
+function updateMarquee(element, text) {
+  const wrapper = element.querySelector(".marquee-wrapper");
+  if (!wrapper) return;
+  wrapper.textContent = text;
+  wrapper.setAttribute("data-text", text);
+  element.classList.remove("marquee-active");
+  setTimeout(() => {
+    if (wrapper.scrollWidth > element.clientWidth) {
+      const duration = Math.max(10, text.length / 2);
+      element.style.setProperty("--duration", `${duration}s`);
+      element.classList.add("marquee-active");
+    }
+  }, 50);
 }
 
 /**
- * Checks if a given hex color is "light" for contrast purposes.
- * @param {string} hex - The hex color code (e.g., "#FFFFFF").
- * @returns {boolean} - True if the color is light, false otherwise.
+ * Extracts dominant colors from the image using Canvas API
  */
-function isLightColor(hex) {
-  if (!hex) return false;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  // Formula for perceived brightness (Luminance)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
+function updateDynamicColors(img) {
+  try {
+    // Resize canvas to a small thumbnail for speed
+    canvas.width = 50;
+    canvas.height = 50;
+    ctx.drawImage(img, 0, 0, 50, 50);
+
+    const imageData = ctx.getImageData(0, 0, 50, 50).data;
+    let r = 0,
+      g = 0,
+      b = 0,
+      count = 0;
+
+    // Simple average (skipping every 4 pixels for speed)
+    for (let i = 0; i < imageData.length; i += 16) {
+      r += imageData[i];
+      g += imageData[i + 1];
+      b += imageData[i + 2];
+      count++;
+    }
+
+    r = Math.floor(r / count);
+    g = Math.floor(g / count);
+    b = Math.floor(b / count);
+
+    // Darken the color for background visibility
+    const bgR = Math.floor(r * 0.4);
+    const bgG = Math.floor(g * 0.4);
+    const bgB = Math.floor(b * 0.4);
+
+    elements.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.65)`;
+    elements.progressBarFill.style.background = `rgb(${r}, ${g}, ${b}, 1)`;
+  } catch (e) {
+    console.error("Color extraction failed:", e);
+  }
 }
 
-/**
- * Converts a hex color to an RGBA color with a given opacity.
- * @param {string} hex - The hex color code (e.g., "#FFFFFF").
- * @param {number} opacity - The opacity value (0 to 1).
- * @returns {string} - The RGBA formatted color string.
- */
-function hexToRgba(hex, opacity) {
-  if (!hex) return `rgba(0, 0, 0, ${opacity})`;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
-
-/**
- * Updates the background of the widget with a gradient based on the color palette
- * and sets the text color for readability.
- * @param {object} palette - The color palette object from the server.
- */
-function updateBackground(palette) {
-  const opacity = 0.7; // Set your desired opacity here (0.0 to 1.0)
-  const defaultColor = `rgba(0, 0, 0, ${opacity / 2})`; // A slightly more transparent default
-  let startColor = defaultColor;
-  let endColor = defaultColor;
-
-  if (palette && palette.vibrant && palette.darkMuted) {
-    startColor = hexToRgba(palette.vibrant, opacity);
-    endColor = hexToRgba(palette.darkMuted, opacity);
+function connect() {
+  if (!serverUrl) {
+    fetch("/api/config")
+      .then((r) => r.json())
+      .then((cfg) => {
+        serverUrl = `ws://${window.location.hostname}:${cfg.port}`;
+        connect();
+      })
+      .catch(() => setTimeout(connect, 2000));
+    return;
   }
 
-  // Apply the background gradient
-  if (widgetContainer) {
-    widgetContainer.style.background = `linear-gradient(90deg, ${startColor} 0%, ${endColor} 100%)`;
+  ws = new WebSocket(serverUrl);
 
-    // Check if the background is light and adjust text color
-    if (isLightColor(startColor) || isLightColor(endColor)) {
-      widgetContainer.classList.add("dark-text");
-      if (timeContainer) {
-        timeContainer.classList.add("dark-text");
-      }
-    } else {
-      widgetContainer.classList.remove("dark-text");
-      if (timeContainer) {
-        timeContainer.classList.remove("dark-text");
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "stateUpdate" || data.type === "trackUpdate") {
+      if (data.trackName) updateMarquee(elements.songTitle, data.trackName);
+      if (data.artistName) updateMarquee(elements.artistName, data.artistName);
+
+      if (data.albumArtUrl && elements.albumArt.src !== data.albumArtUrl) {
+        // We need crossOrigin to read pixels from Spotify CDN
+        elements.albumArt.crossOrigin = "Anonymous";
+        elements.albumArt.src = data.albumArtUrl;
+        elements.albumArt.onload = () => updateDynamicColors(elements.albumArt);
       }
     }
-  }
+
+    if (data.progress !== undefined && data.duration !== undefined) {
+      const pct = (data.progress / data.duration) * 100;
+      elements.progressBarFill.style.width = `${pct}%`;
+      elements.currentTime.textContent = formatTime(data.progress);
+      elements.totalTime.textContent = formatTime(data.duration);
+    }
+  };
+
+  ws.onclose = () => setTimeout(connect, 2000);
 }
 
-/**
- * Handles the marquee effect logic for a given text element.
- * This version is more robust in resetting the animation state by using a CSS class.
- * @param {HTMLElement} element - The main element (e.g., songTitleElem).
- * @param {string} textContent - The text to be displayed.
- */
-function handleMarquee(element, textContent) {
-  if (!element) {
-    console.warn("handleMarquee was called with a null element.");
-    return;
-  }
-
-  // Get the wrapper and all content elements
-  const wrapper = element.querySelector(".marquee-wrapper");
-  const contentElements = element.querySelectorAll(".marquee-content");
-
-  if (!wrapper || contentElements.length === 0) {
-    console.error("Marquee elements not found for:", element.id);
-    return;
-  }
-
-  // Only update textContent if it has actually changed
-  if (contentElements[0].textContent !== textContent) {
-    contentElements.forEach((content) => {
-      content.textContent = textContent;
-    });
-
-    // Use a small delay to ensure the DOM has rendered the new content before measuring.
-    setTimeout(() => {
-      // Check if the text overflows its container
-      // We check the first content element's scrollWidth against the parent's clientWidth
-      const firstContent = contentElements[0];
-      if (firstContent.scrollWidth > element.clientWidth) {
-        // Duplicate the content to create a seamless loop
-        if (contentElements.length < 2) {
-          const secondContent = firstContent.cloneNode(true);
-          wrapper.appendChild(secondContent);
-        }
-
-        // Calculate the animation duration and distance based on the content width
-        const contentWidth = firstContent.scrollWidth;
-        const animationDuration = contentWidth / 100; // Adjust speed as needed
-        wrapper.style.setProperty(
-          "--marquee-duration",
-          `${animationDuration}s`
-        );
-        wrapper.style.setProperty("--marquee-distance", `-${contentWidth}px`);
-
-        // Add the class to start the animation
-        element.classList.add("marquee-active");
-      } else {
-        // If it doesn't overflow, remove the marquee effect
-        element.classList.remove("marquee-active");
-        wrapper.style.width = "100%";
-        wrapper.style.setProperty("--marquee-duration", "0s");
-        // Remove the duplicate content if it exists
-        if (contentElements.length > 1) {
-          contentElements[1].remove();
-        }
-      }
-    }, 50); // Increased delay slightly for better reliability
-  }
-}
-
-/**
- * Connects to the WebSocket server and sets up event listeners.
- */
-function connectWebSocket() {
-  if (!SERVER_URL) {
-    // Fetch config first
-    fetch("/api/config")
-      .then((res) => res.json())
-      .then((cfg) => {
-        // Use the current location's hostname for the WebSocket connection
-        SERVER_URL = `ws://${window.location.hostname}:${cfg.port}`;
-        connectWebSocket(); // Retry connection with correct URL
-      });
-    return;
-  }
-
-  try {
-    ws = new WebSocket(SERVER_URL);
-
-    ws.onmessage = (event) => {
-      // Only process messages if the DOM is ready
-      if (!isDomReady) {
-        return;
-      }
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "stateUpdate") {
-          const newTrackIdentifier =
-            (data.trackName || "").trim() +
-            (data.artistName || "").trim() +
-            (data.albumArtUrl || "").trim();
-          const isNewTrack = newTrackIdentifier !== currentTrackId;
-
-          if (isNewTrack) {
-            currentTrackId = newTrackIdentifier; // Update immediately to prevent double triggers
-
-            // Apply fade-out effect to main elements
-            if (albumArtImg) albumArtImg.classList.add("fade-out");
-            if (songTitleElem) songTitleElem.classList.add("fade-out");
-            if (artistNameElem) artistNameElem.classList.add("fade-out");
-
-            // Pause marquee animations during fade-out
-            if (songTitleElem) songTitleElem.classList.remove("marquee-active");
-            if (artistNameElem)
-              artistNameElem.classList.remove("marquee-active");
-
-            // Use a promise to wait for the transition to end
-            const transitionPromise = new Promise((resolve) => {
-              if (albumArtImg) {
-                albumArtImg.addEventListener(
-                  "transitionend",
-                  function handler() {
-                    albumArtImg.removeEventListener("transitionend", handler);
-                    resolve();
-                  },
-                  { once: true }
-                );
-              } else {
-                resolve(); // Resolve immediately if no album art to transition
-              }
-            });
-
-            transitionPromise.then(() => {
-              // Update the track information and album art.
-              if (data.trackName !== undefined) {
-                // Only call handleMarquee if the text content has actually changed
-                if (
-                  songTitleElem &&
-                  songTitleElem.querySelector(".marquee-content")
-                    .textContent !== data.trackName
-                ) {
-                  handleMarquee(songTitleElem, data.trackName);
-                }
-                if (
-                  artistNameElem &&
-                  artistNameElem.querySelector(".marquee-content")
-                    .textContent !== data.artistName
-                ) {
-                  handleMarquee(artistNameElem, data.artistName);
-                }
-                if (
-                  albumArtImg &&
-                  albumArtImg.src !== (data.albumArtUrl || FALLBACK_ALBUM_ART)
-                ) {
-                  albumArtImg.src = data.albumArtUrl || FALLBACK_ALBUM_ART;
-                }
-              }
-
-              // Update the background with the new palette
-              if (data.backgroundPalette !== undefined) {
-                updateBackground(data.backgroundPalette);
-              }
-
-              // Remove fade-out class to fade in new content
-              if (albumArtImg) albumArtImg.classList.remove("fade-out");
-              if (songTitleElem) songTitleElem.classList.remove("fade-out");
-              if (artistNameElem) artistNameElem.classList.remove("fade-out");
-
-              currentTrackId = newTrackIdentifier;
-            });
-          }
-
-          // Always update progress bar and time, even if it's not a new track
-          if (data.progress !== undefined && data.duration !== undefined) {
-            updateProgressBar(data.progress, data.duration);
-            if (currentTimeElem) {
-              currentTimeElem.textContent = formatTime(data.progress);
-            }
-            if (totalTimeElem) {
-              totalTimeElem.textContent = formatTime(data.duration);
-            }
-          }
-        } else if (data.type === "progressUpdate") {
-          if (data.progress !== undefined && data.duration !== undefined) {
-            updateProgressBar(data.progress, data.duration);
-            if (currentTimeElem) {
-              currentTimeElem.textContent = formatTime(data.progress);
-            }
-            if (totalTimeElem) {
-              totalTimeElem.textContent = formatTime(data.duration);
-            }
-          }
-        }
-      } catch (error) {
-        console.error("OBS Widget: Failed to parse message:", error);
-      }
-    };
-
-    ws.onclose = () => {
-      console.log(
-        "OBS Widget: Disconnected from server. Attempting to reconnect..."
-      );
-      // Reconnect after a delay
-      setTimeout(connectWebSocket, 1000);
-    };
-
-    ws.onerror = (error) => {
-      console.error("OBS Widget: WebSocket error:", error);
-    };
-  } catch (error) {
-    console.error("OBS Widget: Error creating WebSocket:", error);
-    setTimeout(connectWebSocket, 1000); // Reconnect on initial connection failure
-  }
-}
-
-/**
- * Updates the progress bar and time display.
- * @param {number} progress - The current playback position in milliseconds.
- * @param {number} duration - The total duration of the track in milliseconds.
- */
-function updateProgressBar(progress, duration) {
-  if (progressBarFill && duration > 0) {
-    const progressPercent = (progress / duration) * 100;
-    progressBarFill.style.width = `${progressPercent}%`;
-  }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  // Get DOM elements.
-  albumArtImg = document.getElementById("albumArt");
-  songTitleElem = document.getElementById("songTitle");
-  artistNameElem = document.getElementById("artistName");
-  progressBarFill = document.getElementById("progressBarFill");
-  currentTimeElem = document.getElementById("currentTime");
-  totalTimeElem = document.getElementById("totalTime");
-  widgetContainer = document.querySelector(".widget-container");
-  timeContainer = document.querySelector(".time-container");
-
-  // Set the DOM as ready
-  isDomReady = true;
-
-  // Set a subtle default background color immediately on load.
-  updateBackground();
-
-  // Initial call to connect to the WebSocket server.
-  connectWebSocket();
-});
+document.addEventListener("DOMContentLoaded", connect);

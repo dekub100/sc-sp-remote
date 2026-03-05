@@ -1,5 +1,5 @@
-nssm.exe
-node_modules/
-.git
-com.dekub.spicetify-remote.streamDeckPlugin
-daemon/
+/.git
+/__pycache__
+
+
+state.json

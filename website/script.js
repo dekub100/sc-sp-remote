@@ -1,374 +1,183 @@
-// This script connects to the Node.js server to sync volume and playback.
-// This version ensures all DOM elements are loaded before attempting to connect
-// or add event listeners, which fixes issues with button functionality.
-
-let SERVER_URL = null;
-
-// Use a Data URI for the fallback image. This embeds the image data directly in the code,
-// making it impossible for ad blockers to block.
-const FALLBACK_ALBUM_ART =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 200 200'><rect width='200' height='200' fill='%23535353'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Arial, Helvetica, sans-serif' font-size='20' fill='%23FFFFFF'>No Art</text></svg>";
-
-// Get DOM elements. This must be done inside the DOMContentLoaded listener to guarantee they exist.
-let volumeSlider;
-let volumeValueSpan;
-let previousBtn;
-let playPauseBtn;
-let nextBtn;
-let albumArtImg;
-let songTitleElem;
-let artistNameElem;
-let likeBtn;
-let shuffleBtn;
-let repeatBtn;
-
-// New elements for the progress bar
-let progressBar;
-let currentTimeElem;
-let durationTimeElem;
-
+// Simplified Main Website Script with Client-Side Color Extraction
 let ws;
-let isPlaying = false;
-let isLiked = false;
-let isShuffling = false;
-let repeatStatus = 0;
+let serverUrl = null;
 let isSeeking = false;
 
-// New flag for connection status
-let connectionSuccessfullyOpened = false; // Prevents the progress bar from updating while the user is dragging it.
+const ui = {
+    container: document.getElementById('mainContainer'),
+    error: document.getElementById('connectionError'),
+    albumArt: document.getElementById('albumArt'),
+    songTitle: document.getElementById('songTitle'),
+    artistName: document.getElementById('artistName'),
+    progressBar: document.getElementById('progressBar'),
+    currentTime: document.getElementById('currentTime'),
+    durationTime: document.getElementById('durationTime'),
+    volumeSlider: document.getElementById('volumeSlider'),
+    volumeValue: document.getElementById('volumeValue'),
+    playPauseBtn: document.getElementById('playPauseBtn'),
+    shuffleBtn: document.getElementById('shuffleBtn'),
+    repeatBtn: document.getElementById('repeatBtn'),
+    likeBtn: document.getElementById('likeBtn')
+};
 
-function displayConnectionErrorAndDisableUI(message) {
-  const container = document.querySelector(".container");
-  if (container) {
-    container.classList.add("hidden");
-  }
-  let errorDiv = document.querySelector(".connection-error");
-  if (!errorDiv) {
-    errorDiv = document.createElement("div");
-    errorDiv.classList.add("connection-error");
-    document.body.appendChild(errorDiv);
-  }
-  errorDiv.textContent =
-    message ||
-    "Could not connect to server. Please ensure the server is running and configured correctly.";
+// Canvas for color extraction (hidden)
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+function formatTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-function enableUI() {
-  const container = document.querySelector(".container");
-  if (container) {
-    container.classList.remove("hidden");
-  }
-  const errorDiv = document.querySelector(".connection-error");
-  if (errorDiv) {
-    errorDiv.remove();
-  }
+function send(data) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
 }
 
-/**
- * Connects to the WebSocket server and sets up event listeners.
- */
-function connectWebSocket() {
-  if (!SERVER_URL) {
-    // Fetch config first
-    fetch("/api/config")
-      .then((res) => res.json())
-      .then((cfg) => {
-        if (cfg.enableWebsite === false) {
-          console.log("Website: Website is disabled by configuration.");
-          displayConnectionErrorAndDisableUI("Website is disabled by configuration.");
-          return;
+function updateMarquee(element, text) {
+    const wrapper = element.querySelector('.marquee-wrapper');
+    if (!wrapper) return;
+    wrapper.textContent = text;
+    wrapper.setAttribute('data-text', text);
+    element.classList.remove('marquee-active');
+    setTimeout(() => {
+        if (wrapper.scrollWidth > element.clientWidth) {
+            const duration = Math.max(10, text.length / 2);
+            element.style.setProperty('--duration', `${duration}s`);
+            element.classList.add('marquee-active');
         }
-        // Use the current location's hostname for the WebSocket connection
-        SERVER_URL = `ws://${window.location.hostname}:${cfg.port}`;
-        connectWebSocket(); // Retry connection with correct URL
-      })
-      .catch((error) => {
-        console.error("Website: Failed to fetch configuration:", error);
-        if (!connectionSuccessfullyOpened) {
-          displayConnectionErrorAndDisableUI();
-        } else {
-          // If we were previously connected, try to reconnect
-          setTimeout(connectWebSocket, 5000);
+    }, 50);
+}
+
+function updateDynamicColors(img) {
+    try {
+        canvas.width = 50;
+        canvas.height = 50;
+        ctx.drawImage(img, 0, 0, 50, 50);
+        
+        const imageData = ctx.getImageData(0, 0, 50, 50).data;
+        let r = 0, g = 0, b = 0, count = 0;
+        
+        for (let i = 0; i < imageData.length; i += 16) {
+            r += imageData[i];
+            g += imageData[i+1];
+            b += imageData[i+2];
+            count++;
         }
-      });
-    return;
-  }
+        
+        r = Math.floor(r / count);
+        g = Math.floor(g / count);
+        b = Math.floor(b / count);
+        
+        // Darken for container background
+        const bgR = Math.floor(r * 0.2);
+        const bgG = Math.floor(g * 0.2);
+        const bgB = Math.floor(b * 0.2);
+        
+        ui.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.95)`;
+        
+        // Update green accent elements to match song
+        const accent = `rgb(${r}, ${g}, ${b})`;
+        document.documentElement.style.setProperty('--accent-color', accent);
+        
+        // Use a brightness check for text contrast if needed
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        if (brightness < 40) {
+            // If color is too dark, use a brighter version for the accent
+            const brightAccent = `rgb(${Math.min(255, r+100)}, ${Math.min(255, g+100)}, ${Math.min(255, b+100)})`;
+            document.documentElement.style.setProperty('--accent-color', brightAccent);
+        }
+    } catch (e) {
+        console.error("Color extraction failed:", e);
+    }
+}
 
-  try {
-    ws = new WebSocket(SERVER_URL);
+function connect() {
+    if (!serverUrl) {
+        fetch('/api/config').then(r => r.json()).then(cfg => {
+            serverUrl = `ws://${window.location.hostname}:${cfg.port}`;
+            connect();
+        }).catch(() => setTimeout(connect, 5000));
+        return;
+    }
 
+    ws = new WebSocket(serverUrl);
+    
     ws.onopen = () => {
-      console.log("Website: Connected to server.");
-      connectionSuccessfullyOpened = true; // Set flag to true on successful connection
-      enableUI(); // Enable UI elements
+        ui.container.classList.remove('hidden');
+        ui.error.classList.add('hidden');
     };
 
     ws.onmessage = (event) => {
-      try {
         const data = JSON.parse(event.data);
+        
+        if (data.type === 'stateUpdate') {
+            if (data.trackName) updateMarquee(ui.songTitle, data.trackName);
+            if (data.artistName) updateMarquee(ui.artistName, data.artistName);
+            
+            if (data.albumArtUrl && ui.albumArt.src !== data.albumArtUrl) {
+                ui.albumArt.crossOrigin = "Anonymous";
+                ui.albumArt.src = data.albumArtUrl;
+                ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
+            }
+            
+            if (data.volume !== undefined) {
+                ui.volumeSlider.value = data.volume;
+                ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
+            }
 
-        // Helper function to update the progress display
-        const updateProgressDisplay = (progress, duration) => {
-          if (progress !== undefined && duration !== undefined && !isSeeking) {
-            progressBar.max = duration; // Set max to total duration
-            progressBar.value = progress; // Set current progress
-            currentTimeElem.textContent = formatTime(progress);
-            durationTimeElem.textContent = formatTime(duration);
-          }
-        };
-
-        if (data.type === "stateUpdate") {
-          // Update volume and playback state if they are different.
-          if (data.volume !== undefined) {
-            const volume = parseFloat(data.volume);
-            volumeSlider.value = volume;
-            volumeValueSpan.textContent = `${Math.round(volume * 100)}%`;
-          }
-          if (data.isPlaying !== undefined) {
-            isPlaying = data.isPlaying;
-            updatePlayPauseButton(isPlaying);
-          }
-          if (data.isLiked !== undefined) {
-            isLiked = data.isLiked;
-            updateLikeButton(isLiked);
-          }
-          if (data.isShuffling !== undefined) {
-            isShuffling = data.isShuffling;
-            updateShuffleButton(isShuffling);
-          }
-          if (data.repeatStatus !== undefined) {
-            repeatStatus = data.repeatStatus;
-            updateRepeatButton(repeatStatus);
-          }
-          // Update track information if available.
-          if (data.trackName !== undefined) {
-            songTitleElem.textContent = data.trackName;
-            artistNameElem.textContent = data.artistName;
-            // Use a dedicated function to handle image loading
-            setAlbumArt(data.albumArtUrl);
-          }
-          // Update track progress if available, using the new helper
-          updateProgressDisplay(data.progress, data.duration);
-
-        } else if (data.type === "progressUpdate") { // Handle dedicated progress updates
-          updateProgressDisplay(data.progress, data.duration);
+            ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
+            ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
+            ui.shuffleBtn.classList.toggle('active', data.isShuffling);
+            
+            const repeatIcon = ui.repeatBtn.querySelector('i');
+            ui.repeatBtn.classList.toggle('active', data.repeatStatus > 0);
+            if (data.repeatStatus === 2) {
+                repeatIcon.className = 'fas fa-redo-alt';
+                ui.repeatBtn.setAttribute('data-mode', 'track');
+            } else {
+                repeatIcon.className = 'fas fa-repeat';
+                ui.repeatBtn.removeAttribute('data-mode');
+            }
+            
+            ui.likeBtn.classList.toggle('liked', data.isLiked);
         }
-      } catch (error) {
-        console.error("Website: Failed to parse message from server:", error);
-      }
+
+        if ((data.progress !== undefined || data.type === 'progressUpdate') && !isSeeking) {
+            const progress = data.progress;
+            const duration = data.duration ?? ui.progressBar.max;
+            ui.progressBar.max = duration;
+            ui.progressBar.value = progress;
+            ui.currentTime.textContent = formatTime(progress);
+            ui.durationTime.textContent = formatTime(duration);
+        }
     };
 
     ws.onclose = () => {
-      console.log(
-        "Website: Disconnected from server. Attempting to reconnect in 5 seconds..."
-      );
-      connectionSuccessfullyOpened = false; // Set flag to false on close
-      // Always attempt to reconnect after a delay, as the server might come back online
-      setTimeout(connectWebSocket, 5000);
+        ui.container.classList.add('hidden');
+        ui.error.classList.remove('hidden');
+        setTimeout(connect, 5000);
     };
-
-    ws.onerror = (error) => {
-      console.error("Website: WebSocket error:", error);
-      connectionSuccessfullyOpened = false; // Set flag to false on error
-      // Close the connection explicitly if an error occurs. This will trigger onclose.
-      ws.close();
-    };
-  } catch (error) {
-    console.error("Website: Could not connect to WebSocket server:", error);
-    if (!connectionSuccessfullyOpened) {
-      displayConnectionErrorAndDisableUI();
-    } else {
-      // If we were previously connected, try to reconnect
-      setTimeout(connectWebSocket, 5000);
-    }
-  }
 }
 
-/**
- * Handles the loading of the album art image to prevent broken image flashes.
- * @param {string} url - The URL of the album art.
- */
-function setAlbumArt(url) {
-  if (!url) {
-    albumArtImg.src = FALLBACK_ALBUM_ART;
-    return;
-  }
-  // Create a new image object to handle loading
-  const tempImage = new Image();
-  tempImage.onload = () => {
-    // If it loads successfully, update the main image
-    albumArtImg.src = url;
-  };
-  tempImage.onerror = () => {
-    // If it fails, use the placeholder
-    albumArtImg.src = FALLBACK_ALBUM_ART;
-    console.error(
-      "Website: Failed to load album art from URL, using placeholder."
-    );
-  };
-  // Set the source to start loading the image
-  tempImage.src = url;
-}
+// Event Listeners
+ui.playPauseBtn.onclick = () => send({type: 'playbackControl', command: 'togglePlay'});
+document.getElementById('previousBtn').onclick = () => send({type: 'playbackControl', command: 'previous'});
+document.getElementById('nextBtn').onclick = () => send({type: 'playbackControl', command: 'next'});
+ui.shuffleBtn.onclick = () => send({type: 'playbackControl', command: 'toggleShuffle'});
+ui.repeatBtn.onclick = () => send({type: 'playbackControl', command: 'toggleRepeat'});
+ui.likeBtn.onclick = () => send({type: 'like'});
 
-/**
- * Toggles the icon and color of the play/pause button.
- * @param {boolean} isPlayingState - The current playback state.
- */
-function updatePlayPauseButton(isPlayingState) {
-  const playIcon = playPauseBtn.querySelector(".fa-play");
-  const pauseIcon = playPauseBtn.querySelector(".fa-pause");
-  if (isPlayingState) {
-    playIcon.style.display = "none";
-    pauseIcon.style.display = "inline-block";
-    playPauseBtn.classList.add("playing");
-  } else {
-    playIcon.style.display = "inline-block";
-    pauseIcon.style.display = "none";
-    playPauseBtn.classList.remove("playing");
-  }
-}
+ui.volumeSlider.oninput = (e) => {
+    const val = parseFloat(e.target.value);
+    ui.volumeValue.textContent = `${Math.round(val * 100)}%`;
+    send({type: 'volumeUpdate', volume: val});
+};
 
-function updateLikeButton(isLikedState) {
-  if (isLikedState) {
-    likeBtn.classList.add("liked");
-  } else {
-    likeBtn.classList.remove("liked");
-  }
-}
-
-function updateShuffleButton(isShufflingState) {
-  if (isShufflingState) {
-    shuffleBtn.classList.add("active");
-  } else {
-    shuffleBtn.classList.remove("active");
-  }
-}
-
-function updateRepeatButton(repeatStatusState) {
-  if (repeatStatusState === 0) {
-    repeatBtn.classList.remove("active");
-  } else {
-    repeatBtn.classList.add("active");
-  }
-}
-
-/**
- * Formats a time in milliseconds into a readable minute:second string.
- * @param {number} ms - Time in milliseconds.
- * @returns {string} The formatted time string.
- */
-function formatTime(ms) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-// Ensure the DOM is fully loaded before running the script.
-document.addEventListener("DOMContentLoaded", () => {
-  // Get DOM elements.
-  volumeSlider = document.getElementById("volumeSlider");
-  volumeValueSpan = document.getElementById("volumeValue");
-  previousBtn = document.getElementById("previousBtn");
-  playPauseBtn = document.getElementById("playPauseBtn");
-  nextBtn = document.getElementById("nextBtn");
-  albumArtImg = document.getElementById("albumArt");
-  songTitleElem = document.getElementById("songTitle");
-  artistNameElem = document.getElementById("artistName");
-  likeBtn = document.getElementById("likeBtn");
-  shuffleBtn = document.getElementById("shuffleBtn");
-  repeatBtn = document.getElementById("repeatBtn");
-
-  // New elements for the progress bar
-  progressBar = document.getElementById("progressBar");
-  currentTimeElem = document.getElementById("currentTime");
-  durationTimeElem = document.getElementById("durationTime");
-
-  // Event listener for the volume slider.
-  volumeSlider.addEventListener("input", (event) => {
-    const newVolume = parseFloat(event.target.value);
-    volumeValueSpan.textContent = `${Math.round(newVolume * 100)}%`;
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "volumeUpdate", volume: newVolume }));
-    }
-  });
-
-  // Event listeners for playback control buttons.
-  previousBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'previous' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "playbackControl", command: "previous" }));
-    }
-  });
-
-  playPauseBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'togglePlay' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({ type: "playbackControl", command: "togglePlay" })
-      );
-    }
-  });
-
-  nextBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'next' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "playbackControl", command: "next" }));
-    }
-  });
-
-  likeBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'like' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "like" }));
-    }
-  });
-
-  shuffleBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'toggleShuffle' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({ type: "playbackControl", command: "toggleShuffle" })
-      );
-    }
-  });
-
-  repeatBtn.addEventListener("click", () => {
-    console.log("Website: Sending 'toggleRepeat' command to server.");
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({ type: "playbackControl", command: "toggleRepeat" })
-      );
-    }
-  });
-
-  // Event listeners for the progress bar.
-  progressBar.addEventListener("mousedown", () => {
-    isSeeking = true;
-  });
-
-  progressBar.addEventListener("mouseup", (event) => {
+ui.progressBar.onmousedown = () => isSeeking = true;
+ui.progressBar.onmouseup = (e) => {
     isSeeking = false;
-    const newProgress = parseInt(event.target.value);
-    console.log(
-      "Website: Sending 'seek' command to server with new position:",
-      newProgress
-    );
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        JSON.stringify({
-          type: "playbackControl",
-          command: "seek",
-          position: newProgress,
-        })
-      );
-    }
-  });
+    send({type: 'playbackControl', command: 'seek', position: parseInt(e.target.value)});
+};
+ui.progressBar.oninput = (e) => ui.currentTime.textContent = formatTime(e.target.value);
 
-  progressBar.addEventListener("input", (event) => {
-    currentTimeElem.textContent = formatTime(event.target.value);
-  });
-
-  connectWebSocket();
-});
+document.addEventListener('DOMContentLoaded', connect);
