@@ -9,9 +9,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 
+# Hard-coded Discovery Port (Standardized for all clients)
+DISCOVERY_PORT = 54321
+
 config = {
     "port": 8888,
-    "configPort": 54321,
     "allowedOrigins": ["*"],
     "defaultVolume": 0.5,
     "enableOBS": True,
@@ -258,7 +260,7 @@ async def handle_config(request):
     headers = {"Access-Control-Allow-Origin": ",".join(config["allowedOrigins"])}
     return web.json_response({
         "port": config["port"],
-        "configPort": config["configPort"],
+        "discoveryPort": DISCOVERY_PORT,
         "allowedOrigins": config["allowedOrigins"],
         "defaultVolume": config["defaultVolume"],
         "enableOBS": config.get("enableOBS", True),
@@ -301,11 +303,11 @@ async def main():
     await config_runner.setup()
 
     print(f"Main Server: http://localhost:{config['port']}")
-    print(f"Config Server: http://localhost:{config['configPort']}")
+    print(f"Discovery Server: http://localhost:{DISCOVERY_PORT}")
     
     await asyncio.gather(
         web.TCPSite(main_runner, '0.0.0.0', config['port']).start(),
-        web.TCPSite(config_runner, '0.0.0.0', config['configPort']).start(),
+        web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT).start(),
         start_progress_broadcasting()
     )
     

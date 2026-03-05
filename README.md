@@ -58,7 +58,6 @@ The server uses a `config.json` file for all major settings. You can edit this f
 ```json
 {
   "port": 8888,
-  "configPort": 54321,
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
   "enableOBS": true,
@@ -68,11 +67,19 @@ The server uses a `config.json` file for all major settings. You can edit this f
 ```
 
 - `port`: Main server port (for website, OBS widget, and WebSocket)
-- `configPort`: Dedicated port for the config server (used by extensions/widgets to discover the main port)
 - `allowedOrigins`: List of allowed origins for CORS (default: `["*"]`)
 - `defaultVolume`: Initial volume value when the server starts
 - `enableOBS`: Enable or disable the OBS widget routes
 - `enableWebsite`: Enable or disable the web interface
+
+**Notes:**
+
+- The Discovery Server is standardized on port `54321`. The Spicetify extension and widgets use this to automatically find your main `port`.
+- If you change the `port`, be sure to restart your server and do
+
+```bash
+spicetify apply
+```
 
 ## Running the Server
 
@@ -84,7 +91,7 @@ python server.py
 
 - **Website**: `http://localhost:8888/`
 - **OBS Widget**: `http://localhost:8888/obs`
-- **Config API**: `http://localhost:54321/api/config`
+- **Discovery API**: `http://localhost:54321/api/config`
 
 ## Service Management (Windows)
 
