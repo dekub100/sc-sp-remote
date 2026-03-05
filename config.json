@@ -1,5 +1,5 @@
 {
-  "port": 8080,
+  "port": 8888,
   "configPort": 54321,
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,

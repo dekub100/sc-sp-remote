@@ -1,17 +1,14 @@
-/* Styling for the OBS Music Widget */
+/* Simplified Styling for the OBS Music Widget */
 
 body {
-  font-family: "Inter", sans-serif;
-  background-color: transparent; /* Makes the background transparent for OBS */
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: transparent; /* Transparent for OBS */
   margin: 0;
   padding: 0;
-  overflow: hidden; /* Prevents scrollbars */
+  overflow: hidden;
   width: 1000px;
   height: 250px;
   color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .widget-container {
@@ -20,158 +17,115 @@ body {
   width: 100%;
   height: 100%;
   padding: 20px;
-  background: transparent; /* Will be set by JS */
+  /* Simple semi-transparent dark background */
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 15px;
   box-sizing: border-box;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-  transition: background-color 0.5s ease; /* Add transition for a smooth fade */
-}
-
-/* New CSS class for dark text on light backgrounds */
-.widget-container.dark-text {
-  color: #212121; /* Dark gray for text */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px); /* Optional: adds a nice frosted glass effect */
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .album-art {
   width: 210px;
   height: 210px;
   border-radius: 10px;
-  margin-right: 20px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-  transition: opacity 0.3s ease;
-}
-
-.song-title,
-.artist-name {
-  transition: opacity 0.3s ease;
-}
-
-.fade-out {
-  opacity: 0;
+  margin-right: 25px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .info-container {
   display: flex;
   flex-direction: column;
-  justify-content: space-between; /* Pushes content to top and bottom */
+  justify-content: center;
   flex-grow: 1;
   overflow: hidden;
-  height: 100%; /* Ensure it fills the vertical space */
+  height: 100%;
 }
 
-.header-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end; /* Aligns text and time to the bottom */
-  width: 100%;
-}
-
+/* --- Pure CSS Marquee --- */
 .text-info {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  white-space: nowrap;
+  width: 100%;
 }
 
-/* Marquee Animation Changes */
-.song-title,
-.artist-name {
-  /* Required for the marquee effect to work */
-  position: relative;
+.song-title, .artist-name {
+  margin: 0;
+  white-space: nowrap;
   overflow: hidden;
-  white-space: nowrap;
+  width: 100%;
 }
-
-.marquee-wrapper {
-  display: flex;
-  width: fit-content; /* This is key - it will be twice the width of the content */
-  animation-duration: var(--marquee-duration, 10s);
-  animation-name: marquee-animation;
-  animation-iteration-count: infinite;
-  animation-timing-function: linear;
-  animation-delay: 2s; /* Add a 2s delay at the start */
-  /* Initially paused so it only runs when needed */
-  animation-play-state: paused;
-}
-
-/* New class to activate the animation */
-.marquee-active .marquee-wrapper {
-  animation-play-state: running;
-}
-
-.marquee-content {
-  /* No changes here, the content stays the same */
-  padding-right: 100px; /* Add space between the end of the text and the start of the copy */
-}
-
-@keyframes marquee-animation {
-  from {
-    transform: translateX(0%);
-  }
-  to {
-    /* Moves the text completely off-screen to the left based on its full width */
-    transform: translateX(var(--marquee-distance));
-  }
-}
-/* End of Marquee Animation Changes */
 
 .song-title {
-  margin: 0;
   font-size: 3.5rem;
-  font-weight: bold;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #fff; /* Ensure title is always white */
+  font-weight: 800;
+  margin-bottom: 5px;
 }
 
 .artist-name {
-  margin: 0;
-  font-size: 2.6rem;
-  color: #fff; /* Corrected to match the title for better readability */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 2.2rem;
+  font-weight: 400;
+  opacity: 0.9;
+  margin-bottom: 15px;
 }
 
-/* New container for the progress bar and time */
-.progress-container {
-  display: flex;
-  flex-direction: column;
+/* The magic happens here: If the text is long, it scrolls. 
+   We use a simple hover-like logic or just keep it always scrolling if long.
+   Since we can't detect overflow easily in CSS without JS, 
+   we'll keep the JS logic for *toggling* the class, but the *animation* is pure CSS.
+*/
+.marquee-wrapper {
+  display: inline-block;
+  padding-right: 50px; /* Space before loop */
+}
+
+.marquee-active .marquee-wrapper {
+  animation: marquee-scroll var(--duration, 10s) linear infinite;
+  display: inline-block;
+}
+
+/* Duplicate for seamless loop */
+.marquee-active .marquee-wrapper::after {
+  content: attr(data-text);
+  padding-left: 50px;
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); } /* Halfway point of [original + duplicate] */
+}
+
+/* --- Progress Section --- */
+.progress-section {
   width: 100%;
-  align-items: flex-end; /* Aligns content to the right */
-  margin-top: 10px; /* Add some space from the text above */
+  margin-top: auto;
 }
 
-/* This is the container for the time */
-.time-container {
-  margin-bottom: 10px; /* Corrected spacing to bring time closer to the bar */
+.time-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
-#currentTime {
-  font-size: 4rem; /* Increased font size to be bigger than the title */
-  color: #fff;
-  white-space: nowrap;
-  line-height: 1; /* Adjusts line height to reduce space */
-}
-
-#progressBar {
-  width: 100%; /* Stretches to fill the space */
+.progress-bar-bg {
+  width: 100%;
   height: 10px;
-  background: rgba(
-    0,
-    0,
-    0,
-    0.4
-  ); /* Changed to a dark, semi-transparent color */
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 5px;
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: #1db954; /* Spotify green */
+  background: #1db954; /* Spotify Green */
   width: 0%;
   border-radius: 5px;
-  transition: width 0.1s linear; /* Smooth progress bar animation */
+  transition: width 0.3s linear;
 }
