@@ -27,7 +27,6 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 
 - Python 3.8+
 - [spicetify-cli](https://spicetify.app/docs/getting-started)
-- Node.js (for Spicetify extension installation only)
 
 ## Installation
 
