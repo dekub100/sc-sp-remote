@@ -84,6 +84,11 @@
         const data = JSON.parse(event.data);
         switch (data.type) {
           case "stateUpdate":
+          case "volumeUpdate":
+          case "playbackUpdate":
+          case "shuffleUpdate":
+          case "repeatUpdate":
+          case "likeUpdate":
             this.applyServerState(data);
             break;
           case "playbackControl":
@@ -277,7 +282,6 @@
       // Volume
       if (serverState.volume !== undefined) {
         const current = Spicetify.Player.getVolume();
-        // Avoid feedback loops: only apply if significantly different
         if (Math.abs(current - serverState.volume) > 0.01) {
           Spicetify.Player.setVolume(serverState.volume);
           this.state.volume = serverState.volume;
@@ -287,7 +291,15 @@
       // Playback
       if (serverState.isPlaying !== undefined) {
         const current = Spicetify.Player.isPlaying();
-        if (current !== serverState.isPlaying) {
+        
+        // ISOLATION LOGIC:
+        // We only honor playback changes if they come from a dedicated playbackUpdate 
+        // OR a full stateUpdate that actually intends to sync state.
+        // If it's a volumeUpdate, we ignore the isPlaying field to avoid stale pauses.
+        const isReliableSource = serverState.type === "playbackUpdate" || 
+                                 (serverState.type === "stateUpdate" && serverState.trackName !== undefined);
+
+        if (isReliableSource && current !== serverState.isPlaying) {
           if (serverState.isPlaying) Spicetify.Player.play();
           else Spicetify.Player.pause();
           this.state.isPlaying = serverState.isPlaying;
@@ -344,12 +356,16 @@
           Spicetify.Player.toggleHeart();
           break;
         case "volumeUp":
-          Spicetify.Player.increaseVolume(); // Native helper if available
+          Spicetify.Player.increaseVolume();
           break;
         case "volumeDown":
           Spicetify.Player.decreaseVolume();
           break;
       }
+      
+      // FORCE SYNC: Immediately check state after a command.
+      // This "wakes up" the UI even if Spotify is in the background.
+      setTimeout(() => this.syncFullState(true), 100);
     },
 
     exposeGlobals() {

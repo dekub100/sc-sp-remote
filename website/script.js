@@ -110,7 +110,8 @@ function connect() {
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         
-        if (data.type === 'stateUpdate') {
+        // Handle Track Info
+        if (data.type === 'stateUpdate' || data.type === 'trackUpdate') {
             if (data.trackName) updateMarquee(ui.songTitle, data.trackName);
             if (data.artistName) updateMarquee(ui.artistName, data.artistName);
             
@@ -119,16 +120,27 @@ function connect() {
                 ui.albumArt.src = data.albumArtUrl;
                 ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
             }
-            
-            if (data.volume !== undefined) {
-                ui.volumeSlider.value = data.volume;
-                ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
-            }
+        }
 
+        // Handle Volume
+        if (data.volume !== undefined) {
+            ui.volumeSlider.value = data.volume;
+            ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
+        }
+
+        // Handle Playback State
+        if (data.isPlaying !== undefined) {
             ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
             ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
+        }
+
+        // Handle Shuffle
+        if (data.isShuffling !== undefined) {
             ui.shuffleBtn.classList.toggle('active', data.isShuffling);
-            
+        }
+
+        // Handle Repeat
+        if (data.repeatStatus !== undefined) {
             const repeatIcon = ui.repeatBtn.querySelector('i');
             ui.repeatBtn.classList.toggle('active', data.repeatStatus > 0);
             if (data.repeatStatus === 2) {
@@ -138,10 +150,14 @@ function connect() {
                 repeatIcon.className = 'fas fa-repeat';
                 ui.repeatBtn.removeAttribute('data-mode');
             }
-            
+        }
+
+        // Handle Liked Status
+        if (data.isLiked !== undefined) {
             ui.likeBtn.classList.toggle('liked', data.isLiked);
         }
 
+        // Handle Progress
         if ((data.progress !== undefined || data.type === 'progressUpdate') && !isSeeking) {
             const progress = data.progress;
             const duration = data.duration ?? ui.progressBar.max;

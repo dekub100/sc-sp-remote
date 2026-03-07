@@ -93,23 +93,30 @@ function connect() {
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
+    // Handle Track Info
     if (data.type === "stateUpdate" || data.type === "trackUpdate") {
       if (data.trackName) updateMarquee(elements.songTitle, data.trackName);
       if (data.artistName) updateMarquee(elements.artistName, data.artistName);
 
       if (data.albumArtUrl && elements.albumArt.src !== data.albumArtUrl) {
-        // We need crossOrigin to read pixels from Spotify CDN
         elements.albumArt.crossOrigin = "Anonymous";
         elements.albumArt.src = data.albumArtUrl;
         elements.albumArt.onload = () => updateDynamicColors(elements.albumArt);
       }
     }
 
-    if (data.progress !== undefined && data.duration !== undefined) {
-      const pct = (data.progress / data.duration) * 100;
-      elements.progressBarFill.style.width = `${pct}%`;
-      elements.currentTime.textContent = formatTime(data.progress);
-      elements.totalTime.textContent = formatTime(data.duration);
+    // Handle Progress
+    if (data.progress !== undefined) {
+      const duration = data.duration ?? parseInt(elements.totalTime.getAttribute('data-ms') || 0);
+      if (duration > 0) {
+        const pct = (data.progress / duration) * 100;
+        elements.progressBarFill.style.width = `${pct}%`;
+        elements.currentTime.textContent = formatTime(data.progress);
+        if (data.duration !== undefined) {
+            elements.totalTime.textContent = formatTime(data.duration);
+            elements.totalTime.setAttribute('data-ms', data.duration);
+        }
+      }
     }
   };
 

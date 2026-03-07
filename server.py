@@ -111,6 +111,19 @@ async def broadcast_current_state():
     }
     await broadcast(full_state_message)
 
+async def broadcast_volume_update():
+    await broadcast({
+        "type": "volumeUpdate",
+        "volume": state["volume"]
+    })
+
+async def broadcast_playback_update():
+    await broadcast({
+        "type": "playbackUpdate",
+        "isPlaying": state["isPlaying"],
+        "progress": state["trackProgress"]
+    })
+
 async def broadcast_progress_update():
     progress_message = {
         "type": "progressUpdate",
@@ -143,15 +156,15 @@ async def handle_message(ws, message):
             if data.get("command") == "volumeUp":
                 state["volume"] = min(1.0, state["volume"] + volume_step)
                 save_state_to_file()
-                await broadcast_current_state()
+                await broadcast_volume_update()
             elif data.get("command") == "volumeDown":
                 state["volume"] = max(0.0, state["volume"] - volume_step)
                 save_state_to_file()
-                await broadcast_current_state()
+                await broadcast_volume_update()
             elif "volume" in data:
                 state["volume"] = data["volume"]
                 save_state_to_file()
-                await broadcast_current_state()
+                await broadcast_volume_update()
                 
         elif msg_type == "playbackUpdate":
             state["isPlaying"] = data.get("isPlaying", False)
@@ -160,22 +173,22 @@ async def handle_message(ws, message):
                 state["trackProgressStartTimestamp"] = time.time() * 1000
             else:
                 state["trackProgress"] = data.get("progress", state["trackProgress"])
-            await broadcast_current_state()
+            await broadcast_playback_update()
             
         elif msg_type == "shuffleUpdate":
             state["isShuffling"] = data.get("isShuffling", False)
             save_state_to_file()
-            await broadcast_current_state()
+            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]})
             
         elif msg_type == "repeatUpdate":
             state["repeatStatus"] = data.get("repeatStatus", 0)
             save_state_to_file()
-            await broadcast_current_state()
+            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]})
             
         elif msg_type == "likeUpdate":
             state["isLiked"] = data.get("isLiked", False)
             save_state_to_file()
-            await broadcast_current_state()
+            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]})
             
         elif msg_type == "trackUpdate":
             state["currentTrack"] = {
