@@ -9,6 +9,9 @@ const ui = {
     albumArt: document.getElementById('albumArt'),
     songTitle: document.getElementById('songTitle'),
     artistName: document.getElementById('artistName'),
+    albumName: document.getElementById('albumName'),
+    songLink: document.getElementById('songLink'),
+    albumLink: document.getElementById('albumLink'),
     progressBar: document.getElementById('progressBar'),
     currentTime: document.getElementById('currentTime'),
     durationTime: document.getElementById('durationTime'),
@@ -46,6 +49,13 @@ function updateMarquee(element, text) {
             element.classList.add('marquee-active');
         }
     }, 50);
+}
+
+function spotifyUriToUrl(uri) {
+    if (!uri) return '#';
+    const parts = uri.split(':');
+    if (parts.length < 3) return '#';
+    return `https://open.spotify.com/${parts[1]}/${parts[2]}`;
 }
 
 function updateDynamicColors(img) {
@@ -114,6 +124,10 @@ function connect() {
         if (data.type === 'stateUpdate' || data.type === 'trackUpdate') {
             if (data.trackName) updateMarquee(ui.songTitle, data.trackName);
             if (data.artistName) updateMarquee(ui.artistName, data.artistName);
+            if (data.albumName) updateMarquee(ui.albumName, data.albumName);
+
+            if (data.trackUri) ui.songLink.href = spotifyUriToUrl(data.trackUri);
+            if (data.albumUri) ui.albumLink.href = spotifyUriToUrl(data.albumUri);
             
             if (data.albumArtUrl && ui.albumArt.src !== data.albumArtUrl) {
                 ui.albumArt.crossOrigin = "Anonymous";

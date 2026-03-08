@@ -35,6 +35,9 @@ state = {
     "currentTrack": {
         "trackName": "No song playing",
         "artistName": "",
+        "albumName": "",
+        "trackUri": "",
+        "albumUri": "",
         "albumArtUrl": ""
     },
     "trackProgress": 0,
@@ -54,7 +57,7 @@ def read_state_from_file():
                 saved_state = json.load(f)
                 state["volume"] = saved_state.get("volume", state["volume"])
                 state["isPlaying"] = saved_state.get("isPlaying", state["isPlaying"])
-                state["currentTrack"] = saved_state.get("currentTrack", state["currentTrack"])
+                state["currentTrack"].update(saved_state.get("currentTrack", {}))
                 state["isShuffling"] = saved_state.get("isShuffling", state["isShuffling"])
                 state["repeatStatus"] = saved_state.get("repeatStatus", state["repeatStatus"])
                 state["isLiked"] = saved_state.get("isLiked", state["isLiked"])
@@ -101,6 +104,9 @@ async def broadcast_current_state():
         "isPlaying": state["isPlaying"],
         "trackName": state["currentTrack"]["trackName"],
         "artistName": state["currentTrack"]["artistName"],
+        "albumName": state["currentTrack"]["albumName"],
+        "trackUri": state["currentTrack"]["trackUri"],
+        "albumUri": state["currentTrack"]["albumUri"],
         "albumArtUrl": state["currentTrack"]["albumArtUrl"],
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],
@@ -194,6 +200,9 @@ async def handle_message(ws, message):
             state["currentTrack"] = {
                 "trackName": data.get("trackName", "Unknown Track"),
                 "artistName": data.get("artistName", "Unknown Artist"),
+                "albumName": data.get("albumName", "Unknown Album"),
+                "trackUri": data.get("trackUri", ""),
+                "albumUri": data.get("albumUri", ""),
                 "albumArtUrl": data.get("albumArtUrl", "")
             }
             state["trackDuration"] = data.get("duration", 0)
@@ -244,6 +253,9 @@ async def websocket_handler(request):
         "isPlaying": state["isPlaying"],
         "trackName": state["currentTrack"]["trackName"],
         "artistName": state["currentTrack"]["artistName"],
+        "albumName": state["currentTrack"]["albumName"],
+        "trackUri": state["currentTrack"]["trackUri"],
+        "albumUri": state["currentTrack"]["albumUri"],
         "albumArtUrl": state["currentTrack"]["albumArtUrl"],
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],

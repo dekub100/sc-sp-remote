@@ -254,6 +254,9 @@
         const trackData = {
           trackName: track.name || meta.title || "Unknown Track",
           artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
+          albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
+          trackUri: track.uri || meta.uri || "",
+          albumUri: (track.album && track.album.uri) || meta.album_uri || "",
           albumArtUrl: artUrl,
           duration: Spicetify.Player.getDuration(),
         };

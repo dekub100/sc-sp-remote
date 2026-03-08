@@ -6,6 +6,7 @@ const elements = {
   albumArt: document.getElementById("albumArt"),
   songTitle: document.getElementById("songTitle"),
   artistName: document.getElementById("artistName"),
+  albumName: document.getElementById("albumName"),
   progressBarFill: document.getElementById("progressBarFill"),
   currentTime: document.getElementById("currentTime"),
   totalTime: document.getElementById("totalTime"),
@@ -97,6 +98,7 @@ function connect() {
     if (data.type === "stateUpdate" || data.type === "trackUpdate") {
       if (data.trackName) updateMarquee(elements.songTitle, data.trackName);
       if (data.artistName) updateMarquee(elements.artistName, data.artistName);
+      if (data.albumName) updateMarquee(elements.albumName, data.albumName);
 
       if (data.albumArtUrl && elements.albumArt.src !== data.albumArtUrl) {
         elements.albumArt.crossOrigin = "Anonymous";

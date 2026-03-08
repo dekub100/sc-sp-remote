@@ -60,7 +60,8 @@ body {
 }
 
 .song-title,
-.artist-name {
+.artist-name,
+.album-name {
   margin: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -76,6 +77,13 @@ body {
 .artist-name {
   font-size: 2.2rem;
   font-weight: 400;
+  margin-bottom: 5px;
+}
+
+.album-name {
+  font-size: 1.8rem;
+  font-weight: 400;
+  color: #b3b3b3;
   margin-bottom: 15px;
 }
 
