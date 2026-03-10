@@ -3,6 +3,14 @@ let ws;
 let serverUrl = null;
 let isSeeking = false;
 
+// Interpolation state
+let lastState = {
+    progress: 0,
+    duration: 0,
+    isPlaying: false,
+    timestamp: Date.now()
+};
+
 const ui = {
     container: document.getElementById('mainContainer'),
     error: document.getElementById('connectionError'),
@@ -28,6 +36,7 @@ const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
 function formatTime(ms) {
+    if (isNaN(ms) || ms < 0) return "0:00";
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
@@ -39,16 +48,20 @@ function send(data) {
 function updateMarquee(element, text) {
     const wrapper = element.querySelector('.marquee-wrapper');
     if (!wrapper) return;
+    if (wrapper.textContent === text) return; // Skip if no change
+    
     wrapper.textContent = text;
     wrapper.setAttribute('data-text', text);
     element.classList.remove('marquee-active');
+    
+    // Use a small delay to allow DOM to calculate widths
     setTimeout(() => {
         if (wrapper.scrollWidth > element.clientWidth) {
             const duration = Math.max(10, text.length / 2);
             element.style.setProperty('--duration', `${duration}s`);
             element.classList.add('marquee-active');
         }
-    }, 50);
+    }, 100);
 }
 
 function spotifyUriToUrl(uri) {
@@ -78,27 +91,36 @@ function updateDynamicColors(img) {
         g = Math.floor(g / count);
         b = Math.floor(b / count);
         
-        // Darken for container background
         const bgR = Math.floor(r * 0.2);
         const bgG = Math.floor(g * 0.2);
         const bgB = Math.floor(b * 0.2);
         
         ui.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.95)`;
         
-        // Update green accent elements to match song
         const accent = `rgb(${r}, ${g}, ${b})`;
         document.documentElement.style.setProperty('--accent-color', accent);
         
-        // Use a brightness check for text contrast if needed
         const brightness = (r * 299 + g * 587 + b * 114) / 1000;
         if (brightness < 40) {
-            // If color is too dark, use a brighter version for the accent
             const brightAccent = `rgb(${Math.min(255, r+100)}, ${Math.min(255, g+100)}, ${Math.min(255, b+100)})`;
             document.documentElement.style.setProperty('--accent-color', brightAccent);
         }
     } catch (e) {
         console.error("Color extraction failed:", e);
     }
+}
+
+// Smooth interpolation loop
+function animate() {
+    if (lastState.isPlaying && !isSeeking) {
+        const now = Date.now();
+        const elapsed = now - lastState.timestamp;
+        const currentProgress = Math.min(lastState.progress + elapsed, lastState.duration);
+        
+        ui.progressBar.value = currentProgress;
+        ui.currentTime.textContent = formatTime(currentProgress);
+    }
+    requestAnimationFrame(animate);
 }
 
 function connect() {
@@ -144,6 +166,7 @@ function connect() {
 
         // Handle Playback State
         if (data.isPlaying !== undefined) {
+            lastState.isPlaying = data.isPlaying;
             ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
             ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
         }
@@ -172,13 +195,17 @@ function connect() {
         }
 
         // Handle Progress
-        if ((data.progress !== undefined || data.type === 'progressUpdate') && !isSeeking) {
-            const progress = data.progress;
-            const duration = data.duration ?? ui.progressBar.max;
-            ui.progressBar.max = duration;
-            ui.progressBar.value = progress;
-            ui.currentTime.textContent = formatTime(progress);
-            ui.durationTime.textContent = formatTime(duration);
+        if (data.progress !== undefined) {
+            lastState.progress = data.progress;
+            lastState.duration = data.duration ?? lastState.duration;
+            lastState.timestamp = data.timestamp ?? Date.now();
+            
+            if (!isSeeking) {
+                ui.progressBar.max = lastState.duration;
+                ui.progressBar.value = lastState.progress;
+                ui.currentTime.textContent = formatTime(lastState.progress);
+                ui.durationTime.textContent = formatTime(lastState.duration);
+            }
         }
     };
 
@@ -206,8 +233,14 @@ ui.volumeSlider.oninput = (e) => {
 ui.progressBar.onmousedown = () => isSeeking = true;
 ui.progressBar.onmouseup = (e) => {
     isSeeking = false;
-    send({type: 'playbackControl', command: 'seek', position: parseInt(e.target.value)});
+    const newPos = parseInt(e.target.value);
+    lastState.progress = newPos;
+    lastState.timestamp = Date.now();
+    send({type: 'playbackControl', command: 'seek', position: newPos});
 };
 ui.progressBar.oninput = (e) => ui.currentTime.textContent = formatTime(e.target.value);
 
-document.addEventListener('DOMContentLoaded', connect);
+document.addEventListener('DOMContentLoaded', () => {
+    connect();
+    requestAnimationFrame(animate);
+});

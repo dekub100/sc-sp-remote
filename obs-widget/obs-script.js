@@ -2,6 +2,14 @@
 let ws;
 let serverUrl = null;
 
+// Interpolation state
+let lastState = {
+  progress: 0,
+  duration: 0,
+  isPlaying: false,
+  timestamp: Date.now(),
+};
+
 const elements = {
   albumArt: document.getElementById("albumArt"),
   songTitle: document.getElementById("songTitle"),
@@ -18,6 +26,7 @@ const canvas = document.createElement("canvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
 function formatTime(ms) {
+  if (isNaN(ms) || ms < 0) return "0:00";
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 }
@@ -25,6 +34,8 @@ function formatTime(ms) {
 function updateMarquee(element, text) {
   const wrapper = element.querySelector(".marquee-wrapper");
   if (!wrapper) return;
+  if (wrapper.textContent === text) return;
+
   wrapper.textContent = text;
   wrapper.setAttribute("data-text", text);
   element.classList.remove("marquee-active");
@@ -34,7 +45,7 @@ function updateMarquee(element, text) {
       element.style.setProperty("--duration", `${duration}s`);
       element.classList.add("marquee-active");
     }
-  }, 50);
+  }, 100);
 }
 
 /**
@@ -42,7 +53,6 @@ function updateMarquee(element, text) {
  */
 function updateDynamicColors(img) {
   try {
-    // Resize canvas to a small thumbnail for speed
     canvas.width = 50;
     canvas.height = 50;
     ctx.drawImage(img, 0, 0, 50, 50);
@@ -53,7 +63,6 @@ function updateDynamicColors(img) {
       b = 0,
       count = 0;
 
-    // Simple average (skipping every 4 pixels for speed)
     for (let i = 0; i < imageData.length; i += 16) {
       r += imageData[i];
       g += imageData[i + 1];
@@ -65,7 +74,6 @@ function updateDynamicColors(img) {
     g = Math.floor(g / count);
     b = Math.floor(b / count);
 
-    // Darken the color for background visibility
     const bgR = Math.floor(r * 0.4);
     const bgG = Math.floor(g * 0.4);
     const bgB = Math.floor(b * 0.4);
@@ -75,6 +83,25 @@ function updateDynamicColors(img) {
   } catch (e) {
     console.error("Color extraction failed:", e);
   }
+}
+
+// Smooth interpolation loop
+function animate() {
+  if (lastState.isPlaying) {
+    const now = Date.now();
+    const elapsed = now - lastState.timestamp;
+    const currentProgress = Math.min(
+      lastState.progress + elapsed,
+      lastState.duration
+    );
+
+    if (lastState.duration > 0) {
+      const pct = (currentProgress / lastState.duration) * 100;
+      elements.progressBarFill.style.width = `${pct}%`;
+      elements.currentTime.textContent = formatTime(currentProgress);
+    }
+  }
+  requestAnimationFrame(animate);
 }
 
 function connect() {
@@ -107,17 +134,22 @@ function connect() {
       }
     }
 
+    // Handle Playback State
+    if (data.isPlaying !== undefined) {
+      lastState.isPlaying = data.isPlaying;
+    }
+
     // Handle Progress
     if (data.progress !== undefined) {
-      const duration = data.duration ?? parseInt(elements.totalTime.getAttribute('data-ms') || 0);
-      if (duration > 0) {
-        const pct = (data.progress / duration) * 100;
+      lastState.progress = data.progress;
+      lastState.duration = data.duration ?? lastState.duration;
+      lastState.timestamp = data.timestamp ?? Date.now();
+
+      if (lastState.duration > 0) {
+        const pct = (lastState.progress / lastState.duration) * 100;
         elements.progressBarFill.style.width = `${pct}%`;
-        elements.currentTime.textContent = formatTime(data.progress);
-        if (data.duration !== undefined) {
-            elements.totalTime.textContent = formatTime(data.duration);
-            elements.totalTime.setAttribute('data-ms', data.duration);
-        }
+        elements.currentTime.textContent = formatTime(lastState.progress);
+        elements.totalTime.textContent = formatTime(lastState.duration);
       }
     }
   };
@@ -125,4 +157,7 @@ function connect() {
   ws.onclose = () => setTimeout(connect, 2000);
 }
 
-document.addEventListener("DOMContentLoaded", connect);
+document.addEventListener("DOMContentLoaded", () => {
+  connect();
+  requestAnimationFrame(animate);
+});

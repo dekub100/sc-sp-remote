@@ -66,6 +66,7 @@
         this.ws.onmessage = this.onMessage.bind(this);
         this.ws.onclose = this.onClose.bind(this);
         this.ws.onerror = this.onError.bind(this);
+        this.connectionTimestamp = Date.now();
       } catch (error) {
         console.error("[RemoteVolume] Connection error:", error);
         this.scheduleReconnect(this.connect.bind(this));
@@ -298,11 +299,16 @@
         // ISOLATION LOGIC:
         // We only honor playback changes if they come from a dedicated playbackUpdate 
         // OR a full stateUpdate that actually intends to sync state.
-        // If it's a volumeUpdate, we ignore the isPlaying field to avoid stale pauses.
+        // We also IGNORE status updates for the first 2 seconds after connecting 
+        // to prevent a stale server state (e.g. "paused") from killing active playback 
+        // before our own "syncFullState" has finished propagating.
         const isReliableSource = serverState.type === "playbackUpdate" || 
                                  (serverState.type === "stateUpdate" && serverState.trackName !== undefined);
+        
+        const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
 
-        if (isReliableSource && current !== serverState.isPlaying) {
+        if (isReliableSource && !isStaleWindow && current !== serverState.isPlaying) {
+          console.log(`[RemoteVolume] Applying playback change from server: ${serverState.isPlaying}`);
           if (serverState.isPlaying) Spicetify.Player.play();
           else Spicetify.Player.pause();
           this.state.isPlaying = serverState.isPlaying;

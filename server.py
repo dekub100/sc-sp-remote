@@ -87,17 +87,19 @@ read_state_from_file()
 # --- Broadcasting ---
 CLIENTS = set()
 
-async def broadcast(message):
+async def broadcast(message, exclude_ws=None):
     if not CLIENTS: return
     msg = json.dumps(message)
     # Use a copy of the set to avoid "Set size changed during iteration" errors
     for ws in list(CLIENTS):
+        if ws == exclude_ws:
+            continue
         try:
             await ws.send_str(msg)
         except Exception:
             CLIENTS.discard(ws)
 
-async def broadcast_current_state():
+async def broadcast_current_state(exclude_ws=None):
     full_state_message = {
         "type": "stateUpdate",
         "volume": state["volume"],
@@ -113,42 +115,45 @@ async def broadcast_current_state():
         "backgroundPalette": state["backgroundPalette"],
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
-        "isLiked": state["isLiked"]
+        "isLiked": state["isLiked"],
+        "timestamp": time.time() * 1000  # Sync timestamp
     }
-    await broadcast(full_state_message)
+    await broadcast(full_state_message, exclude_ws)
 
-async def broadcast_volume_update():
+async def broadcast_volume_update(exclude_ws=None):
     await broadcast({
         "type": "volumeUpdate",
         "volume": state["volume"]
-    })
+    }, exclude_ws)
 
-async def broadcast_playback_update():
+async def broadcast_playback_update(exclude_ws=None):
     await broadcast({
         "type": "playbackUpdate",
         "isPlaying": state["isPlaying"],
-        "progress": state["trackProgress"]
-    })
+        "progress": state["trackProgress"],
+        "timestamp": time.time() * 1000
+    }, exclude_ws)
 
-async def broadcast_progress_update():
+async def broadcast_progress_update(exclude_ws=None):
     progress_message = {
         "type": "progressUpdate",
         "progress": state["trackProgress"],
-        "duration": state["trackDuration"]
+        "duration": state["trackDuration"],
+        "isPlaying": state["isPlaying"],
+        "timestamp": time.time() * 1000
     }
-    await broadcast(progress_message)
+    await broadcast(progress_message, exclude_ws)
 
 async def start_progress_broadcasting():
     while True:
         if state["isPlaying"]:
             now = time.time() * 1000
             elapsed_time = now - state["trackProgressStartTimestamp"]
-            new_progress = min(state["trackProgress"] + elapsed_time, state["trackDuration"])
-            if new_progress != state["trackProgress"]:
-                state["trackProgress"] = new_progress
-                await broadcast_progress_update()
+            # Increment progress from the anchor
+            state["trackProgress"] = min(state["trackProgress"] + elapsed_time, state["trackDuration"])
             state["trackProgressStartTimestamp"] = now
-        await asyncio.sleep(0.25)
+            await broadcast_progress_update()
+        await asyncio.sleep(0.5) # Reduced frequency since clients will interpolate
 
 # --- Message Handlers ---
 async def handle_message(ws, message):
@@ -161,40 +166,34 @@ async def handle_message(ws, message):
             volume_step = config.get("volumeStep", 0.05)
             if data.get("command") == "volumeUp":
                 state["volume"] = min(1.0, state["volume"] + volume_step)
-                save_state_to_file()
-                await broadcast_volume_update()
             elif data.get("command") == "volumeDown":
                 state["volume"] = max(0.0, state["volume"] - volume_step)
-                save_state_to_file()
-                await broadcast_volume_update()
             elif "volume" in data:
                 state["volume"] = data["volume"]
-                save_state_to_file()
-                await broadcast_volume_update()
+            save_state_to_file()
+            await broadcast_volume_update(exclude_ws=ws)
                 
         elif msg_type == "playbackUpdate":
             state["isPlaying"] = data.get("isPlaying", False)
+            state["trackProgress"] = data.get("progress", state["trackProgress"])
+            state["trackProgressStartTimestamp"] = time.time() * 1000
             save_state_to_file()
-            if state["isPlaying"]:
-                state["trackProgressStartTimestamp"] = time.time() * 1000
-            else:
-                state["trackProgress"] = data.get("progress", state["trackProgress"])
-            await broadcast_playback_update()
+            await broadcast_playback_update(exclude_ws=ws)
             
         elif msg_type == "shuffleUpdate":
             state["isShuffling"] = data.get("isShuffling", False)
             save_state_to_file()
-            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]})
+            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]}, exclude_ws=ws)
             
         elif msg_type == "repeatUpdate":
             state["repeatStatus"] = data.get("repeatStatus", 0)
             save_state_to_file()
-            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]})
+            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]}, exclude_ws=ws)
             
         elif msg_type == "likeUpdate":
             state["isLiked"] = data.get("isLiked", False)
             save_state_to_file()
-            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]})
+            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=ws)
             
         elif msg_type == "trackUpdate":
             state["currentTrack"] = {
@@ -209,16 +208,16 @@ async def handle_message(ws, message):
             state["trackProgress"] = data.get("progress", 0)
             state["trackProgressStartTimestamp"] = time.time() * 1000
             save_state_to_file()
-            await broadcast_current_state()
+            await broadcast_current_state(exclude_ws=ws)
             
         elif msg_type == "progressUpdate":
             state["trackProgress"] = data.get("progress", 0)
             state["trackDuration"] = data.get("duration", 0)
             state["trackProgressStartTimestamp"] = time.time() * 1000
-            await broadcast_progress_update()
+            await broadcast_progress_update(exclude_ws=ws)
             
         elif msg_type == "like":
-            await broadcast({"type": "playbackControl", "command": "like"})
+            await broadcast({"type": "playbackControl", "command": "like"}, exclude_ws=ws)
             
         elif msg_type == "playbackControl":
             cmd = data.get("command")
@@ -227,7 +226,7 @@ async def handle_message(ws, message):
                     "type": "playbackControl",
                     "command": cmd,
                     "position": data.get("position")
-                })
+                }, exclude_ws=ws)
         else:
             print(f"Unknown message type: {msg_type}")
             

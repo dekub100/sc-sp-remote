@@ -94,7 +94,7 @@ body {
 */
 .marquee-wrapper {
   display: inline-block;
-  padding-right: 50px; /* Space before loop */
+  padding-right: 120px; /* Space before loop */
 }
 
 .marquee-active .marquee-wrapper {
@@ -105,7 +105,7 @@ body {
 /* Duplicate for seamless loop */
 .marquee-active .marquee-wrapper::after {
   content: attr(data-text);
-  padding-left: 50px;
+  padding-left: 120px;
 }
 
 @keyframes marquee-scroll {

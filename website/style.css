@@ -80,13 +80,13 @@ body {
 }
 
 .marquee-active .marquee-wrapper {
-  padding-right: 50px;
+  padding-right: 120px;
   animation: marquee-scroll var(--duration, 10s) linear infinite;
 }
 
 .marquee-active .marquee-wrapper::after {
   content: attr(data-text);
-  padding-left: 50px;
+  padding-left: 120px;
 }
 
 @keyframes marquee-scroll {
