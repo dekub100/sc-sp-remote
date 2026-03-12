@@ -76,6 +76,7 @@
     onOpen() {
       console.log("[RemoteVolume] Connected.");
       this.reconnectAttempts = 0;
+      this.send({ type: "register", client: "spicetify" });
       this.syncFullState(true); // Force push all state on connect
       this.startServices();
     },
@@ -267,15 +268,38 @@
     },
 
     checkProgressChange(force = false) {
-      const progress = Spicetify.Player.getProgress();
-      // Only send update if progress has drifted significantly (> 1 sec) or forced
-      // This prevents spamming the server every 250ms with micro-updates
-      if (force || Math.abs(progress - this.state.progress) > 1000) {
+      // Robust progress retrieval
+      let progress = 0;
+      try {
+        if (typeof Spicetify.Player.getProgress === "function") {
+          progress = Spicetify.Player.getProgress();
+        } else if (Spicetify.Player.progress !== undefined) {
+          progress = Spicetify.Player.progress;
+        } else if (Spicetify.Player.data && Spicetify.Player.data.progress_ms !== undefined) {
+          progress = Spicetify.Player.data.progress_ms;
+        }
+      } catch (e) {
+        console.error("[RemoteVolume] Error getting progress:", e);
+      }
+
+      let duration = 0;
+      try {
+        if (typeof Spicetify.Player.getDuration === "function") {
+          duration = Spicetify.Player.getDuration();
+        } else if (Spicetify.Player.data && Spicetify.Player.data.item && Spicetify.Player.data.item.duration_ms) {
+          duration = Spicetify.Player.data.item.duration_ms;
+        }
+      } catch (e) {
+        console.error("[RemoteVolume] Error getting duration:", e);
+      }
+
+      // Only send update if progress has drifted significantly (> 1.5 sec) or forced
+      if (force || Math.abs(progress - this.state.progress) > 1500) {
         this.state.progress = progress;
         this.send({
           type: "progressUpdate",
           progress: progress,
-          duration: Spicetify.Player.getDuration(),
+          duration: duration,
         });
       }
     },

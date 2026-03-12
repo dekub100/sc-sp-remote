@@ -118,6 +118,10 @@ function connect() {
 
   ws = new WebSocket(serverUrl);
 
+  ws.onopen = () => {
+    ws.send(JSON.stringify({type: 'register', client: 'obs'}));
+  };
+
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 

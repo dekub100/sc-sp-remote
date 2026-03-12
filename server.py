@@ -85,19 +85,20 @@ def save_state_to_file():
 read_state_from_file()
 
 # --- Broadcasting ---
-CLIENTS = set()
+CLIENTS = {} # {ws: {"type": "unknown"}}
 
 async def broadcast(message, exclude_ws=None):
     if not CLIENTS: return
     msg = json.dumps(message)
-    # Use a copy of the set to avoid "Set size changed during iteration" errors
-    for ws in list(CLIENTS):
+    # Use a copy of the keys to avoid "Dictionary size changed during iteration" errors
+    for ws in list(CLIENTS.keys()):
         if ws == exclude_ws:
             continue
         try:
             await ws.send_str(msg)
         except Exception:
-            CLIENTS.discard(ws)
+            if ws in CLIENTS:
+                del CLIENTS[ws]
 
 async def broadcast_current_state(exclude_ws=None):
     full_state_message = {
@@ -159,9 +160,40 @@ async def start_progress_broadcasting():
 async def handle_message(ws, message):
     try:
         data = json.loads(message)
-        print(f"Received message: {data}")
+        print(f"Received message from {CLIENTS.get(ws, {}).get('type', 'unknown')}: {data}")
         msg_type = data.get("type")
         
+        if msg_type == "register":
+            client_type = data.get("client", "unknown")
+            CLIENTS[ws]["type"] = client_type
+            print(f"Client registered as: {client_type}")
+            if client_type == "spicetify":
+                state["spicetifyClient"] = ws
+                print("Spicetify client specifically identified.")
+            return
+
+        if msg_type == "getInitialState":
+            initial_state = {
+                "type": "stateUpdate",
+                "volume": state["volume"],
+                "isPlaying": state["isPlaying"],
+                "trackName": state["currentTrack"]["trackName"],
+                "artistName": state["currentTrack"]["artistName"],
+                "albumName": state["currentTrack"]["albumName"],
+                "trackUri": state["currentTrack"]["trackUri"],
+                "albumUri": state["currentTrack"]["albumUri"],
+                "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+                "progress": state["trackProgress"],
+                "duration": state["trackDuration"],
+                "backgroundPalette": state["backgroundPalette"],
+                "isShuffling": state["isShuffling"],
+                "repeatStatus": state["repeatStatus"],
+                "isLiked": state["isLiked"],
+                "timestamp": time.time() * 1000
+            }
+            await ws.send_str(json.dumps(initial_state))
+            return
+
         if msg_type == "volumeUpdate":
             volume_step = config.get("volumeStep", 0.05)
             if data.get("command") == "volumeUp":
@@ -171,29 +203,31 @@ async def handle_message(ws, message):
             elif "volume" in data:
                 state["volume"] = data["volume"]
             save_state_to_file()
-            await broadcast_volume_update(exclude_ws=ws)
+            # Don't exclude the sender; multiple Stream Deck actions share the same connection
+            await broadcast_volume_update(exclude_ws=None)
                 
         elif msg_type == "playbackUpdate":
-            state["isPlaying"] = data.get("isPlaying", False)
+            if "isPlaying" in data:
+                state["isPlaying"] = data["isPlaying"]
             state["trackProgress"] = data.get("progress", state["trackProgress"])
             state["trackProgressStartTimestamp"] = time.time() * 1000
             save_state_to_file()
-            await broadcast_playback_update(exclude_ws=ws)
+            await broadcast_playback_update(exclude_ws=None)
             
         elif msg_type == "shuffleUpdate":
             state["isShuffling"] = data.get("isShuffling", False)
             save_state_to_file()
-            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]}, exclude_ws=ws)
+            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]}, exclude_ws=None)
             
         elif msg_type == "repeatUpdate":
             state["repeatStatus"] = data.get("repeatStatus", 0)
             save_state_to_file()
-            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]}, exclude_ws=ws)
+            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]}, exclude_ws=None)
             
         elif msg_type == "likeUpdate":
             state["isLiked"] = data.get("isLiked", False)
             save_state_to_file()
-            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=ws)
+            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=None)
             
         elif msg_type == "trackUpdate":
             state["currentTrack"] = {
@@ -208,13 +242,13 @@ async def handle_message(ws, message):
             state["trackProgress"] = data.get("progress", 0)
             state["trackProgressStartTimestamp"] = time.time() * 1000
             save_state_to_file()
-            await broadcast_current_state(exclude_ws=ws)
+            await broadcast_current_state(exclude_ws=None)
             
         elif msg_type == "progressUpdate":
             state["trackProgress"] = data.get("progress", 0)
             state["trackDuration"] = data.get("duration", 0)
             state["trackProgressStartTimestamp"] = time.time() * 1000
-            await broadcast_progress_update(exclude_ws=ws)
+            await broadcast_progress_update(exclude_ws=None)
             
         elif msg_type == "like":
             await broadcast({"type": "playbackControl", "command": "like"}, exclude_ws=ws)
@@ -238,14 +272,10 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     
-    CLIENTS.add(ws)
-    print("Client connected via WebSocket.")
-    
-    if state["spicetifyClient"] is None:
-        state["spicetifyClient"] = ws
-        print("Spicetify client identified.")
+    CLIENTS[ws] = {"type": "unknown"}
+    print("New connection established.")
         
-    # Send initial state sync
+    # Send initial state sync immediately upon connection
     initial_state = {
         "type": "stateUpdate",
         "volume": state["volume"],
@@ -261,7 +291,8 @@ async def websocket_handler(request):
         "backgroundPalette": state["backgroundPalette"],
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
-        "isLiked": state["isLiked"]
+        "isLiked": state["isLiked"],
+        "timestamp": time.time() * 1000
     }
     await ws.send_str(json.dumps(initial_state))
     
@@ -272,10 +303,11 @@ async def websocket_handler(request):
             elif msg.type == web.WSMsgType.ERROR:
                 print(f'WebSocket connection closed with exception {ws.exception()}')
     finally:
-        CLIENTS.discard(ws)
-        if ws == state["spicetifyClient"]:
+        client_info = CLIENTS.pop(ws, None)
+        if client_info and client_info.get("type") == "spicetify":
             state["spicetifyClient"] = None
             print("Spicetify client disconnected.")
+        print(f"Client {client_info.get('type') if client_info else 'unknown'} disconnected.")
     
     return ws
 

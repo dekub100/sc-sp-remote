@@ -137,6 +137,7 @@ function connect() {
     ws.onopen = () => {
         ui.container.classList.remove('hidden');
         ui.error.classList.add('hidden');
+        send({type: 'register', client: 'website'});
     };
 
     ws.onmessage = (event) => {
