@@ -109,7 +109,7 @@ function connect() {
     fetch("/api/config")
       .then((r) => r.json())
       .then((cfg) => {
-        serverUrl = `ws://${window.location.hostname}:${cfg.port}`;
+        serverUrl = `ws://${window.location.hostname}:${cfg.port}/?client=obs`;
         connect();
       })
       .catch(() => setTimeout(connect, 2000));
@@ -119,7 +119,7 @@ function connect() {
   ws = new WebSocket(serverUrl);
 
   ws.onopen = () => {
-    ws.send(JSON.stringify({type: 'register', client: 'obs'}));
+    // Register handled by query param
   };
 
   ws.onmessage = (event) => {

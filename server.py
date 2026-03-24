@@ -50,6 +50,8 @@ state = {
     "spicetifyClient": None
 }
 
+_save_timer = None
+
 def read_state_from_file():
     if os.path.exists(STATE_FILE):
         try:
@@ -65,7 +67,40 @@ def read_state_from_file():
         except Exception as e:
             print(f"Server: Error reading state file: {e}")
 
+async def save_state_to_file_debounced():
+    """Wait for a period of inactivity before saving to disk."""
+    global _save_timer
+    if _save_timer:
+        _save_timer.cancel()
+    
+    _save_timer = asyncio.create_task(_actually_save_after_delay(2.0))
+
+async def _actually_save_after_delay(delay):
+    try:
+        await asyncio.sleep(delay)
+        rounded_volume = round(state["volume"], 2)
+        current_state_to_save = {
+            "volume": rounded_volume,
+            "isPlaying": state["isPlaying"],
+            "currentTrack": state["currentTrack"],
+            "isShuffling": state["isShuffling"],
+            "repeatStatus": state["repeatStatus"],
+            "isLiked": state["isLiked"]
+        }
+        # Run synchronous file writing in a thread to avoid blocking the event loop
+        await asyncio.to_thread(_write_state_to_disk, current_state_to_save)
+        print("Server: Saved state to state.json (debounced)")
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"Server: Error in debounced save: {e}")
+
+def _write_state_to_disk(data):
+    with open(STATE_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
 def save_state_to_file():
+    # Deprecated for async handlers, but kept for sync initialization if needed
     rounded_volume = round(state["volume"], 2)
     current_state_to_save = {
         "volume": rounded_volume,
@@ -75,24 +110,20 @@ def save_state_to_file():
         "repeatStatus": state["repeatStatus"],
         "isLiked": state["isLiked"]
     }
-    try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(current_state_to_save, f, indent=2)
-        print("Server: Saved state to state.json")
-    except Exception as e:
-        print(f"Server: Error writing state file: {e}")
+    _write_state_to_disk(current_state_to_save)
 
 read_state_from_file()
 
 # --- Broadcasting ---
-CLIENTS = {} # {ws: {"type": "unknown"}}
+CLIENTS = {} # {ws: {"type": "unknown", "remote_ip": ""}}
 
-async def broadcast(message, exclude_ws=None):
+async def broadcast(message, exclude_ws=None, target_type=None):
     if not CLIENTS: return
     msg = json.dumps(message)
-    # Use a copy of the keys to avoid "Dictionary size changed during iteration" errors
-    for ws in list(CLIENTS.keys()):
+    for ws, info in list(CLIENTS.items()):
         if ws == exclude_ws:
+            continue
+        if target_type and info.get("type") != target_type:
             continue
         try:
             await ws.send_str(msg)
@@ -117,7 +148,7 @@ async def broadcast_current_state(exclude_ws=None):
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
         "isLiked": state["isLiked"],
-        "timestamp": time.time() * 1000  # Sync timestamp
+        "timestamp": time.time() * 1000
     }
     await broadcast(full_state_message, exclude_ws)
 
@@ -150,132 +181,22 @@ async def start_progress_broadcasting():
         if state["isPlaying"]:
             now = time.time() * 1000
             elapsed_time = now - state["trackProgressStartTimestamp"]
-            # Increment progress from the anchor
             state["trackProgress"] = min(state["trackProgress"] + elapsed_time, state["trackDuration"])
             state["trackProgressStartTimestamp"] = now
+            # Progress update is mostly for controllers and widgets
             await broadcast_progress_update()
-        await asyncio.sleep(0.5) # Reduced frequency since clients will interpolate
+        await asyncio.sleep(1.0) # Increased interval, clients interpolate
 
 # --- Message Handlers ---
-async def handle_message(ws, message):
-    try:
-        data = json.loads(message)
-        print(f"Received message from {CLIENTS.get(ws, {}).get('type', 'unknown')}: {data}")
-        msg_type = data.get("type")
-        
-        if msg_type == "register":
-            client_type = data.get("client", "unknown")
-            CLIENTS[ws]["type"] = client_type
-            print(f"Client registered as: {client_type}")
-            if client_type == "spicetify":
-                state["spicetifyClient"] = ws
-                print("Spicetify client specifically identified.")
-            return
 
-        if msg_type == "getInitialState":
-            initial_state = {
-                "type": "stateUpdate",
-                "volume": state["volume"],
-                "isPlaying": state["isPlaying"],
-                "trackName": state["currentTrack"]["trackName"],
-                "artistName": state["currentTrack"]["artistName"],
-                "albumName": state["currentTrack"]["albumName"],
-                "trackUri": state["currentTrack"]["trackUri"],
-                "albumUri": state["currentTrack"]["albumUri"],
-                "albumArtUrl": state["currentTrack"]["albumArtUrl"],
-                "progress": state["trackProgress"],
-                "duration": state["trackDuration"],
-                "backgroundPalette": state["backgroundPalette"],
-                "isShuffling": state["isShuffling"],
-                "repeatStatus": state["repeatStatus"],
-                "isLiked": state["isLiked"],
-                "timestamp": time.time() * 1000
-            }
-            await ws.send_str(json.dumps(initial_state))
-            return
+async def handle_register(ws, data):
+    client_type = data.get("client", "unknown")
+    CLIENTS[ws]["type"] = client_type
+    if client_type == "spicetify":
+        state["spicetifyClient"] = ws
+    print(f"Client registered as: {client_type}")
 
-        if msg_type == "volumeUpdate":
-            volume_step = config.get("volumeStep", 0.05)
-            if data.get("command") == "volumeUp":
-                state["volume"] = min(1.0, state["volume"] + volume_step)
-            elif data.get("command") == "volumeDown":
-                state["volume"] = max(0.0, state["volume"] - volume_step)
-            elif "volume" in data:
-                state["volume"] = data["volume"]
-            save_state_to_file()
-            # Don't exclude the sender; multiple Stream Deck actions share the same connection
-            await broadcast_volume_update(exclude_ws=None)
-                
-        elif msg_type == "playbackUpdate":
-            if "isPlaying" in data:
-                state["isPlaying"] = data["isPlaying"]
-            state["trackProgress"] = data.get("progress", state["trackProgress"])
-            state["trackProgressStartTimestamp"] = time.time() * 1000
-            save_state_to_file()
-            await broadcast_playback_update(exclude_ws=None)
-            
-        elif msg_type == "shuffleUpdate":
-            state["isShuffling"] = data.get("isShuffling", False)
-            save_state_to_file()
-            await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]}, exclude_ws=None)
-            
-        elif msg_type == "repeatUpdate":
-            state["repeatStatus"] = data.get("repeatStatus", 0)
-            save_state_to_file()
-            await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]}, exclude_ws=None)
-            
-        elif msg_type == "likeUpdate":
-            state["isLiked"] = data.get("isLiked", False)
-            save_state_to_file()
-            await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=None)
-            
-        elif msg_type == "trackUpdate":
-            state["currentTrack"] = {
-                "trackName": data.get("trackName", "Unknown Track"),
-                "artistName": data.get("artistName", "Unknown Artist"),
-                "albumName": data.get("albumName", "Unknown Album"),
-                "trackUri": data.get("trackUri", ""),
-                "albumUri": data.get("albumUri", ""),
-                "albumArtUrl": data.get("albumArtUrl", "")
-            }
-            state["trackDuration"] = data.get("duration", 0)
-            state["trackProgress"] = data.get("progress", 0)
-            state["trackProgressStartTimestamp"] = time.time() * 1000
-            save_state_to_file()
-            await broadcast_current_state(exclude_ws=None)
-            
-        elif msg_type == "progressUpdate":
-            state["trackProgress"] = data.get("progress", 0)
-            state["trackDuration"] = data.get("duration", 0)
-            state["trackProgressStartTimestamp"] = time.time() * 1000
-            await broadcast_progress_update(exclude_ws=None)
-            
-        elif msg_type == "like":
-            await broadcast({"type": "playbackControl", "command": "like"}, exclude_ws=ws)
-            
-        elif msg_type == "playbackControl":
-            cmd = data.get("command")
-            if cmd not in ["volumeUp", "volumeDown"]:
-                await broadcast({
-                    "type": "playbackControl",
-                    "command": cmd,
-                    "position": data.get("position")
-                }, exclude_ws=ws)
-        else:
-            print(f"Unknown message type: {msg_type}")
-            
-    except Exception as e:
-        print(f"Failed to parse message: {e}")
-
-# --- Unified WebSocket Handler ---
-async def websocket_handler(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-    
-    CLIENTS[ws] = {"type": "unknown"}
-    print("New connection established.")
-        
-    # Send initial state sync immediately upon connection
+async def handle_get_initial_state(ws, data):
     initial_state = {
         "type": "stateUpdate",
         "volume": state["volume"],
@@ -295,6 +216,125 @@ async def websocket_handler(request):
         "timestamp": time.time() * 1000
     }
     await ws.send_str(json.dumps(initial_state))
+
+async def handle_volume_update(ws, data):
+    volume_step = config.get("volumeStep", 0.05)
+    if data.get("command") == "volumeUp":
+        state["volume"] = min(1.0, state["volume"] + volume_step)
+    elif data.get("command") == "volumeDown":
+        state["volume"] = max(0.0, state["volume"] - volume_step)
+    elif "volume" in data:
+        state["volume"] = data["volume"]
+    await save_state_to_file_debounced()
+    await broadcast_volume_update()
+
+async def handle_playback_update(ws, data):
+    if "isPlaying" in data:
+        state["isPlaying"] = data["isPlaying"]
+    state["trackProgress"] = data.get("progress", state["trackProgress"])
+    state["trackProgressStartTimestamp"] = time.time() * 1000
+    await save_state_to_file_debounced()
+    await broadcast_playback_update()
+
+async def handle_shuffle_update(ws, data):
+    state["isShuffling"] = data.get("isShuffling", False)
+    await save_state_to_file_debounced()
+    await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]})
+
+async def handle_repeat_update(ws, data):
+    state["repeatStatus"] = data.get("repeatStatus", 0)
+    await save_state_to_file_debounced()
+    await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]})
+
+async def handle_like_update(ws, data):
+    state["isLiked"] = data.get("isLiked", False)
+    await save_state_to_file_debounced()
+    await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]})
+
+async def handle_track_update(ws, data):
+    # Support for batched updates
+    if "volume" in data:
+        state["volume"] = data["volume"]
+    if "isPlaying" in data:
+        state["isPlaying"] = data["isPlaying"]
+    if "isShuffling" in data:
+        state["isShuffling"] = data["isShuffling"]
+    if "repeatStatus" in data:
+        state["repeatStatus"] = data["repeatStatus"]
+    if "isLiked" in data:
+        state["isLiked"] = data["isLiked"]
+        
+    state["currentTrack"].update({
+        "trackName": data.get("trackName", state["currentTrack"]["trackName"]),
+        "artistName": data.get("artistName", state["currentTrack"]["artistName"]),
+        "albumName": data.get("albumName", state["currentTrack"]["albumName"]),
+        "trackUri": data.get("trackUri", state["currentTrack"]["trackUri"]),
+        "albumUri": data.get("albumUri", state["currentTrack"]["albumUri"]),
+        "albumArtUrl": data.get("albumArtUrl", state["currentTrack"]["albumArtUrl"])
+    })
+    state["trackDuration"] = data.get("duration", state["trackDuration"])
+    state["trackProgress"] = data.get("progress", state["trackProgress"])
+    state["trackProgressStartTimestamp"] = time.time() * 1000
+    
+    await save_state_to_file_debounced()
+    await broadcast_current_state()
+
+async def handle_progress_update(ws, data):
+    state["trackProgress"] = data.get("progress", 0)
+    state["trackDuration"] = data.get("duration", 0)
+    state["trackProgressStartTimestamp"] = time.time() * 1000
+    await broadcast_progress_update()
+
+async def handle_playback_control(ws, data):
+    # Commands from clients go ONLY to Spicetify
+    await broadcast(data, target_type="spicetify")
+
+async def handle_like_command(ws, data):
+    await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify")
+
+MESSAGE_HANDLERS = {
+    "register": handle_register,
+    "getInitialState": handle_get_initial_state,
+    "stateUpdate": handle_track_update, # Snapshot from client
+    "volumeUpdate": handle_volume_update,
+    "playbackUpdate": handle_playback_update,
+    "shuffleUpdate": handle_shuffle_update,
+    "repeatUpdate": handle_repeat_update,
+    "likeUpdate": handle_like_update,
+    "trackUpdate": handle_track_update, # Delta from client
+    "progressUpdate": handle_progress_update,
+    "playbackControl": handle_playback_control,
+    "like": handle_like_command
+}
+
+async def handle_message(ws, message):
+    try:
+        data = json.loads(message)
+        msg_type = data.get("type")
+        handler = MESSAGE_HANDLERS.get(msg_type)
+        if handler:
+            await handler(ws, data)
+        else:
+            print(f"Server: Received unknown message type: {msg_type}")
+    except Exception as e:
+        print(f"Server: Failed to handle message: {e}")
+
+# --- Unified WebSocket Handler ---
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    
+    # Identify client type from query params
+    client_type = request.query.get("client", "unknown")
+    CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote}
+    
+    print(f"New connection: {client_type} ({request.remote})")
+    
+    if client_type == "spicetify":
+        state["spicetifyClient"] = ws
+        
+    # Send initial state sync immediately
+    await handle_get_initial_state(ws, {})
     
     try:
         async for msg in ws:
@@ -303,13 +343,13 @@ async def websocket_handler(request):
             elif msg.type == web.WSMsgType.ERROR:
                 print(f'WebSocket connection closed with exception {ws.exception()}')
     finally:
-        client_info = CLIENTS.pop(ws, None)
-        if client_info and client_info.get("type") == "spicetify":
+        info = CLIENTS.pop(ws, None)
+        if info and info.get("type") == "spicetify":
             state["spicetifyClient"] = None
-            print("Spicetify client disconnected.")
-        print(f"Client {client_info.get('type') if client_info else 'unknown'} disconnected.")
+        print(f"Disconnected: {info.get('type') if info else 'unknown'}")
     
     return ws
+
 
 # --- API & Static Hosting ---
 async def handle_config(request):
@@ -361,13 +401,23 @@ async def main():
     print(f"Main Server: http://localhost:{config['port']}")
     print(f"Discovery Server: http://localhost:{DISCOVERY_PORT}")
     
-    await asyncio.gather(
-        web.TCPSite(main_runner, '0.0.0.0', config['port']).start(),
-        web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT).start(),
-        start_progress_broadcasting()
-    )
-    
-    await asyncio.Future()
+    try:
+        await asyncio.gather(
+            web.TCPSite(main_runner, '0.0.0.0', config['port']).start(),
+            web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT).start(),
+            start_progress_broadcasting()
+        )
+        await asyncio.Future()
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        pass
+    finally:
+        print("Server: Shutting down, performing final state save...")
+        save_state_to_file()
+        await main_runner.cleanup()
+        await config_runner.cleanup()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())

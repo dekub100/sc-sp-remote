@@ -126,7 +126,7 @@ function animate() {
 function connect() {
     if (!serverUrl) {
         fetch('/api/config').then(r => r.json()).then(cfg => {
-            serverUrl = `ws://${window.location.hostname}:${cfg.port}`;
+            serverUrl = `ws://${window.location.hostname}:${cfg.port}/?client=website`;
             connect();
         }).catch(() => setTimeout(connect, 5000));
         return;
@@ -137,7 +137,7 @@ function connect() {
     ws.onopen = () => {
         ui.container.classList.remove('hidden');
         ui.error.classList.add('hidden');
-        send({type: 'register', client: 'website'});
+        // Register handled by query param
     };
 
     ws.onmessage = (event) => {

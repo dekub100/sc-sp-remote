@@ -43,7 +43,7 @@
       fetch(this.config.CONFIG_URL)
         .then((res) => res.json())
         .then((cfg) => {
-          this.config.SERVER_URL = `ws://localhost:${cfg.port}`;
+          this.config.SERVER_URL = `ws://localhost:${cfg.port}/?client=spicetify`;
           this.reconnectAttempts = 0;
           this.connect();
         })
@@ -76,7 +76,7 @@
     onOpen() {
       console.log("[RemoteVolume] Connected.");
       this.reconnectAttempts = 0;
-      this.send({ type: "register", client: "spicetify" });
+      // No need for manual register, handled by query params
       this.syncFullState(true); // Force push all state on connect
       this.startServices();
     },
@@ -155,40 +155,62 @@
       // Spicetify events are the most reliable source for these changes
       Spicetify.Player.addEventListener("songchange", () => {
         this.checkTrackChange(true);
-        this.checkProgressChange(true);
       });
       Spicetify.Player.addEventListener("onplaypause", () =>
         this.checkPlaybackStatus(true)
       );
-      
-      // We can use the 'onprogress' event, but it fires very rapidly. 
-      // We'll trust the poller/songchange for progress to save bandwidth, 
-      // or throttle this if needed.
     },
 
     /**
      * Checks state that requires polling (Volume, Shuffle, Repeat, Heart)
-     * as they don't always have consistent events across Spicetify versions.
      */
     checkPolledState() {
       this.checkVolume();
       this.checkShuffle();
       this.checkRepeat();
       this.checkLikeStatus();
-      this.checkProgressChange(); // Periodic sync for progress
+      this.checkProgressChange(); 
     },
 
-    syncFullState(force = false) {
-      this.checkVolume(force);
-      this.checkPlaybackStatus(force);
-      this.checkShuffle(force);
-      this.checkRepeat(force);
-      this.checkLikeStatus(force);
-      this.checkTrackChange(force);
-      this.checkProgressChange(force);
+    syncFullState() {
+      // This is the "Snapshot" - sent only on connection
+      const data = Spicetify.Player.data || {};
+      const track = data.item;
+      if (!track) return;
+
+      const meta = track.metadata || {};
+      let artUrl = "";
+      if (track.images && track.images.length > 0) {
+          artUrl = track.images[0].url;
+      } else if (meta.image_url) {
+          artUrl = meta.image_url;
+      }
+      if (artUrl && artUrl.startsWith("spotify:image:")) {
+          artUrl = "https://i.scdn.co/image/" + artUrl.substring(14);
+      }
+
+      const snapshot = {
+        type: "stateUpdate", 
+        volume: Spicetify.Player.getVolume(),
+        isPlaying: Spicetify.Player.isPlaying(),
+        isShuffling: Spicetify.Player.getShuffle(),
+        repeatStatus: Spicetify.Player.getRepeat(),
+        isLiked: Spicetify.Player.getHeart(),
+        trackName: track.name || meta.title || "Unknown Track",
+        artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
+        albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
+        trackUri: track.uri || meta.uri || "",
+        albumUri: (track.album && track.album.uri) || meta.album_uri || "",
+        albumArtUrl: artUrl,
+        duration: Spicetify.Player.getDuration(),
+        progress: Spicetify.Player.getProgress()
+      };
+
+      this.state = { ...snapshot };
+      this.send(snapshot);
     },
 
-    // --- Individual Checkers ---
+    // --- Individual Checkers (The Deltas) ---
 
     checkVolume(force = false) {
       const vol = Spicetify.Player.getVolume();
@@ -199,11 +221,10 @@
     },
 
     checkPlaybackStatus(force = false) {
-      // Use public API for playback state
       const isPlaying = Spicetify.Player.isPlaying();
       if (force || isPlaying !== this.state.isPlaying) {
         this.state.isPlaying = isPlaying;
-        this.send({ type: "playbackUpdate", isPlaying: isPlaying });
+        this.send({ type: "playbackUpdate", isPlaying: isPlaying, progress: Spicetify.Player.getProgress() });
       }
     },
 
@@ -240,20 +261,18 @@
         this.state.trackUri = track.uri;
         const meta = track.metadata || {};
         
-        // Extract artwork safely
         let artUrl = "";
         if (track.images && track.images.length > 0) {
             artUrl = track.images[0].url;
         } else if (meta.image_url) {
             artUrl = meta.image_url;
         }
-        
-        // Normalize Spotify image URIs to HTTPS URLs if needed
         if (artUrl && artUrl.startsWith("spotify:image:")) {
             artUrl = "https://i.scdn.co/image/" + artUrl.substring(14);
         }
 
-        const trackData = {
+        const metadata = {
+          type: "trackUpdate",
           trackName: track.name || meta.title || "Unknown Track",
           artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
           albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
@@ -261,45 +280,22 @@
           albumUri: (track.album && track.album.uri) || meta.album_uri || "",
           albumArtUrl: artUrl,
           duration: Spicetify.Player.getDuration(),
+          progress: 0 // New tracks always start at 0
         };
 
-        this.send({ type: "trackUpdate", ...trackData });
+        this.send(metadata);
       }
     },
 
     checkProgressChange(force = false) {
-      // Robust progress retrieval
-      let progress = 0;
-      try {
-        if (typeof Spicetify.Player.getProgress === "function") {
-          progress = Spicetify.Player.getProgress();
-        } else if (Spicetify.Player.progress !== undefined) {
-          progress = Spicetify.Player.progress;
-        } else if (Spicetify.Player.data && Spicetify.Player.data.progress_ms !== undefined) {
-          progress = Spicetify.Player.data.progress_ms;
-        }
-      } catch (e) {
-        console.error("[RemoteVolume] Error getting progress:", e);
-      }
-
-      let duration = 0;
-      try {
-        if (typeof Spicetify.Player.getDuration === "function") {
-          duration = Spicetify.Player.getDuration();
-        } else if (Spicetify.Player.data && Spicetify.Player.data.item && Spicetify.Player.data.item.duration_ms) {
-          duration = Spicetify.Player.data.item.duration_ms;
-        }
-      } catch (e) {
-        console.error("[RemoteVolume] Error getting duration:", e);
-      }
-
-      // Only send update if progress has drifted significantly (> 1.5 sec) or forced
-      if (force || Math.abs(progress - this.state.progress) > 1500) {
+      let progress = Spicetify.Player.getProgress();
+      // Only send update if progress has drifted significantly (> 2 sec)
+      if (force || Math.abs(progress - this.state.progress) > 2000) {
         this.state.progress = progress;
         this.send({
           type: "progressUpdate",
           progress: progress,
-          duration: duration,
+          duration: Spicetify.Player.getDuration(),
         });
       }
     },
@@ -307,54 +303,41 @@
     // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
-      // Volume
       if (serverState.volume !== undefined) {
-        const current = Spicetify.Player.getVolume();
-        if (Math.abs(current - serverState.volume) > 0.01) {
+        if (Math.abs(Spicetify.Player.getVolume() - serverState.volume) > 0.01) {
           Spicetify.Player.setVolume(serverState.volume);
           this.state.volume = serverState.volume;
         }
       }
 
-      // Playback
       if (serverState.isPlaying !== undefined) {
-        const current = Spicetify.Player.isPlaying();
-        
-        // ISOLATION LOGIC:
-        // We only honor playback changes if they come from a dedicated playbackUpdate 
-        // OR a full stateUpdate that actually intends to sync state.
-        // We also IGNORE status updates for the first 2 seconds after connecting 
-        // to prevent a stale server state (e.g. "paused") from killing active playback 
-        // before our own "syncFullState" has finished propagating.
-        const isReliableSource = serverState.type === "playbackUpdate" || 
-                                 (serverState.type === "stateUpdate" && serverState.trackName !== undefined);
-        
         const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
-
-        if (isReliableSource && !isStaleWindow && current !== serverState.isPlaying) {
-          console.log(`[RemoteVolume] Applying playback change from server: ${serverState.isPlaying}`);
+        if (!isStaleWindow && Spicetify.Player.isPlaying() !== serverState.isPlaying) {
           if (serverState.isPlaying) Spicetify.Player.play();
           else Spicetify.Player.pause();
           this.state.isPlaying = serverState.isPlaying;
         }
       }
 
-      // Shuffle
-      if (
-        serverState.isShuffling !== undefined &&
-        Spicetify.Player.getShuffle() !== serverState.isShuffling
-      ) {
-        Spicetify.Player.toggleShuffle();
-        this.state.isShuffling = serverState.isShuffling;
+      if (serverState.isShuffling !== undefined) {
+        if (Spicetify.Player.getShuffle() !== serverState.isShuffling) {
+          Spicetify.Player.toggleShuffle();
+          this.state.isShuffling = serverState.isShuffling;
+        }
       }
 
-      // Repeat
-      if (
-        serverState.repeatStatus !== undefined &&
-        Spicetify.Player.getRepeat() !== serverState.repeatStatus
-      ) {
-        Spicetify.Player.setRepeat(serverState.repeatStatus);
-        this.state.repeatStatus = serverState.repeatStatus;
+      if (serverState.repeatStatus !== undefined) {
+        if (Spicetify.Player.getRepeat() !== serverState.repeatStatus) {
+          Spicetify.Player.setRepeat(serverState.repeatStatus);
+          this.state.repeatStatus = serverState.repeatStatus;
+        }
+      }
+
+      if (serverState.isLiked !== undefined) {
+        if (Spicetify.Player.getHeart() !== serverState.isLiked) {
+          Spicetify.Player.toggleHeart();
+          this.state.isLiked = serverState.isLiked;
+        }
       }
     },
 
@@ -373,17 +356,13 @@
           Spicetify.Player.back();
           break;
         case "seek":
-          if (data.position !== undefined) {
-            Spicetify.Player.seek(data.position);
-          }
+          if (data.position !== undefined) Spicetify.Player.seek(data.position);
           break;
         case "toggleShuffle":
           Spicetify.Player.toggleShuffle();
           break;
         case "toggleRepeat":
-          // Cycle: 0 (off) -> 1 (track) -> 2 (context) -> 0
-          const nextRepeat = (Spicetify.Player.getRepeat() + 1) % 3;
-          Spicetify.Player.setRepeat(nextRepeat);
+          Spicetify.Player.setRepeat((Spicetify.Player.getRepeat() + 1) % 3);
           break;
         case "like":
           Spicetify.Player.toggleHeart();
@@ -396,9 +375,16 @@
           break;
       }
       
-      // FORCE SYNC: Immediately check state after a command.
-      // This "wakes up" the UI even if Spotify is in the background.
-      setTimeout(() => this.syncFullState(true), 100);
+      // OPTIMIZED SYNC: Only check the specific thing likely to have changed.
+      // 150ms delay gives Spotify enough time to update its internal state.
+      setTimeout(() => {
+        if (["next", "previous"].includes(data.command)) this.checkTrackChange();
+        else if (["play", "pause", "togglePlay"].includes(data.command)) this.checkPlaybackStatus();
+        else if (data.command === "toggleShuffle") this.checkShuffle();
+        else if (data.command === "toggleRepeat") this.checkRepeat();
+        else if (data.command === "like") this.checkLikeStatus();
+        else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
+      }, 150);
     },
 
     exposeGlobals() {
