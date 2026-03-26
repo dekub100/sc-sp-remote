@@ -1,5 +1,7 @@
 # spicetify-remote
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
 _Code was made with the help of AI, but its honestly so simple i think it just works._
