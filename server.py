@@ -27,7 +27,6 @@ config = {
     "enableWebsite": True,
     "volumeStep": 0.05,
     "logLevel": "INFO",
-    "maxLogSizeMB": 5,
     "backupCount": 3
 }
 

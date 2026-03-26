@@ -25,8 +25,8 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - Dynamic configuration for host, ports, CORS, and more
 - Unified server (HTTP + WebSockets) on a single port
 - **Session-based Logging**: Individual log files for each session with configurable levels (DEBUG, INFO, etc.)
-- **Robust Sync**: Specialized protection against state-toggling loops (e.g., the unlike/like bug)
-- **Immediate Shutdown**: Improved task management for clean, fast exits on Ctrl+C
+- **Robust Sync**: Specialized protection against state-toggling loops
+- **Immediate Shutdown**: Improved task management for clean
 
 ## Requirements
 
@@ -74,12 +74,12 @@ The server uses a `config.json` file for all major settings. You can edit this f
 ```
 
 - `port`: Main server port (for website, OBS widget, and WebSocket)
-- `logLevel`: Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
-- `backupCount`: Number of old session log files to keep in `logs/`
 - `allowedOrigins`: List of allowed origins for CORS (default: `["*"]`)
 - `defaultVolume`: Initial volume value when the server starts
 - `enableOBS`: Enable or disable the OBS widget routes
 - `enableWebsite`: Enable or disable the web interface
+- `logLevel`: Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
+- `backupCount`: Number of old session log files to keep in `logs/`
 
 **Notes:**
 
@@ -107,6 +107,7 @@ python server.py
 You can run the server as a background Windows Service. The script will automatically ask for Administrator privileges if needed.
 
 ### Install & Start
+
 ```powershell
 python service.py install
 python service.py start
@@ -117,11 +118,13 @@ python service.py start
 On Linux, you can use `systemd` to run the server in the background.
 
 1. Create a service file:
+
 ```bash
 sudo nano /etc/systemd/system/spicetify-remote.service
 ```
 
 2. Paste the following (replace `YOUR_USER` and `YOUR_PATH`):
+
 ```ini
 [Unit]
 Description=Spicetify Remote Server
@@ -140,6 +143,7 @@ WantedBy=multi-user.target
 ```
 
 3. Start and enable the service:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable spicetify-remote
@@ -151,12 +155,14 @@ sudo systemctl start spicetify-remote
 This project includes a dedicated Elgato Stream Deck Plugin (`com.dekub.spicetify-remote.sdPlugin`) for direct control of Spotify via your local `spicetify-remote` server.
 
 ### Available Actions
+
 - **Set Volume**: Configurable to an exact percentage.
 - **Playback Control**: Play/Pause, Next, Previous.
 - **Toggles**: Shuffle, Repeat, Like.
 - **Displays**: Shows current volume dynamically on the button.
 
 ### Server Communication
+
 The Stream Deck plugin communicates with the server via WebSockets. Ensure your server is running (`python server.py` or as a service) for the actions to function.
 
 ## Notes
