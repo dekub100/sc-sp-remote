@@ -303,6 +303,8 @@
     // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
+      const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
+
       if (serverState.volume !== undefined) {
         if (Math.abs(Spicetify.Player.getVolume() - serverState.volume) > 0.01) {
           Spicetify.Player.setVolume(serverState.volume);
@@ -311,7 +313,6 @@
       }
 
       if (serverState.isPlaying !== undefined) {
-        const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
         if (!isStaleWindow && Spicetify.Player.isPlaying() !== serverState.isPlaying) {
           if (serverState.isPlaying) Spicetify.Player.play();
           else Spicetify.Player.pause();
@@ -320,21 +321,21 @@
       }
 
       if (serverState.isShuffling !== undefined) {
-        if (Spicetify.Player.getShuffle() !== serverState.isShuffling) {
+        if (!isStaleWindow && Spicetify.Player.getShuffle() !== serverState.isShuffling) {
           Spicetify.Player.toggleShuffle();
           this.state.isShuffling = serverState.isShuffling;
         }
       }
 
       if (serverState.repeatStatus !== undefined) {
-        if (Spicetify.Player.getRepeat() !== serverState.repeatStatus) {
+        if (!isStaleWindow && Spicetify.Player.getRepeat() !== serverState.repeatStatus) {
           Spicetify.Player.setRepeat(serverState.repeatStatus);
           this.state.repeatStatus = serverState.repeatStatus;
         }
       }
 
       if (serverState.isLiked !== undefined) {
-        if (Spicetify.Player.getHeart() !== serverState.isLiked) {
+        if (!isStaleWindow && Spicetify.Player.getHeart() !== serverState.isLiked) {
           Spicetify.Player.toggleHeart();
           this.state.isLiked = serverState.isLiked;
         }

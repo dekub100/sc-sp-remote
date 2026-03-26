@@ -17,7 +17,29 @@ def run_command(command):
         print(f"Error: Command '{command[0]}' not found. Is Spicetify installed and in your PATH?")
         return False
 
+def install_dependencies():
+    print("Checking for required Python packages...")
+    try:
+        # Check if we have requirements.txt
+        if os.path.exists("requirements.txt"):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        else:
+            # Fallback if requirements.txt is missing
+            packages = ["aiohttp", "websockets"]
+            if platform.system() == "Windows":
+                packages.append("pywin32")
+            subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing dependencies: {e}")
+        return False
+
 def setup_extension():
+    # 0. Install Python dependencies
+    if not install_dependencies():
+        print("\nWarning: Could not install Python dependencies automatically.")
+        print("Please run: pip install aiohttp websockets pywin32\n")
+
     # 1. Determine Spicetify path based on OS
     system = platform.system()
     if system == "Windows":

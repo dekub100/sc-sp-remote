@@ -4,5 +4,8 @@
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,
-  "volumeStep": 0.05
+  "volumeStep": 0.05,
+  "logLevel": "INFO",
+  "maxLogSizeMB": 5,
+  "backupCount": 3
 }

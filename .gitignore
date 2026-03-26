@@ -1,5 +1,4 @@
 /.git
 /__pycache__
-
-
+logs/
 state.json

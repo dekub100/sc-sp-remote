@@ -22,6 +22,9 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - Built-in OBS Widget for streamers
 - Dynamic configuration for host, ports, CORS, and more
 - Unified server (HTTP + WebSockets) on a single port
+- **Session-based Logging**: Individual log files for each session with configurable levels (DEBUG, INFO, etc.)
+- **Robust Sync**: Specialized protection against state-toggling loops (e.g., the unlike/like bug)
+- **Immediate Shutdown**: Improved task management for clean, fast exits on Ctrl+C
 
 ## Requirements
 
@@ -37,21 +40,21 @@ git clone https://github.com/dekub100/spicetify-remote
 cd spicetify-remote
 ```
 
-2. Install the required Python dependencies:
-
-```bash
-pip install aiohttp websockets pywin32
-```
-
-3. Run the setup script to install the Spicetify extension:
+2. Run the setup script to install the Spicetify extension and required Python dependencies:
 
 ```bash
 python setup.py
 ```
 
+3. (Optional) If you'd like to install dependencies manually, you can use:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Configuration
 
-The server uses a `config.json` file for all major settings. You can edit this file to change the ports, allowed origins, default volume, and OBS widget support.
+The server uses a `config.json` file for all major settings. You can edit this file to change the ports, allowed origins, default volume, log levels, and more.
 
 **Example `config.json`:**
 
@@ -62,11 +65,15 @@ The server uses a `config.json` file for all major settings. You can edit this f
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,
-  "volumeStep": 0.05
+  "volumeStep": 0.05,
+  "logLevel": "INFO",
+  "backupCount": 3
 }
 ```
 
 - `port`: Main server port (for website, OBS widget, and WebSocket)
+- `logLevel`: Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
+- `backupCount`: Number of old session log files to keep in `logs/`
 - `allowedOrigins`: List of allowed origins for CORS (default: `["*"]`)
 - `defaultVolume`: Initial volume value when the server starts
 - `enableOBS`: Enable or disable the OBS widget routes
