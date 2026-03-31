@@ -266,7 +266,7 @@ async def handle_volume_update(ws, data):
     elif "volume" in data:
         state["volume"] = data["volume"]
     await save_state_to_file_debounced()
-    await broadcast_volume_update(exclude_ws=ws)
+    await broadcast_volume_update() # Don't exclude sender - deck needs echo to update its display
 
 async def handle_playback_update(ws, data):
     if "isPlaying" in data:
