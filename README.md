@@ -13,9 +13,10 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Server](#running-the-server)
-- [Lyrics](#lyrics)
 - [Service Management (Windows)](#service-management-windows)
+- [Service Management (Linux)](#service-management-linux)
 - [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
+- [Lyrics](#lyrics)
 - [Notes](#notes)
 
 ## Features
