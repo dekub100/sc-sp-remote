@@ -1,18 +1,19 @@
-import win32serviceutil
-import win32service
-import win32event
-import servicemanager
-import socket
-import sys
+import ctypes
 import os
 import subprocess
+import sys
 import time
-import ctypes
+
+import servicemanager
+import win32event
+import win32service
+import win32serviceutil
+
 
 def is_admin():
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
+    except Exception:
         return False
 
 class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
@@ -25,7 +26,6 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
-        socket.setdefaulttimeout(60)
         self.process = None
 
     def SvcStop(self):
@@ -41,15 +41,16 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
         self.main()
 
     def main(self):
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        script_path = os.path.join(base_dir, "server.py")
-        
+        server_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(server_dir)
+        script_path = os.path.join(server_dir, "server.py")
+
         python_exe = sys.executable
         if not python_exe.endswith("python.exe"):
             python_exe = os.path.join(os.path.dirname(python_exe), "python.exe")
 
-        self.process = subprocess.Popen([python_exe, script_path], cwd=base_dir)
-        
+        self.process = subprocess.Popen([python_exe, script_path], cwd=project_root)
+
         while True:
             rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)
             if rc == win32event.WAIT_OBJECT_0:
@@ -58,7 +59,7 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
                 servicemanager.LogMsg(servicemanager.EVENTLOG_ERROR_TYPE,
                                       0xF000,
                                       ("Server process died unexpectedly. Restarting...", ''))
-                self.process = subprocess.Popen([python_exe, script_path], cwd=base_dir)
+                self.process = subprocess.Popen([python_exe, script_path], cwd=project_root)
 
         if self.process:
             self.process.terminate()
@@ -78,23 +79,23 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
-        print(f"--- Spicetify Remote Service Tool ---")
+        print("--- Spicetify Remote Service Tool ---")
         print(f"Executing: {command}...")
-        
+
         try:
             win32serviceutil.HandleCommandLine(SpicetifyRemoteService)
-            
+
             # Manual override for Automatic startup
             if command == 'install':
                 hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
                 hs = win32service.OpenService(hscm, SpicetifyRemoteService._svc_name_, win32service.SERVICE_CHANGE_CONFIG)
                 win32service.ChangeServiceConfig(
-                    hs, win32service.SERVICE_NO_CHANGE, 
+                    hs, win32service.SERVICE_NO_CHANGE,
                     win32service.SERVICE_AUTO_START,
                     win32service.SERVICE_NO_CHANGE, None, None, 0, None, None, None, None
                 )
                 print("Startup type forced to: Automatic")
-                
+
             print(f"\nSUCCESS: Command '{command}' completed.")
         except SystemExit as e:
             if e.code == 0:
@@ -106,8 +107,11 @@ if __name__ == '__main__':
 
         if is_elevated_process:
             print("\n" + "="*40)
-            print("Operation complete. Press Enter to close this window.")
-            input()
+            print("Operation complete. This window will close in 10 seconds...")
+            try:
+                time.sleep(10)
+            except KeyboardInterrupt:
+                pass
     else:
         servicemanager.Initialize()
         servicemanager.PrepareToHostSingle(SpicetifyRemoteService)

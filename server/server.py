@@ -1,20 +1,21 @@
 import asyncio
 import json
+import logging
 import os
 import re
-import time
 import sqlite3
-import logging
-from logging.handlers import RotatingFileHandler
-from aiohttp import web
+import time
+
 import aiohttp
+from aiohttp import web
 
 # --- Configuration ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-STATE_FILE = os.path.join(BASE_DIR, "state.json")
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-LYRICS_CACHE_DB = os.path.join(BASE_DIR, "lyrics_cache.db")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(SERVER_DIR, "config.json")
+STATE_FILE = os.path.join(PROJECT_ROOT, "state.json")
+LOG_DIR = os.path.join(PROJECT_ROOT, "logs")
+LYRICS_CACHE_DB = os.path.join(PROJECT_ROOT, "lyrics_cache.db")
 
 # Ensure logs directory exists
 if not os.path.exists(LOG_DIR):
@@ -69,7 +70,7 @@ def cleanup_old_logs():
     try:
         files = [os.path.join(LOG_DIR, f) for f in os.listdir(LOG_DIR) if f.startswith("server_") and f.endswith(".log")]
         files.sort(key=os.path.getmtime, reverse=True)
-        
+
         if len(files) > config["backupCount"]:
             for old_file in files[config["backupCount"]:]:
                 os.remove(old_file)
@@ -268,7 +269,7 @@ async def save_state_to_file_debounced():
     global _save_timer
     if _save_timer:
         _save_timer.cancel()
-    
+
     _save_timer = asyncio.create_task(_actually_save_after_delay(2.0))
 
 def get_current_save_data():
@@ -306,7 +307,8 @@ init_lyrics_cache()
 CLIENTS = {} # {ws: {"type": "unknown", "remote_ip": ""}}
 
 async def broadcast(message, exclude_ws=None, target_type=None):
-    if not CLIENTS: return
+    if not CLIENTS:
+        return
     msg = json.dumps(message)
     for ws, info in list(CLIENTS.items()):
         if ws == exclude_ws:
@@ -433,7 +435,7 @@ async def handle_volume_update(ws, data):
     elif data.get("command") == "volumeDown":
         state["volume"] = max(0.0, state["volume"] - volume_step)
     elif "volume" in data:
-        state["volume"] = data["volume"]
+        state["volume"] = max(0.0, min(1.0, data["volume"]))
     await save_state_to_file_debounced()
     await broadcast_volume_update() # Don't exclude sender - deck needs echo to update its display
 
@@ -534,32 +536,42 @@ MESSAGE_HANDLERS = {
 async def handle_message(ws, message):
     try:
         data = json.loads(message)
-        msg_type = data.get("type")
-        handler = MESSAGE_HANDLERS.get(msg_type)
-        if handler:
-            await handler(ws, data)
-        else:
-            logger.warning(f"Server: Received unknown message type: {msg_type}")
-    except Exception as e:
-        logger.error(f"Server: Failed to handle message: {e}")
+    except json.JSONDecodeError:
+        logger.warning("Server: Received invalid JSON")
+        return
+
+    if not isinstance(data, dict):
+        logger.warning("Server: Received non-object JSON message")
+        return
+
+    msg_type = data.get("type")
+    if not isinstance(msg_type, str):
+        logger.warning(f"Server: Received message with invalid type field: {type(msg_type)}")
+        return
+
+    handler = MESSAGE_HANDLERS.get(msg_type)
+    if handler:
+        await handler(ws, data)
+    else:
+        logger.warning(f"Server: Received unknown message type: {msg_type}")
 
 # --- Unified WebSocket Handler ---
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    
+
     # Identify client type from query params
     client_type = request.query.get("client", "unknown")
     CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote}
-    
+
     logger.info(f"New connection: {client_type} ({request.remote})")
-    
+
     if client_type == "spicetify":
         state["spicetifyClient"] = ws
     else:
         # Send initial state sync immediately to non-spicetify clients
         await handle_get_initial_state(ws, {})
-    
+
     try:
         async for msg in ws:
             if msg.type == web.WSMsgType.TEXT:
@@ -571,17 +583,25 @@ async def websocket_handler(request):
         if info and info.get("type") == "spicetify":
             state["spicetifyClient"] = None
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
-    
+
     return ws
 
 
 # --- API & Static Hosting ---
 async def handle_config(request):
-    headers = {"Access-Control-Allow-Origin": ",".join(config["allowedOrigins"])}
+    origins = config["allowedOrigins"]
+    # CORS spec: only one origin per response, or "*"
+    if "*" in origins:
+        cors_origin = "*"
+    else:
+        req_origin = request.headers.get("Origin", "")
+        cors_origin = req_origin if req_origin in origins else origins[0] if origins else ""
+
+    headers = {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
     return web.json_response({
         "port": config["port"],
         "discoveryPort": DISCOVERY_PORT,
-        "allowedOrigins": config["allowedOrigins"],
+        "allowedOrigins": origins,
         "defaultVolume": config["defaultVolume"],
         "enableOBS": config.get("enableOBS", True),
         "enableWebsite": config.get("enableWebsite", True)
@@ -591,31 +611,31 @@ async def index_handler(request):
     # Differentiate between WebSocket and browser request
     if request.headers.get('Upgrade', '').lower() == 'websocket':
         return await websocket_handler(request)
-    return web.FileResponse(os.path.join(BASE_DIR, 'website', 'index.html'))
+    return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'index.html'))
 
 async def obs_handler(request):
     # Ensure there's a trailing slash so relative assets load correctly
     if not request.path.endswith('/'):
         return web.HTTPFound(request.path + '/')
-    return web.FileResponse(os.path.join(BASE_DIR, 'obs-widget', 'obs-widget.html'))
+    return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'obs-widget', 'obs-widget.html'))
 
 async def main():
     # Main Server (Static Files + WebSocket on SAME port)
     main_app = web.Application()
-    
+
     # Specific Routes (Matches Node.js logic)
     main_app.router.add_get('/', index_handler)
     main_app.router.add_get('/obs', obs_handler)
     main_app.router.add_get('/obs/', obs_handler)
     main_app.router.add_get('/api/config', handle_config)
-    
+
     # Static Files for assets (CSS, JS, Images)
-    main_app.router.add_static('/obs/', os.path.join(BASE_DIR, 'obs-widget'))
-    main_app.router.add_static('/', os.path.join(BASE_DIR, 'website'))
+    main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
+    main_app.router.add_static('/', os.path.join(PROJECT_ROOT, 'web'))
 
     main_runner = web.AppRunner(main_app)
     await main_runner.setup()
-    
+
     # Config Server (Secondary port for Spicetify discovery)
     config_app = web.Application()
     config_app.router.add_get('/api/config', handle_config)
@@ -624,26 +644,26 @@ async def main():
 
     logger.info(f"Main Server: http://localhost:{config['port']}")
     logger.info(f"Discovery Server: http://localhost:{DISCOVERY_PORT}")
-    
+
     stop_event = asyncio.Event()
 
     try:
         # Create background tasks for servers and broadcasting
         main_site = web.TCPSite(main_runner, '0.0.0.0', config['port'])
         config_site = web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT)
-        
+
         await main_site.start()
         await config_site.start()
-        
+
         progress_task = asyncio.create_task(start_progress_broadcasting())
-        
+
         # Wait until the event is set or interrupted
         await stop_event.wait()
     except (asyncio.CancelledError, KeyboardInterrupt):
         logger.info("Server: Stopping...")
     finally:
         logger.info("Server: Shutting down, performing final state save...")
-        
+
         # Cancel any pending debounced save
         global _save_timer
         if _save_timer:
@@ -662,7 +682,7 @@ async def main():
                     asyncio.create_task(ws.close(code=1001, message='Server shutting down'))
                 except Exception:
                     pass
-        
+
         # Clean up tasks
         if 'progress_task' in locals():
             logger.debug("Server: Cancelling progress broadcasting task...")
@@ -672,7 +692,7 @@ async def main():
             except asyncio.CancelledError:
                 pass
             logger.debug("Server: Progress broadcasting task stopped.")
-            
+
         logger.debug("Server: Cleaning up main runner...")
         await main_runner.cleanup()
         logger.debug("Server: Main runner cleaned up.")
@@ -680,7 +700,7 @@ async def main():
         logger.debug("Server: Cleaning up config runner...")
         await config_runner.cleanup()
         logger.debug("Server: Config runner cleaned up.")
-        
+
         logger.info("Server: Shutdown complete.")
 
 if __name__ == "__main__":

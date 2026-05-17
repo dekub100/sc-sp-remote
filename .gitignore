@@ -1,5 +1,14 @@
-/.git
-/__pycache__
+__pycache__/
+*.pyc
+*.pyo
 logs/
 state.json
 lyrics_cache.db
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+streamdeck-plugin/node_modules/

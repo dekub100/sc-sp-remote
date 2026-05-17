@@ -129,6 +129,25 @@
       }
     },
 
+    // --- Helpers ---
+
+    /**
+     * Converts a Spotify internal image URI to a public URL.
+     */
+    getAlbumArtUrl(track) {
+      const meta = track.metadata || {};
+      let artUrl = "";
+      if (track.images && track.images.length > 0) {
+        artUrl = track.images[0].url;
+      } else if (meta.image_url) {
+        artUrl = meta.image_url;
+      }
+      if (artUrl && artUrl.startsWith("spotify:image:")) {
+        artUrl = "https://i.scdn.co/image/" + artUrl.substring(14);
+      }
+      return artUrl;
+    },
+
     // --- Core Logic ---
 
     startServices() {
@@ -146,19 +165,21 @@
         clearInterval(this.pollInterval);
         this.pollInterval = null;
       }
-      // Note: We don't remove event listeners because Spicetify doesn't provide an easy way 
-      // to remove specific anonymous functions without storing references, and they are harmless 
-      // if the socket is closed (send() just drops data).
+      if (this._onSongChange) {
+        Spicetify.Player.removeEventListener("songchange", this._onSongChange);
+        this._onSongChange = null;
+      }
+      if (this._onPlayPause) {
+        Spicetify.Player.removeEventListener("onplaypause", this._onPlayPause);
+        this._onPlayPause = null;
+      }
     },
 
     setupEventListeners() {
-      // Spicetify events are the most reliable source for these changes
-      Spicetify.Player.addEventListener("songchange", () => {
-        this.checkTrackChange(true);
-      });
-      Spicetify.Player.addEventListener("onplaypause", () =>
-        this.checkPlaybackStatus(true)
-      );
+      this._onSongChange = () => this.checkTrackChange(true);
+      this._onPlayPause = () => this.checkPlaybackStatus(true);
+      Spicetify.Player.addEventListener("songchange", this._onSongChange);
+      Spicetify.Player.addEventListener("onplaypause", this._onPlayPause);
     },
 
     /**
@@ -179,15 +200,7 @@
       if (!track) return;
 
       const meta = track.metadata || {};
-      let artUrl = "";
-      if (track.images && track.images.length > 0) {
-          artUrl = track.images[0].url;
-      } else if (meta.image_url) {
-          artUrl = meta.image_url;
-      }
-      if (artUrl && artUrl.startsWith("spotify:image:")) {
-          artUrl = "https://i.scdn.co/image/" + artUrl.substring(14);
-      }
+      const artUrl = this.getAlbumArtUrl(track);
 
       const snapshot = {
         type: "stateUpdate", 
@@ -260,16 +273,7 @@
       if (force || track.uri !== this.state.trackUri) {
         this.state.trackUri = track.uri;
         const meta = track.metadata || {};
-        
-        let artUrl = "";
-        if (track.images && track.images.length > 0) {
-            artUrl = track.images[0].url;
-        } else if (meta.image_url) {
-            artUrl = meta.image_url;
-        }
-        if (artUrl && artUrl.startsWith("spotify:image:")) {
-            artUrl = "https://i.scdn.co/image/" + artUrl.substring(14);
-        }
+        const artUrl = this.getAlbumArtUrl(track);
 
         const metadata = {
           type: "trackUpdate",
@@ -386,11 +390,6 @@
         else if (data.command === "like") this.checkLikeStatus();
         else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
       }, 150);
-    },
-
-    exposeGlobals() {
-      // Expose for other extensions or debugging
-      window.SpotifyRemote = this;
     }
   };
 

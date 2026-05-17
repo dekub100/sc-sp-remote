@@ -1,0 +1,185 @@
+{
+  "Name": "spicetify-remote",
+  "Version": "0.1.0.0",
+  "Author": "dekub",
+  "Actions": [
+    {
+      "Name": "Play/Pause",
+      "UUID": "com.dekub.spicetify-remote.playpause",
+      "Icon": "imgs/actions/playback/playback-play",
+      "Tooltip": "Toggles play/pause in Spotify.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/playback/playback-play",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/playback/playback-pause",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Next Track",
+      "UUID": "com.dekub.spicetify-remote.nexttrack",
+      "Icon": "imgs/actions/playback/playback-next",
+      "Tooltip": "Plays the next track in Spotify.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/playback/playback-next",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Previous Track",
+      "UUID": "com.dekub.spicetify-remote.previoustrack",
+      "Icon": "imgs/actions/playback/playback-previous",
+      "Tooltip": "Plays the previous track in Spotify.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/playback/playback-previous",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Volume Up",
+      "UUID": "com.dekub.spicetify-remote.volumeup",
+      "Icon": "imgs/actions/volume/volume-up",
+      "Tooltip": "Increases Spotify volume.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/volume/volume-up",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Volume Down",
+      "UUID": "com.dekub.spicetify-remote.volumedown",
+      "Icon": "imgs/actions/volume/volume-down",
+      "Tooltip": "Decreases Spotify volume.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/volume/volume-down",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Volume Display",
+      "UUID": "com.dekub.spicetify-remote.volumedisplay",
+      "Icon": "imgs/actions/volume/volume-display",
+      "Tooltip": "Displays the current Spotify volume.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/transparent",
+          "TitleAlignment": "middle",
+          "FontSize": 18
+        }
+      ]
+    },
+    {
+      "Name": "Toggle Shuffle",
+      "UUID": "com.dekub.spicetify-remote.toggleshuffle",
+      "Icon": "imgs/actions/shuffle/shuffle-on",
+      "Tooltip": "Toggles shuffle mode in Spotify.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/shuffle/shuffle-off",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/shuffle/shuffle-on",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Toggle Repeat",
+      "UUID": "com.dekub.spicetify-remote.togglerepeat",
+      "Icon": "imgs/actions/repeat/repeat-context",
+      "Tooltip": "Cycles through repeat modes in Spotify.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/repeat/repeat-off",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/repeat/repeat-context",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/repeat/repeat-track",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Toggle Like",
+      "UUID": "com.dekub.spicetify-remote.togglelike",
+      "Icon": "imgs/actions/like/like-outline",
+      "Tooltip": "Toggles like status for the current track.",
+      "Controllers": ["Keypad"],
+      "States": [
+        {
+          "Image": "imgs/actions/like/like-outline",
+          "TitleAlignment": "middle"
+        },
+        {
+          "Image": "imgs/actions/like/like-filled",
+          "TitleAlignment": "middle"
+        }
+      ]
+    },
+    {
+      "Name": "Set Volume",
+      "UUID": "com.dekub.spicetify-remote.setvolume",
+      "Icon": "imgs/actions/volume/volume-display",
+      "Tooltip": "Sets Spotify volume to a specific level.",
+      "Controllers": ["Keypad"],
+      "PropertyInspectorPath": "ui/set-volume-pi.html",
+      "States": [
+        {
+          "Image": "imgs/transparent",
+          "TitleAlignment": "middle",
+          "FontSize": 18,
+          "TitleColor": "#ffffff"
+        }
+      ]
+    }
+  ],
+  "Category": "spicetify-remote",
+  "CategoryIcon": "imgs/plugin/category-icon",
+  "CodePath": "bin/plugin.js",
+  "Description": "plugin",
+  "Icon": "imgs/plugin/marketplace",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "6.9"
+  },
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "12"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20",
+    "Debug": "enabled"
+  },
+  "UUID": "com.dekub.spicetify-remote"
+}

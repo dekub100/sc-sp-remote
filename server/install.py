@@ -1,8 +1,11 @@
 import os
+import platform
 import shutil
 import subprocess
 import sys
-import platform
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 
 def run_command(command):
     print(f"Running: {' '.join(command)}")
@@ -19,13 +22,12 @@ def run_command(command):
 
 def install_dependencies():
     print("Checking for required Python packages...")
+    req_path = os.path.join(PROJECT_ROOT, "requirements.txt")
     try:
-        # Check if we have requirements.txt
-        if os.path.exists("requirements.txt"):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+        if os.path.exists(req_path):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
         else:
-            # Fallback if requirements.txt is missing
-            packages = ["aiohttp", "websockets"]
+            packages = ["aiohttp"]
             if platform.system() == "Windows":
                 packages.append("pywin32")
             subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
@@ -35,45 +37,40 @@ def install_dependencies():
         return False
 
 def setup_extension():
-    # 0. Install Python dependencies
     if not install_dependencies():
         print("\nWarning: Could not install Python dependencies automatically.")
-        print("Please run: pip install aiohttp websockets pywin32\n")
+        print("Please run: pip install aiohttp pywin32\n")
 
-    # 1. Determine Spicetify path based on OS
     system = platform.system()
     if system == "Windows":
         base_path = os.path.join(os.getenv('APPDATA'), 'spicetify')
     elif system == "Linux":
         base_path = os.path.expanduser('~/.config/spicetify')
-    elif system == "Darwin": # macOS
+    elif system == "Darwin":
         base_path = os.path.expanduser('~/Library/Application Support/spicetify')
     else:
         print(f"Error: Unsupported operating system: {system}")
         return
 
     extensions_path = os.path.join(base_path, 'Extensions')
-    
+
     if not os.path.exists(extensions_path):
         os.makedirs(extensions_path, exist_ok=True)
 
-    # 2. Copy remoteVolume.js to Extensions folder
-    source_file = "remoteVolume.js"
+    source_file = os.path.join(PROJECT_ROOT, "spicetify-extension", "remoteVolume.js")
     if not os.path.exists(source_file):
-        print(f"Error: {source_file} not found in current directory.")
+        print(f"Error: remoteVolume.js not found at {source_file}")
         return
 
-    print(f"Copying {source_file} to {extensions_path}...")
+    print(f"Copying remoteVolume.js to {extensions_path}...")
     shutil.copy(source_file, extensions_path)
 
-    # 3. Register the extension
     print("Registering extension with Spicetify...")
-    if run_command(["spicetify", "config", "extensions", source_file]):
-        # 4. Apply changes
+    if run_command(["spicetify", "config", "extensions", "remoteVolume.js"]):
         print("Applying Spicetify changes...")
         if run_command(["spicetify", "apply"]):
             print("\nSuccess! Spicetify extension installed and applied.")
-            print("Make sure your server (python server.py) is running!")
+            print("Make sure your server (python server/server.py) is running!")
         else:
             print("\nFailed to apply changes. Try running 'spicetify apply' manually.")
     else:

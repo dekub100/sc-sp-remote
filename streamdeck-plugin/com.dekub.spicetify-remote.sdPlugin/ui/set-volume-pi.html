@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Set Volume Property Inspector</title>
+    <link rel="stylesheet" href="../css/sdpi.css" />
+    <style>
+      .sdpi-item {
+        display: flex;
+        align-items: center; /* Vertically align items */
+        gap: 10px; /* Space between label and input */
+      }
+      .sdpi-item-label {
+        color: rgb(150, 150, 150); /* Light gray for labels */
+        flex-shrink: 0; /* Prevent label from shrinking */
+      }
+      .sdpi-item-value {
+        flex-grow: 1; /* Allow input container to grow */
+      }
+      .sdpi-item-value input[type="number"] {
+        background-color: rgb(
+          60,
+          60,
+          60
+        ); /* Darker gray for input background */
+        color: #fff; /* White text for input */
+        border: 1px solid #555; /* Slight border */
+        padding: 5px;
+        border-radius: 4px;
+        width: 100%; /* Make input take full width of its container */
+        box-sizing: border-box; /* Include padding and border in width */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sdpi-wrapper">
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Volume:</div>
+        <div class="sdpi-item-value">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value="50"
+            class="sdpi-item-value"
+            id="volumeInput"
+          />
+        </div>
+      </div>
+    </div>
+    <script src="set-volume-pi.js"></script>
+  </body>
+</html>
