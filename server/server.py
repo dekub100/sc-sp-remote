@@ -24,6 +24,10 @@ if not os.path.exists(LOG_DIR):
 # Hard-coded Discovery Port (Standardized for all clients)
 DISCOVERY_PORT = 54321
 
+# Tunable constants
+STATE_SAVE_DEBOUNCE_SECONDS = 2.0  # Inactivity period before writing state.json
+PROGRESS_BROADCAST_INTERVAL = 1.0  # Seconds between progress updates to clients
+
 config = {
     "port": 8888,
     "allowedOrigins": ["*"],
@@ -270,7 +274,7 @@ async def save_state_to_file_debounced():
     if _save_timer:
         _save_timer.cancel()
 
-    _save_timer = asyncio.create_task(_actually_save_after_delay(2.0))
+    _save_timer = asyncio.create_task(_actually_save_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
 
 def get_current_save_data():
     return {
@@ -386,7 +390,7 @@ async def start_progress_broadcasting():
             state["trackProgressStartTimestamp"] = now
             # Progress update is mostly for controllers and widgets
             await broadcast_progress_update()
-        await asyncio.sleep(1.0) # Increased interval, clients interpolate
+        await asyncio.sleep(PROGRESS_BROADCAST_INTERVAL)
 
 # --- Message Handlers ---
 
@@ -494,13 +498,14 @@ async def handle_track_update(ws, data):
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
         state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
         await broadcast_lyrics_update()
-        asyncio.create_task(fetch_and_broadcast_lyrics(
+        task = asyncio.create_task(fetch_and_broadcast_lyrics(
             new_uri,
             state["currentTrack"]["trackName"],
             state["currentTrack"]["artistName"],
             state["currentTrack"]["albumName"],
             state["trackDuration"]
         ))
+        task.add_done_callback(lambda t: logger.error(f"Lyrics background task failed: {t.exception()}") if t.exception() else None)
 
     await save_state_to_file_debounced()
     await broadcast_current_state(exclude_ws=ws)

@@ -32,68 +32,20 @@ const lyricsState = {
   currentIndex: -1,
 };
 
-// Canvas for color extraction (hidden)
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-function formatTime(ms) {
-  if (isNaN(ms) || ms < 0) return "0:00";
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
-}
-
-function updateMarquee(element, text) {
-  const wrapper = element.querySelector(".marquee-wrapper");
-  if (!wrapper) return;
-  if (wrapper.textContent === text) return;
-
-  wrapper.textContent = text;
-  wrapper.setAttribute("data-text", text);
-  element.classList.remove("marquee-active");
-  setTimeout(() => {
-    if (wrapper.scrollWidth > element.clientWidth) {
-      const duration = Math.max(10, text.length / 2);
-      element.style.setProperty("--duration", `${duration}s`);
-      element.classList.add("marquee-active");
-    }
-  }, 100);
-}
-
 /**
- * Extracts dominant colors from the image using Canvas API
+ * Applies extracted dominant color to the OBS widget background and progress bar.
  */
 function updateDynamicColors(img) {
-  try {
-    canvas.width = 50;
-    canvas.height = 50;
-    ctx.drawImage(img, 0, 0, 50, 50);
+  const color = extractDominantColor(img);
+  if (!color) return;
 
-    const imageData = ctx.getImageData(0, 0, 50, 50).data;
-    let r = 0,
-      g = 0,
-      b = 0,
-      count = 0;
+  const { r, g, b } = color;
+  const bgR = Math.floor(r * 0.4);
+  const bgG = Math.floor(g * 0.4);
+  const bgB = Math.floor(b * 0.4);
 
-    for (let i = 0; i < imageData.length; i += 16) {
-      r += imageData[i];
-      g += imageData[i + 1];
-      b += imageData[i + 2];
-      count++;
-    }
-
-    r = Math.floor(r / count);
-    g = Math.floor(g / count);
-    b = Math.floor(b / count);
-
-    const bgR = Math.floor(r * 0.4);
-    const bgG = Math.floor(g * 0.4);
-    const bgB = Math.floor(b * 0.4);
-
-    elements.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.65)`;
-    elements.progressBarFill.style.background = `rgb(${r}, ${g}, ${b}, 1)`;
-  } catch (e) {
-    console.error("Color extraction failed:", e);
-  }
+  elements.container.style.background = `rgba(${bgR}, ${bgG}, ${bgB}, 0.65)`;
+  elements.progressBarFill.style.background = `rgb(${r}, ${g}, ${b})`;
 }
 
 // --- Lyrics ---

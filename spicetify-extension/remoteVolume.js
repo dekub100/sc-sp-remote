@@ -307,6 +307,9 @@
     // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
+      // Intentional 2-second "stale window" after connect.
+      // Prevents echo loops where the server's initial state dump triggers
+      // a command back to Spotify before the extension's local state is synced.
       const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
 
       if (serverState.volume !== undefined) {
