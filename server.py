@@ -1,16 +1,20 @@
 import asyncio
 import json
 import os
+import re
 import time
+import sqlite3
 import logging
 from logging.handlers import RotatingFileHandler
 from aiohttp import web
+import aiohttp
 
 # --- Configuration ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
+LYRICS_CACHE_DB = os.path.join(BASE_DIR, "lyrics_cache.db")
 
 # Ensure logs directory exists
 if not os.path.exists(LOG_DIR):
@@ -96,10 +100,153 @@ state = {
     "isShuffling": False,
     "repeatStatus": 0,
     "isLiked": False,
-    "spicetifyClient": None
+    "spicetifyClient": None,
+    "lyrics": {
+        "trackUri": "",
+        "synced": [],
+        "plain": "",
+        "available": False,
+        "instrumental": False,
+        "loading": False
+    }
 }
 
 _save_timer = None
+
+# --- Lyrics (LRCLIB) ---
+
+def parse_synced_lyrics(lrc_text):
+    """Parse LRC format into [{time, text}] list (time in milliseconds)."""
+    lines = []
+    pattern = re.compile(r'\[(\d+):(\d+)[.,](\d+)\](.*)')
+    for line in lrc_text.split('\n'):
+        m = pattern.match(line.strip())
+        if m:
+            minutes = int(m.group(1))
+            seconds = int(m.group(2))
+            frac = m.group(3)
+            text = m.group(4).strip()
+            if len(frac) == 2:
+                frac_ms = int(frac) * 10
+            elif len(frac) == 3:
+                frac_ms = int(frac)
+            else:
+                frac_ms = int(frac[:2]) * 10
+            time_ms = (minutes * 60 + seconds) * 1000 + frac_ms
+            lines.append({"time": time_ms, "text": text})
+    return sorted(lines, key=lambda x: x["time"])
+
+# --- Lyrics SQLite cache ---
+
+def init_lyrics_cache():
+    conn = sqlite3.connect(LYRICS_CACHE_DB)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS lyrics_cache (
+            artist_name TEXT NOT NULL,
+            track_name TEXT NOT NULL,
+            album_name TEXT NOT NULL,
+            duration INTEGER NOT NULL,
+            synced_lyrics TEXT,
+            plain_lyrics TEXT,
+            instrumental INTEGER NOT NULL DEFAULT 0,
+            fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (artist_name, track_name, album_name, duration)
+        )
+    """)
+    conn.commit()
+    conn.close()
+    logger.info(f"Lyrics cache: Initialized at {LYRICS_CACHE_DB}")
+
+def get_cached_lyrics(params):
+    conn = sqlite3.connect(LYRICS_CACHE_DB)
+    try:
+        row = conn.execute(
+            "SELECT synced_lyrics, plain_lyrics, instrumental FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
+            (params["artist_name"], params["track_name"], params["album_name"], params["duration"])
+        ).fetchone()
+        return row
+    finally:
+        conn.close()
+
+def set_cached_lyrics(params, synced_lyrics, plain_lyrics, instrumental):
+    conn = sqlite3.connect(LYRICS_CACHE_DB)
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO lyrics_cache (artist_name, track_name, album_name, duration, synced_lyrics, plain_lyrics, instrumental) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (params["artist_name"], params["track_name"], params["album_name"], params["duration"], synced_lyrics, plain_lyrics, 1 if instrumental else 0)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+async def fetch_and_broadcast_lyrics(track_uri, track_name, artist_name, album_name, duration_ms):
+    """Fetch lyrics from LRCLIB and broadcast to all clients. Skips if track changed."""
+    duration_s = max(1, round(duration_ms / 1000))
+    params = {
+        "artist_name": artist_name,
+        "track_name": track_name,
+        "album_name": album_name,
+        "duration": duration_s
+    }
+    logger.info(f"Lyrics: Fetching for '{track_name}' by '{artist_name}'")
+
+    # Check local cache first
+    cached = get_cached_lyrics(params)
+    if cached:
+        synced_raw, plain, instrumental = cached
+        synced = parse_synced_lyrics(synced_raw) if synced_raw else []
+        if state["currentTrack"]["trackUri"] != track_uri:
+            return
+        state["lyrics"] = {
+            "trackUri": track_uri,
+            "synced": synced,
+            "plain": plain or "",
+            "available": True,
+            "instrumental": bool(instrumental),
+            "loading": False
+        }
+        logger.info(f"Lyrics: Cache hit for '{track_name}' ({len(synced)} synced lines)")
+        await broadcast_lyrics_update()
+        return
+
+    try:
+        async with aiohttp.ClientSession(headers={"User-Agent": "SpicetifyRemote/1.0 (https://github.com/dekub/spicetify-remote)"}) as session:
+            async with session.get(
+                "https://lrclib.net/api/get",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if state["currentTrack"]["trackUri"] != track_uri:
+                        logger.info("Lyrics: Track changed during fetch, discarding.")
+                        return
+                    synced_raw = data.get("syncedLyrics") or ""
+                    plain = data.get("plainLyrics") or ""
+                    instrumental = data.get("instrumental", False)
+                    synced = parse_synced_lyrics(synced_raw) if synced_raw else []
+                    state["lyrics"] = {
+                        "trackUri": track_uri,
+                        "synced": synced,
+                        "plain": plain,
+                        "available": True,
+                        "instrumental": instrumental,
+                        "loading": False
+                    }
+                    logger.info(f"Lyrics: Found {len(synced)} synced lines for '{track_name}'")
+                    set_cached_lyrics(params, synced_raw, "" if synced_raw else plain, instrumental)
+                    await broadcast_lyrics_update()
+                elif resp.status == 404:
+                    logger.info(f"Lyrics: Not found for '{track_name}'")
+                    if state["currentTrack"]["trackUri"] == track_uri:
+                        state["lyrics"] = {"trackUri": track_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
+                        await broadcast_lyrics_update()
+                else:
+                    logger.warning(f"Lyrics: LRCLIB returned status {resp.status}")
+    except asyncio.TimeoutError:
+        logger.error(f"Lyrics: Timed out after 30s for '{track_name}' by '{artist_name}'")
+    except Exception as e:
+        logger.error(f"Lyrics: Fetch failed for '{track_name}': {type(e).__name__}: {e}")
 
 def read_state_from_file():
     if os.path.exists(STATE_FILE):
@@ -153,6 +300,7 @@ def save_state_to_file():
     _write_state_to_disk(get_current_save_data())
 
 read_state_from_file()
+init_lyrics_cache()
 
 # --- Broadcasting ---
 CLIENTS = {} # {ws: {"type": "unknown", "remote_ip": ""}}
@@ -216,6 +364,17 @@ async def broadcast_progress_update(exclude_ws=None):
     }
     await broadcast(progress_message, exclude_ws)
 
+async def broadcast_lyrics_update():
+    lyrics = state["lyrics"]
+    await broadcast({
+        "type": "lyricsUpdate",
+        "available": lyrics["available"],
+        "instrumental": lyrics["instrumental"],
+        "synced": lyrics["synced"],
+        "plain": lyrics["plain"],
+        "loading": lyrics["loading"]
+    })
+
 async def start_progress_broadcasting():
     while True:
         if state["isPlaying"]:
@@ -256,6 +415,16 @@ async def handle_get_initial_state(ws, data):
         "timestamp": time.time() * 1000
     }
     await ws.send_str(json.dumps(initial_state))
+    # Also push current lyrics so late-joining clients stay in sync
+    lyrics = state["lyrics"]
+    lyrics_msg = json.dumps({
+        "type": "lyricsUpdate",
+        "available": lyrics["available"],
+        "instrumental": lyrics["instrumental"],
+        "synced": lyrics["synced"],
+        "plain": lyrics["plain"]
+    })
+    await ws.send_str(lyrics_msg)
 
 async def handle_volume_update(ws, data):
     volume_step = config.get("volumeStep", 0.05)
@@ -303,19 +472,34 @@ async def handle_track_update(ws, data):
         state["repeatStatus"] = data["repeatStatus"]
     if "isLiked" in data:
         state["isLiked"] = data["isLiked"]
-        
+
+    prev_uri = state["currentTrack"]["trackUri"]
+    new_uri = data.get("trackUri", prev_uri)
+
     state["currentTrack"].update({
         "trackName": data.get("trackName", state["currentTrack"]["trackName"]),
         "artistName": data.get("artistName", state["currentTrack"]["artistName"]),
         "albumName": data.get("albumName", state["currentTrack"]["albumName"]),
-        "trackUri": data.get("trackUri", state["currentTrack"]["trackUri"]),
+        "trackUri": new_uri,
         "albumUri": data.get("albumUri", state["currentTrack"]["albumUri"]),
         "albumArtUrl": data.get("albumArtUrl", state["currentTrack"]["albumArtUrl"])
     })
     state["trackDuration"] = data.get("duration", state["trackDuration"])
     state["trackProgress"] = data.get("progress", state["trackProgress"])
     state["trackProgressStartTimestamp"] = time.time() * 1000
-    
+
+    # Fetch lyrics when track changes
+    if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
+        state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
+        await broadcast_lyrics_update()
+        asyncio.create_task(fetch_and_broadcast_lyrics(
+            new_uri,
+            state["currentTrack"]["trackName"],
+            state["currentTrack"]["artistName"],
+            state["currentTrack"]["albumName"],
+            state["trackDuration"]
+        ))
+
     await save_state_to_file_debounced()
     await broadcast_current_state(exclude_ws=ws)
 

@@ -1,6 +1,6 @@
 # spicetify-remote
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
@@ -13,6 +13,7 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Server](#running-the-server)
+- [Lyrics](#lyrics)
 - [Service Management (Windows)](#service-management-windows)
 - [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
 - [Notes](#notes)
@@ -21,12 +22,14 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 
 - Remote control from a website or using WebSockets
 - Remote viewing from a website
-- Built-in OBS Widget for streamers
+- Built-in OBS Widget for streamers with synced lyrics display
 - Dynamic configuration for host, ports, CORS, and more
 - Unified server (HTTP + WebSockets) on a single port
+- **Synced & plain lyrics** from LRCLIB with download progress indicator
+- **Local SQLite cache** — instant repeat plays, no re-fetching from the network
 - **Session-based Logging**: Individual log files for each session with configurable levels (DEBUG, INFO, etc.)
 - **Robust Sync**: Specialized protection against state-toggling loops
-- **Immediate Shutdown**: Improved task management for clean
+- **Immediate Shutdown**: Improved task management for clean shutdown
 
 ## Requirements
 
@@ -164,6 +167,12 @@ This project includes a dedicated Elgato Stream Deck Plugin (`com.dekub.spicetif
 ### Server Communication
 
 The Stream Deck plugin communicates with the server via WebSockets. Ensure your server is running (`python server.py` or as a service) for the actions to function.
+
+## Lyrics
+
+Lyrics are fetched from [LRCLIB](https://lrclib.net) and cached locally in `lyrics_cache.db` (SQLite). On the first play of a track the server fetches from LRCLIB's external sources which may take a few seconds; subsequent plays are instant from the local cache. Synced lyrics are highlighted in real-time on the website; plain lyrics are shown as static text when synced aren't available.
+
+To clear the cache, delete `lyrics_cache.db` and restart the server.
 
 ## Notes
 

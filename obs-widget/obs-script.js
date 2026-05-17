@@ -19,6 +19,17 @@ const elements = {
   currentTime: document.getElementById("currentTime"),
   totalTime: document.getElementById("totalTime"),
   container: document.querySelector(".widget-container"),
+  lyricLine: document.getElementById("lyricLine"),
+};
+
+// Lyrics state
+const lyricsState = {
+  synced: [],
+  plain: "",
+  available: false,
+  instrumental: false,
+  loading: false,
+  currentIndex: -1,
 };
 
 // Canvas for color extraction (hidden)
@@ -85,6 +96,55 @@ function updateDynamicColors(img) {
   }
 }
 
+// --- Lyrics ---
+
+function setLyricLineText(text) {
+  const el = elements.lyricLine;
+  if (el.textContent === text) return;
+  el.classList.add("fade");
+  setTimeout(() => {
+    el.textContent = text;
+    el.classList.remove("fade");
+  }, 350);
+}
+
+function handleLyricsUpdate(data) {
+  lyricsState.available = data.available;
+  lyricsState.instrumental = data.instrumental;
+  lyricsState.synced = data.synced || [];
+  lyricsState.plain = data.plain || "";
+  lyricsState.currentIndex = -1;
+
+  lyricsState.loading = data.loading || false;
+
+  if (data.instrumental) {
+    setLyricLineText("🎵");
+  } else if (lyricsState.loading) {
+    setLyricLineText("...");
+  } else if (!data.available) {
+    setLyricLineText("");
+  } else if (!lyricsState.synced.length && lyricsState.plain) {
+    setLyricLineText(lyricsState.plain.split("\n")[0] || "♪");
+  }
+}
+
+function updateCurrentLyricLine(progressMs) {
+  if (!lyricsState.available || !lyricsState.synced.length) return;
+
+  let newIndex = -1;
+  for (let i = lyricsState.synced.length - 1; i >= 0; i--) {
+    if (progressMs >= lyricsState.synced[i].time) {
+      newIndex = i;
+      break;
+    }
+  }
+
+  if (newIndex === lyricsState.currentIndex) return;
+  lyricsState.currentIndex = newIndex;
+  const text = newIndex >= 0 ? (lyricsState.synced[newIndex].text || "♪") : "";
+  setLyricLineText(text);
+}
+
 // Smooth interpolation loop
 function animate() {
   if (lastState.isPlaying) {
@@ -100,6 +160,7 @@ function animate() {
       elements.progressBarFill.style.width = `${pct}%`;
       elements.currentTime.textContent = formatTime(currentProgress);
     }
+    updateCurrentLyricLine(currentProgress);
   }
   requestAnimationFrame(animate);
 }
@@ -155,6 +216,11 @@ function connect() {
         elements.currentTime.textContent = formatTime(lastState.progress);
         elements.totalTime.textContent = formatTime(lastState.duration);
       }
+    }
+
+    // Handle Lyrics
+    if (data.type === "lyricsUpdate") {
+      handleLyricsUpdate(data);
     }
   };
 

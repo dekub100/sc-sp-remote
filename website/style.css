@@ -254,3 +254,73 @@ input[type="range"] {
   border-radius: 8px;
   font-weight: 600;
 }
+
+/* --- Lyrics Panel --- */
+.lyrics-panel {
+  border-top: 1px solid #333;
+  padding-top: 1rem;
+  max-height: 280px;
+  overflow: hidden;
+  position: relative;
+}
+
+.lyrics-content {
+  max-height: 280px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 0.25rem 0.5rem;
+  /* Hide scrollbar visually but keep scrollable */
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
+.lyrics-content::-webkit-scrollbar {
+  width: 4px;
+}
+.lyrics-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.lyrics-content::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+
+.lyric-line {
+  text-align: center;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.95rem;
+  color: #555;
+  border-radius: 6px;
+  transition: color 0.3s ease, font-size 0.2s ease, font-weight 0.2s ease;
+  cursor: default;
+  line-height: 1.5;
+}
+
+.lyric-line.active {
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.lyric-line.near-active {
+  color: #999;
+}
+
+.lyric-line:empty::before {
+  content: "♪";
+  color: #444;
+}
+
+.lyrics-placeholder,
+.lyrics-unavailable {
+  text-align: center;
+  color: #555;
+  font-size: 0.9rem;
+  padding: 1rem 0;
+  margin: 0;
+}
+
+/* Lyrics button active state */
+#lyricsBtn.active {
+  color: var(--accent-color);
+}

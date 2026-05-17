@@ -2,3 +2,4 @@
 /__pycache__
 logs/
 state.json
+lyrics_cache.db
