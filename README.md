@@ -17,6 +17,7 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Service Management (Linux)](#service-management-linux)
 - [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
 - [Lyrics](#lyrics)
+- [Updating](#updating)
 - [Notes](#notes)
 
 ## Features
@@ -174,6 +175,10 @@ The Stream Deck plugin communicates with the server via WebSockets. Ensure your 
 Lyrics are fetched from [LRCLIB](https://lrclib.net) and cached locally in `lyrics_cache.db` (SQLite). On the first play of a track the server fetches from LRCLIB's external sources which may take a few seconds; subsequent plays are instant from the local cache. Synced lyrics are highlighted in real-time on the website; plain lyrics are shown as static text when synced aren't available.
 
 To clear the cache, delete `lyrics_cache.db` and restart the server.
+
+### Updating
+
+Download the latest `spicetify-remote-core-v*.zip` from the [releases page](https://github.com/dekub100/spicetify-remote/releases) and extract it over your existing installation — this replaces the server, web files, and extension. Restart the server afterwards.
 
 ## Notes
 
