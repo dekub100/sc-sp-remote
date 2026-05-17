@@ -11,7 +11,6 @@ body {
   background-color: transparent; /* Transparent for OBS */
   margin: 0;
   padding: 0;
-  overflow: hidden;
   width: 1000px;
   height: 290px;
   color: #fff;
@@ -23,13 +22,12 @@ body {
   width: 100%;
   height: 100%;
   padding: 20px;
-  /* Simple semi-transparent dark background */
-  background: rgba(0, 0, 0);
-  border-radius: 15px;
   box-sizing: border-box;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px); /* Optional: adds a nice frosted glass effect */
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 15px;
+  background: rgba(20, 20, 20, 0.65);
 }
 
 .album-art {
@@ -45,17 +43,18 @@ body {
 .info-container {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  height: 250px;
+  justify-content: space-between;
   flex-grow: 1;
-  overflow: hidden;
-  height: 100%;
+  min-width: 0;
 }
 
 /* --- Pure CSS Marquee --- */
 .text-info {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden; /* this alone handles marquee clipping */
+  padding-bottom: 0.3em; /* gives descenders room before the clip edge */
   width: 100%;
 }
 
@@ -64,34 +63,34 @@ body {
 .album-name {
   margin: 0;
   white-space: nowrap;
-  overflow: hidden;
   width: 100%;
 }
 
 .song-title {
   font-size: 3.5rem;
   font-weight: 800;
-  margin-bottom: 5px;
+  margin: 0 0 2px 0;
+  white-space: nowrap;
+  line-height: 1.25;
 }
 
 .artist-name {
   font-size: 2.2rem;
   font-weight: 400;
-  margin-bottom: 5px;
+  margin: 0 0 2px 0;
+  white-space: nowrap;
+  line-height: 1.25;
 }
 
 .album-name {
   font-size: 1.8rem;
   font-weight: 400;
   color: #b3b3b3;
-  margin-bottom: 15px;
+  margin: 0 0 10px 0;
+  white-space: nowrap;
+  line-height: 1.25;
 }
 
-/* The magic happens here: If the text is long, it scrolls. 
-   We use a simple hover-like logic or just keep it always scrolling if long.
-   Since we can't detect overflow easily in CSS without JS, 
-   we'll keep the JS logic for *toggling* the class, but the *animation* is pure CSS.
-*/
 .marquee-wrapper {
   display: inline-block;
   padding-right: 120px; /* Space before loop */
@@ -137,7 +136,7 @@ body {
   height: 10px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 5px;
-  overflow: hidden;
+  overflow: hidden; /* intentional - clips the progress bar fill */
 }
 
 .progress-bar-fill {
@@ -145,7 +144,6 @@ body {
   background: #1db954; /* Spotify Green */
   width: 0%;
   border-radius: 5px;
-  transition: width 0.3s linear;
 }
 
 /* --- Current Lyric Line --- */
@@ -160,11 +158,17 @@ body {
   text-overflow: ellipsis;
   min-height: 2rem;
   opacity: 1;
-  transition: opacity 0.35s ease, color 0.35s ease;
+  transition:
+    opacity 0.35s ease,
+    color 0.35s ease;
   font-style: italic;
   letter-spacing: 0.01em;
 }
 
 .lyric-line.fade {
   opacity: 0;
+}
+
+.lyric-line.hidden {
+  display: none;
 }

@@ -96,15 +96,34 @@ function updateDynamicColors(img) {
   }
 }
 
+// --- Profanity Filter ---
+
+// Base64-encoded list of slurs/offensive words to filter out of lyrics.
+// Decode and split to get the plaintext array.
+const slurList = atob("YmVhbmVyLGJlYW5lcnMsY2hpbmssY2hpbmtzLGNoaW5reSxjb29uLGNvb25zLGNvb255LGNyYWNrZXIsY3JhY2tlcnMsY3VudCxjdW50cyxkYWdvLGRhZ29zLGR5a2UsZHlrZXMsZHlrZXksZXNraW1vLGZhZyxmYWdnb3QsZmFnZ290cyxmYWdzLGdpcHN5LGdvb2ssZ3lwc3ksaGFqamksaHVuLGppZ2Fib28samlnZyxraWtlLGtpa2VzLGtyYXV0LGt5a2UsbmlnLG5pZ2csbmlnZ2EsbmlnZ2FzLG5pZ2dheixuaWdnZXIsbmlnZ2VycyxuaXAscGlrZXkscG9yY2htb25rZXkscG9yY2gtbW9ua2V5LHJhZ2hlYWQscmVkc2tpbixyZXRhcmQscmV0YXJkZWQscmV0YXJkcyxzYW5kbmlnZ2VyLHNhbmQtbmlnZ2VyLHNoZW1hbGUsc2hlLW1hbGUsc2xhbnRleWUsc2xhbnQtZXllLHNwZWFyY2h1Y2tlcixzcGljLHNwaWNrLHNwaWNzLHNwaWssdG93ZWxoZWFkLHRyYW5uaWVzLHRyYW5ueSx0d2F0LHdldGJhY2ssd2V0YmFja3Msd29wLHdvcHMsemlwcGVyaGVhZA==").split(",");
+
+function filterText(text) {
+  if (!text) return text;
+  let result = text;
+  for (const slur of slurList) {
+    const regex = new RegExp(`\\b${slur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi");
+    result = result.replace(regex, (m) => "*".repeat(m.length));
+  }
+  return result;
+}
+
 // --- Lyrics ---
 
 function setLyricLineText(text) {
+  text = filterText(text);
   const el = elements.lyricLine;
   if (el.textContent === text) return;
+  const visible = text.length > 0;
   el.classList.add("fade");
   setTimeout(() => {
     el.textContent = text;
     el.classList.remove("fade");
+    el.classList.toggle("hidden", !visible);
   }, 350);
 }
 
@@ -124,7 +143,7 @@ function handleLyricsUpdate(data) {
   } else if (!data.available) {
     setLyricLineText("");
   } else if (!lyricsState.synced.length && lyricsState.plain) {
-    setLyricLineText(lyricsState.plain.split("\n")[0] || "♪");
+    setLyricLineText("");
   }
 }
 
