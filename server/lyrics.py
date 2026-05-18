@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import re
 import sqlite3
+from typing import Any, Optional
 
 import aiohttp
 from broadcast import broadcast_lyrics_update
@@ -8,34 +11,34 @@ from log import logger
 from state import state
 
 
-def _get_db_path():
+def _get_db_path() -> str:
     from server import LYRICS_CACHE_DB
     return LYRICS_CACHE_DB
 
 
-def parse_synced_lyrics(lrc_text):
-    lines = []
-    pattern = re.compile(r'\[(\d+):(\d+)[.,](\d+)\](.*)')
+def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
+    pattern: re.Pattern[str] = re.compile(r'\[(\d+):(\d+)[.,](\d+)\](.*)')
     for line in lrc_text.split('\n'):
-        m = pattern.match(line.strip())
+        m: Optional[re.Match[str]] = pattern.match(line.strip())
         if m:
-            minutes = int(m.group(1))
-            seconds = int(m.group(2))
-            frac = m.group(3)
-            text = m.group(4).strip()
+            minutes: int = int(m.group(1))
+            seconds: int = int(m.group(2))
+            frac: str = m.group(3)
+            text: str = m.group(4).strip()
             if len(frac) == 2:
-                frac_ms = int(frac) * 10
+                frac_ms: int = int(frac) * 10
             elif len(frac) == 3:
                 frac_ms = int(frac)
             else:
                 frac_ms = int(frac[:2]) * 10
-            time_ms = (minutes * 60 + seconds) * 1000 + frac_ms
+            time_ms: int = (minutes * 60 + seconds) * 1000 + frac_ms
             lines.append({"time": time_ms, "text": text})
     return sorted(lines, key=lambda x: x["time"])
 
 
-def init_lyrics_cache():
-    conn = sqlite3.connect(_get_db_path())
+def init_lyrics_cache() -> None:
+    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
     conn.execute("""
         CREATE TABLE IF NOT EXISTS lyrics_cache (
             artist_name TEXT NOT NULL,
@@ -54,10 +57,10 @@ def init_lyrics_cache():
     logger.info(f"Lyrics cache: Initialized at {_get_db_path()}")
 
 
-def get_cached_lyrics(params):
-    conn = sqlite3.connect(_get_db_path())
+def get_cached_lyrics(params: dict[str, Any]) -> Optional[tuple[Any, ...]]:
+    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
     try:
-        row = conn.execute(
+        row: Optional[tuple[Any, ...]] = conn.execute(
             "SELECT synced_lyrics, plain_lyrics, instrumental FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
             (params["artist_name"], params["track_name"], params["album_name"], params["duration"])
         ).fetchone()
@@ -66,8 +69,8 @@ def get_cached_lyrics(params):
         conn.close()
 
 
-def set_cached_lyrics(params, synced_lyrics, plain_lyrics, instrumental):
-    conn = sqlite3.connect(_get_db_path())
+def set_cached_lyrics(params: dict[str, Any], synced_lyrics: Optional[str], plain_lyrics: Optional[str], instrumental: bool) -> None:
+    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
     try:
         conn.execute(
             "INSERT OR REPLACE INTO lyrics_cache (artist_name, track_name, album_name, duration, synced_lyrics, plain_lyrics, instrumental) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -78,9 +81,9 @@ def set_cached_lyrics(params, synced_lyrics, plain_lyrics, instrumental):
         conn.close()
 
 
-async def fetch_and_broadcast_lyrics(track_uri, track_name, artist_name, album_name, duration_ms):
-    duration_s = max(1, round(duration_ms / 1000))
-    params = {
+async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_name: str, album_name: str, duration_ms: int) -> None:
+    duration_s: int = max(1, round(duration_ms / 1000))
+    params: dict[str, Any] = {
         "artist_name": artist_name,
         "track_name": track_name,
         "album_name": album_name,
@@ -91,7 +94,7 @@ async def fetch_and_broadcast_lyrics(track_uri, track_name, artist_name, album_n
     cached = get_cached_lyrics(params)
     if cached:
         synced_raw, plain, instrumental = cached
-        synced = parse_synced_lyrics(synced_raw) if synced_raw else []
+        synced: list[dict[str, Any]] = parse_synced_lyrics(synced_raw) if synced_raw else []
         if state["currentTrack"]["trackUri"] != track_uri:
             return
         state["lyrics"] = {
@@ -114,7 +117,7 @@ async def fetch_and_broadcast_lyrics(track_uri, track_name, artist_name, album_n
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as resp:
                 if resp.status == 200:
-                    data = await resp.json()
+                    data: dict[str, Any] = await resp.json()
                     if state["currentTrack"]["trackUri"] != track_uri:
                         logger.info("Lyrics: Track changed during fetch, discarding.")
                         return
@@ -140,7 +143,16 @@ async def fetch_and_broadcast_lyrics(track_uri, track_name, artist_name, album_n
                         await broadcast_lyrics_update()
                 else:
                     logger.warning(f"Lyrics: LRCLIB returned status {resp.status}")
+                    if state["currentTrack"]["trackUri"] == track_uri:
+                        state["lyrics"]["loading"] = False
+                        await broadcast_lyrics_update()
     except asyncio.TimeoutError:
         logger.error(f"Lyrics: Timed out after 30s for '{track_name}' by '{artist_name}'")
+        if state["currentTrack"]["trackUri"] == track_uri:
+            state["lyrics"]["loading"] = False
+            await broadcast_lyrics_update()
     except Exception as e:
         logger.error(f"Lyrics: Fetch failed for '{track_name}': {type(e).__name__}: {e}")
+        if state["currentTrack"]["trackUri"] == track_uri:
+            state["lyrics"]["loading"] = False
+            await broadcast_lyrics_update()

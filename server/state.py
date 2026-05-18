@@ -1,11 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
+from typing import Any, Callable, Optional
 
 from config import STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
 from log import logger
 
-state = {
+state: dict[str, Any] = {
     "volume": config["defaultVolume"],
     "isPlaying": False,
     "currentTrack": {
@@ -19,7 +22,6 @@ state = {
     "trackProgress": 0,
     "trackDuration": 0,
     "trackProgressStartTimestamp": 0,
-    "backgroundPalette": None,
     "isShuffling": False,
     "repeatStatus": 0,
     "isLiked": False,
@@ -34,20 +36,20 @@ state = {
     }
 }
 
-_save_timer = None
-_write_callback = None
+_save_timer: Optional[asyncio.Task[None]] = None
+_write_callback: Optional[Callable[[dict[str, Any]], None]] = None
 
 
-def set_write_callback(callback):
+def set_write_callback(callback: Callable[[dict[str, Any]], None]) -> None:
     global _write_callback
     _write_callback = callback
 
 
-def read_state_from_file():
+def read_state_from_file() -> None:
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
-                saved_state = json.load(f)
+                saved_state: dict[str, Any] = json.load(f)
                 state["volume"] = saved_state.get("volume", state["volume"])
                 state["isPlaying"] = saved_state.get("isPlaying", state["isPlaying"])
                 state["currentTrack"].update(saved_state.get("currentTrack", {}))
@@ -59,7 +61,7 @@ def read_state_from_file():
             logger.error(f"Server: Error reading state file: {e}")
 
 
-async def save_state_to_file_debounced():
+async def save_state_to_file_debounced() -> None:
     global _save_timer
     if _save_timer:
         _save_timer.cancel()
@@ -67,7 +69,7 @@ async def save_state_to_file_debounced():
     _save_timer = asyncio.create_task(_actually_save_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
 
 
-def get_current_save_data():
+def get_current_save_data() -> dict[str, Any]:
     return {
         "volume": round(state["volume"], 2),
         "isPlaying": state["isPlaying"],
@@ -78,7 +80,7 @@ def get_current_save_data():
     }
 
 
-async def _actually_save_after_delay(delay):
+async def _actually_save_after_delay(delay: float) -> None:
     try:
         await asyncio.sleep(delay)
         if _write_callback:
@@ -90,7 +92,7 @@ async def _actually_save_after_delay(delay):
         logger.error(f"Server: Error in debounced save: {e}")
 
 
-def cancel_pending_save():
+def cancel_pending_save() -> None:
     global _save_timer
     if _save_timer:
         _save_timer.cancel()

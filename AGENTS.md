@@ -4,7 +4,7 @@
 
 A Spicetify extension for remote control/viewing of Spotify using WebSockets, without Spotify Premium. Provides a web UI, OBS widget, and Stream Deck plugin — all communicating through a central Python server.
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **GitHub:** https://github.com/dekub100/spicetify-remote
 
 ---
@@ -16,7 +16,7 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 ├── requirements.txt          # Python deps (aiohttp, pytest, ruff, etc.)
 ├── pyproject.toml            # ruff + pytest config
 ├── conftest.py               # pytest: adds server/ to sys.path
-├── test_server.py            # 47 tests for server logic
+├── test_server.py            # 48 tests for server logic
 ├── AGENTS.md                 # This file
 ├── server/
 │   ├── server.py             # Entry point, imports all modules, routes + main()
@@ -112,7 +112,6 @@ state = {
     "trackProgress": int (ms),
     "trackDuration": int (ms),
     "trackProgressStartTimestamp": float (ms),
-    "backgroundPalette": None,
     "isShuffling": bool,
     "repeatStatus": 0|1|2,
     "isLiked": bool,
@@ -188,7 +187,7 @@ python server/install.py
 ```bash
 python -m pytest test_server.py -v
 ```
-47 tests covering: lyrics parsing, state save, SQLite cache, all message handlers, input validation, broadcasting, CORS config.
+48 tests covering: lyrics parsing, state save, SQLite cache, all message handlers, input validation, broadcasting, CORS config, client registration.
 
 ### Linting
 ```bash

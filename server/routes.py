@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import os
+from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS
@@ -8,11 +11,11 @@ from log import logger
 from state import state
 
 
-async def websocket_handler(request):
-    ws = web.WebSocketResponse()
+async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    ws: web.WebSocketResponse = web.WebSocketResponse()
     await ws.prepare(request)
 
-    client_type = request.query.get("client", "unknown")
+    client_type: str = request.query.get("client", "unknown")
     CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote}
 
     logger.info(f"New connection: {client_type} ({request.remote})")
@@ -29,7 +32,7 @@ async def websocket_handler(request):
             elif msg.type == web.WSMsgType.ERROR:
                 logger.error(f'WebSocket connection closed with exception {ws.exception()}')
     finally:
-        info = CLIENTS.pop(ws, None)
+        info: dict[str, Any] | None = CLIENTS.pop(ws, None)
         if info and info.get("type") == "spicetify":
             state["spicetifyClient"] = None
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
@@ -37,15 +40,15 @@ async def websocket_handler(request):
     return ws
 
 
-async def handle_config(request):
-    origins = config["allowedOrigins"]
+async def handle_config(request: web.Request) -> web.Response:
+    origins: list[str] = config["allowedOrigins"]
     if "*" in origins:
-        cors_origin = "*"
+        cors_origin: str = "*"
     else:
-        req_origin = request.headers.get("Origin", "")
+        req_origin: str = request.headers.get("Origin", "")
         cors_origin = req_origin if req_origin in origins else origins[0] if origins else ""
 
-    headers = {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
+    headers: dict[str, str] = {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
     return web.json_response({
         "port": config["port"],
         "discoveryPort": DISCOVERY_PORT,
@@ -56,12 +59,12 @@ async def handle_config(request):
     }, headers=headers)
 
 
-def format_ms(ms):
-    total_sec = max(0, int(ms / 1000))
+def format_ms(ms: int) -> str:
+    total_sec: int = max(0, int(ms / 1000))
     return f"{total_sec // 60}:{total_sec % 60:02d}"
 
 
-async def handle_state(request):
+async def handle_state(request: web.Request) -> web.Response:
     return web.json_response({
         "trackName": state["currentTrack"]["trackName"],
         "artistName": state["currentTrack"]["artistName"],
@@ -80,13 +83,13 @@ async def handle_state(request):
     })
 
 
-async def index_handler(request):
+async def index_handler(request: web.Request) -> web.StreamResponse:
     if request.headers.get('Upgrade', '').lower() == 'websocket':
         return await websocket_handler(request)
     return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'index.html'))
 
 
-async def obs_handler(request):
+async def obs_handler(request: web.Request) -> web.StreamResponse:
     if not request.path.endswith('/'):
         return web.HTTPFound(request.path + '/')
     return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'obs-widget', 'obs-widget.html'))

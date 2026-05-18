@@ -24,16 +24,13 @@ def install_dependencies():
     print("Checking for required Python packages...")
     req_path = os.path.join(PROJECT_ROOT, "requirements.txt")
     try:
-        if os.path.exists(req_path):
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
-        else:
-            packages = ["aiohttp"]
-            if platform.system() == "Windows":
-                packages.append("pywin32")
-            subprocess.check_call([sys.executable, "-m", "pip", "install"] + packages)
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
         return True
     except subprocess.CalledProcessError as e:
         print(f"Error installing dependencies: {e}")
+        return False
+    except FileNotFoundError:
+        print(f"Error: Python executable not found: {sys.executable}")
         return False
 
 def setup_extension():

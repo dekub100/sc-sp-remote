@@ -1,11 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
+from typing import Any
 
 from aiohttp import web
-
-# ---- Actually-used imports ----
-# ---- Re-exports for test compatibility (not used in this file) ----
 from broadcast import (  # noqa: F401
     CLIENTS,
     broadcast,
@@ -16,9 +16,9 @@ from broadcast import (  # noqa: F401
     broadcast_volume_update,
     start_progress_broadcasting,
 )
-from config import (
+from config import (  # noqa: F401
     DISCOVERY_PORT,
-    LYRICS_CACHE_DB,  # noqa: F401
+    LYRICS_CACHE_DB,
     PROJECT_ROOT,
     STATE_FILE,
     config,
@@ -46,12 +46,12 @@ from lyrics import (  # noqa: F401
     parse_synced_lyrics,
     set_cached_lyrics,
 )
-from routes import (
+from routes import (  # noqa: F401
     handle_config,
     handle_state,
     index_handler,
     obs_handler,
-    websocket_handler,  # noqa: F401
+    websocket_handler,
 )
 from state import (  # noqa: F401
     _save_timer,
@@ -64,12 +64,12 @@ from state import (  # noqa: F401
 )
 
 
-def _write_state_to_disk(data):
+def _write_state_to_disk(data: dict[str, Any]) -> None:
     with open(STATE_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
 
-def save_state_to_file():
+def save_state_to_file() -> None:
     _write_state_to_disk(get_current_save_data())
 
 
@@ -77,8 +77,8 @@ init_lyrics_cache()
 set_write_callback(_write_state_to_disk)
 
 
-async def main():
-    main_app = web.Application()
+async def main() -> None:
+    main_app: web.Application = web.Application()
 
     main_app.router.add_get('/', index_handler)
     main_app.router.add_get('/obs', obs_handler)
@@ -89,27 +89,27 @@ async def main():
     main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
     main_app.router.add_static('/', os.path.join(PROJECT_ROOT, 'web'))
 
-    main_runner = web.AppRunner(main_app)
+    main_runner: web.AppRunner = web.AppRunner(main_app)
     await main_runner.setup()
 
-    config_app = web.Application()
+    config_app: web.Application = web.Application()
     config_app.router.add_get('/api/config', handle_config)
-    config_runner = web.AppRunner(config_app)
+    config_runner: web.AppRunner = web.AppRunner(config_app)
     await config_runner.setup()
 
     logger.info(f"Main Server: http://localhost:{config['port']}")
     logger.info(f"Discovery Server: http://localhost:{DISCOVERY_PORT}")
 
-    stop_event = asyncio.Event()
+    stop_event: asyncio.Event = asyncio.Event()
 
     try:
-        main_site = web.TCPSite(main_runner, '0.0.0.0', config['port'])
-        config_site = web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT)
+        main_site: web.TCPSite = web.TCPSite(main_runner, '0.0.0.0', config['port'])
+        config_site: web.TCPSite = web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT)
 
         await main_site.start()
         await config_site.start()
 
-        progress_task = asyncio.create_task(start_progress_broadcasting())
+        progress_task: asyncio.Task[None] = asyncio.create_task(start_progress_broadcasting())
 
         await stop_event.wait()
     except (asyncio.CancelledError, KeyboardInterrupt):

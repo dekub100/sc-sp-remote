@@ -1,17 +1,26 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import time
+from typing import Any, Optional
 
+from aiohttp import web
 from config import PROGRESS_BROADCAST_INTERVAL
+from log import logger
 from state import state
 
-CLIENTS = {}
+CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
 
-async def broadcast(message, exclude_ws=None, target_type=None):
+async def broadcast(
+    message: dict[str, Any],
+    exclude_ws: Optional[web.WebSocketResponse] = None,
+    target_type: Optional[str] = None
+) -> None:
     if not CLIENTS:
         return
-    msg = json.dumps(message)
+    msg: str = json.dumps(message)
     for ws, info in list(CLIENTS.items()):
         if ws == exclude_ws:
             continue
@@ -19,13 +28,19 @@ async def broadcast(message, exclude_ws=None, target_type=None):
             continue
         try:
             await ws.send_str(msg)
+        except ConnectionResetError:
+            logger.debug(f"Broadcast: Client disconnected ({info.get('type', 'unknown')})")
+            CLIENTS.pop(ws, None)
+        except ConnectionAbortedError:
+            logger.debug(f"Broadcast: Connection aborted ({info.get('type', 'unknown')})")
+            CLIENTS.pop(ws, None)
         except Exception:
-            if ws in CLIENTS:
-                del CLIENTS[ws]
+            logger.warning(f"Broadcast: Removing dead client ({info.get('type', 'unknown')})")
+            CLIENTS.pop(ws, None)
 
 
-async def broadcast_current_state(exclude_ws=None):
-    full_state_message = {
+async def broadcast_current_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    full_state_message: dict[str, Any] = {
         "type": "stateUpdate",
         "volume": state["volume"],
         "isPlaying": state["isPlaying"],
@@ -37,7 +52,6 @@ async def broadcast_current_state(exclude_ws=None):
         "albumArtUrl": state["currentTrack"]["albumArtUrl"],
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],
-        "backgroundPalette": state["backgroundPalette"],
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
         "isLiked": state["isLiked"],
@@ -46,14 +60,14 @@ async def broadcast_current_state(exclude_ws=None):
     await broadcast(full_state_message, exclude_ws)
 
 
-async def broadcast_volume_update(exclude_ws=None):
+async def broadcast_volume_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
     await broadcast({
         "type": "volumeUpdate",
         "volume": state["volume"]
     }, exclude_ws)
 
 
-async def broadcast_playback_update(exclude_ws=None):
+async def broadcast_playback_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
     await broadcast({
         "type": "playbackUpdate",
         "isPlaying": state["isPlaying"],
@@ -62,8 +76,8 @@ async def broadcast_playback_update(exclude_ws=None):
     }, exclude_ws)
 
 
-async def broadcast_progress_update(exclude_ws=None):
-    progress_message = {
+async def broadcast_progress_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    progress_message: dict[str, Any] = {
         "type": "progressUpdate",
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],
@@ -73,8 +87,8 @@ async def broadcast_progress_update(exclude_ws=None):
     await broadcast(progress_message, exclude_ws)
 
 
-async def broadcast_lyrics_update():
-    lyrics = state["lyrics"]
+async def broadcast_lyrics_update() -> None:
+    lyrics: dict[str, Any] = state["lyrics"]
     await broadcast({
         "type": "lyricsUpdate",
         "available": lyrics["available"],
@@ -85,11 +99,11 @@ async def broadcast_lyrics_update():
     })
 
 
-async def start_progress_broadcasting():
+async def start_progress_broadcasting() -> None:
     while True:
         if state["isPlaying"]:
-            now = time.time() * 1000
-            elapsed_time = now - state["trackProgressStartTimestamp"]
+            now: float = time.time() * 1000
+            elapsed_time: float = now - state["trackProgressStartTimestamp"]
             state["trackProgress"] = min(state["trackProgress"] + elapsed_time, state["trackDuration"])
             state["trackProgressStartTimestamp"] = now
             await broadcast_progress_update()

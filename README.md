@@ -1,6 +1,6 @@
 # spicetify-remote
 
-![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
@@ -251,7 +251,7 @@ streamdeck-plugin/     # Elgato Stream Deck plugin source
 python -m pytest test_server.py -v
 ```
 
-47 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, and CORS config.
+48 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, and client registration.
 
 ### Linting
 

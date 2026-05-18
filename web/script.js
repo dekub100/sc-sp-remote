@@ -98,7 +98,7 @@ function renderLyrics() {
     }
     if (lyricsState.synced.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.synced
-            .map((line, i) => `<div class="lyric-line" data-index="${i}">${line.text || ''}</div>`)
+            .map((line, i) => `<div class="lyric-line" data-index="${i}" data-time="${line.time}">${line.text || ''}</div>`)
             .join('');
         lyricsState.currentIndex = -1;
     } else if (lyricsState.plain) {
@@ -159,6 +159,14 @@ function toggleLyrics() {
         const activeLine = lines[lyricsState.currentIndex];
         if (activeLine) setTimeout(() => activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     }
+}
+
+function debounce(fn, delay) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+    };
 }
 
 // Smooth interpolation loop
@@ -274,6 +282,17 @@ function connect() {
     };
 }
 
+// Click-to-seek on lyric lines
+ui.lyricsContent.addEventListener('click', (e) => {
+    const line = e.target.closest('.lyric-line');
+    if (line) {
+        const time = parseInt(line.dataset.time);
+        if (!isNaN(time)) {
+            send({type: 'playbackControl', command: 'seek', position: time});
+        }
+    }
+});
+
 // Event Listeners
 ui.playPauseBtn.onclick = () => send({type: 'playbackControl', command: 'togglePlay'});
 document.getElementById('previousBtn').onclick = () => send({type: 'playbackControl', command: 'previous'});
@@ -283,10 +302,11 @@ ui.repeatBtn.onclick = () => send({type: 'playbackControl', command: 'toggleRepe
 ui.likeBtn.onclick = () => send({type: 'like'});
 ui.lyricsBtn.onclick = () => toggleLyrics();
 
+const sendVolume = debounce((val) => send({type: 'volumeUpdate', volume: val}), 150);
 ui.volumeSlider.oninput = (e) => {
     const val = parseFloat(e.target.value);
     ui.volumeValue.textContent = `${Math.round(val * 100)}%`;
-    send({type: 'volumeUpdate', volume: val});
+    sendVolume(val);
 };
 
 ui.progressBar.onmousedown = () => isSeeking = true;
