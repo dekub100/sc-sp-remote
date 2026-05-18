@@ -70,20 +70,23 @@ OBS Widget (obs-script.js) ──────────────┤
                                          │
 Stream Deck Plugin ──────────────────────┘
                                          │
-                            ┌────────────┴────────────┐
-                            │    server/server.py     │
-                            │  (aiohttp, single port) │
-                            └─────────────────────────┘
-                                         │
-                            ┌────────────┴────────────┐
-                            │  Discovery: port 54321  │
-                            │  /api/config → port #   │
-                            └─────────────────────────┘
-                                         │
-                            ┌────────────┴────────────┐
-                            │    LRCLIB API (HTTPS)   │
-                            │    SQLite cache (local) │
-                            └─────────────────────────┘
+                             ┌────────────┴────────────┐
+                             │    server/server.py     │
+                             │  (aiohttp, single port) │
+                             ├─────────────────────────┤
+                             │  HTTP GET /api/state    │
+                             │  (full JSON, mm:ss)     │
+                             └─────────────────────────┘
+                                          │
+                             ┌────────────┴────────────┐
+                             │  Discovery: port 54321  │
+                             │  /api/config → port #   │
+                             └─────────────────────────┘
+                                          │
+                             ┌────────────┴────────────┐
+                             │    LRCLIB API (HTTPS)   │
+                             │    SQLite cache (local) │
+                             └─────────────────────────┘
 ```
 
 ### Key Design Decisions
@@ -93,6 +96,7 @@ Stream Deck Plugin ────────────────────�
 - **Discovery server** on port 54321 lets clients auto-find the main port
 - **Delta-based sync** — clients send only changed fields, not full state
 - **Client types** via query param: `?client=spicetify`, `?client=website`, `?client=obs`
+- **`/api/state` HTTP endpoint** — returns full Spotify state as JSON with pre-formatted `progressFmt`/`durationFmt` (mm:ss). Used by Streamer.bot display commands; no WebSocket needed.
 - **Commands from web/deck go ONLY to spicetify client** (targeted broadcast)
 - **Debounced state saves** (2s inactivity) to avoid disk thrashing
 - **Client-side color extraction** from album art via Canvas API (no server-side processing)
@@ -217,7 +221,6 @@ Only runtime files — no dev artifacts:
 
 **Include:**
 ```
-AGENTS.md            # AI context for future sessions
 README.md
 requirements.txt
 server/              # everything except __pycache__/
@@ -239,6 +242,7 @@ logs/
 state.json
 lyrics_cache.db
 *.streamDeckPlugin   # shipped separately, not in core zip
+streamerbot-commands/ # setup guide only, link in release notes
 ```
 
 **The `Compress-Archive` cmdlet strips folder structure** — files end up flat. Always use `7z` instead to preserve directories:
@@ -247,13 +251,14 @@ lyrics_cache.db
 Remove-Item spicetify-remote-core-vX.X.X.zip -Force -ErrorAction SilentlyContinue
 
 # Create with proper folder structure
-7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip AGENTS.md README.md requirements.txt server\ spicetify-extension\ web\
+7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt server\ spicetify-extension\ web\
 ```
 
 Pitfalls to avoid:
 - `Compress-Archive` flattens paths — never use it for release zips
 - `__pycache__` gets picked up unless explicitly excluded with `-xr'!__pycache__'`
 - If a previous upload locked the zip, rename it first (`Move-Item`) then delete
+- **Do not `git add` the zip** — release zips are for GitHub releases only, not the repo itself
 
 ### 3. Commit
 
@@ -302,7 +307,8 @@ gh release create vX.X.X `
 
 ### Download Assets
 * **Core Package:** spicetify-remote-core-vX.X.X.zip (Server + Web + Extension)
-* **Stream Deck Plugin:** com.dekub.spicetify-remote.streamDeckPlugin (Optional)"
+* **Stream Deck Plugin:** com.dekub.spicetify-remote.streamDeckPlugin (Optional)
+* **Streamer.bot Commands:** See [setup guide](https://github.com/dekub100/spicetify-remote/blob/main/streamerbot-commands/README.md)"
 ```
 
 Pitfalls:
