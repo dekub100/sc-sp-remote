@@ -56,6 +56,30 @@ async def handle_config(request):
     }, headers=headers)
 
 
+def format_ms(ms):
+    total_sec = max(0, int(ms / 1000))
+    return f"{total_sec // 60}:{total_sec % 60:02d}"
+
+
+async def handle_state(request):
+    return web.json_response({
+        "trackName": state["currentTrack"]["trackName"],
+        "artistName": state["currentTrack"]["artistName"],
+        "albumName": state["currentTrack"]["albumName"],
+        "trackUri": state["currentTrack"]["trackUri"],
+        "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+        "volume": state["volume"],
+        "isPlaying": state["isPlaying"],
+        "isShuffling": state["isShuffling"],
+        "repeatStatus": state["repeatStatus"],
+        "isLiked": state["isLiked"],
+        "progress": state["trackProgress"],
+        "duration": state["trackDuration"],
+        "progressFmt": format_ms(state["trackProgress"]),
+        "durationFmt": format_ms(state["trackDuration"])
+    })
+
+
 async def index_handler(request):
     if request.headers.get('Upgrade', '').lower() == 'websocket':
         return await websocket_handler(request)

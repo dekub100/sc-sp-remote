@@ -1,6 +1,6 @@
 # spicetify-remote
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.1-blue.svg)
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
@@ -16,6 +16,7 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Service Management (Windows)](#service-management-windows)
 - [Service Management (Linux)](#service-management-linux)
 - [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
+- [Streamer.bot Integration](#streamerbot-integration)
 - [Lyrics](#lyrics)
 - [Updating](#updating)
 - [Notes](#notes)
@@ -173,6 +174,14 @@ Download `com.dekub.spicetify-remote.streamDeckPlugin` from the [releases page](
 ### Server Communication
 
 The Stream Deck plugin communicates with the server via WebSockets. Ensure your server is running (`python server/server.py` or as a service) for the actions to function.
+
+## Streamer.bot Integration
+
+Control Spotify and display now-playing info from [Streamer.bot](https://streamer.bot) using chat commands. All commands, C# sub-actions, and Streamer.bot import code are documented in:
+
+[`streamerbot-commands/README.md`](streamerbot-commands/README.md)
+
+Includes `!play`, `!pause`, `!next`, `!prev`, `!volume`, `!shuffle`, `!repeat`, `!like`, `!seek`, plus display-only commands (`!np`, `!song`, `!current`) via HTTP.
 
 ## Lyrics
 

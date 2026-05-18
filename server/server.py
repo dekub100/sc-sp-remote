@@ -48,6 +48,7 @@ from lyrics import (  # noqa: F401
 )
 from routes import (
     handle_config,
+    handle_state,
     index_handler,
     obs_handler,
     websocket_handler,  # noqa: F401
@@ -83,6 +84,7 @@ async def main():
     main_app.router.add_get('/obs', obs_handler)
     main_app.router.add_get('/obs/', obs_handler)
     main_app.router.add_get('/api/config', handle_config)
+    main_app.router.add_get('/api/state', handle_state)
 
     main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
     main_app.router.add_static('/', os.path.join(PROJECT_ROOT, 'web'))
