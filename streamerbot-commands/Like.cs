@@ -1,0 +1,10 @@
+using System;
+
+public class CPHInline
+{
+    public bool Execute()
+    {
+        CPH.WebsocketSend("{\"type\":\"like\"}", 0);
+        return true;
+    }
+}
