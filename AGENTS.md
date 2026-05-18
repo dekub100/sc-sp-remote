@@ -4,7 +4,7 @@
 
 A Spicetify extension for remote control/viewing of Spotify using WebSockets, without Spotify Premium. Provides a web UI, OBS widget, and Stream Deck plugin — all communicating through a central Python server.
 
-**Version:** 1.1.0
+**Version:** 1.4.0
 **GitHub:** https://github.com/dekub100/spicetify-remote
 
 ---
@@ -19,9 +19,16 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 ├── test_server.py            # 47 tests for server logic
 ├── AGENTS.md                 # This file
 ├── server/
-│   ├── server.py             # Main aiohttp server (HTTP + WebSocket)
+│   ├── server.py             # Entry point, imports all modules, routes + main()
+│   ├── config.py             # Paths, constants, config.json loading
+│   ├── log.py                # Logger setup, log rotation cleanup
+│   ├── state.py              # State dict, JSON persistence, debounced saves
+│   ├── broadcast.py          # CLIENTS dict, WebSocket broadcast functions
+│   ├── lyrics.py             # LRC parser, LRCLIB fetcher, SQLite cache
+│   ├── handlers.py           # Message handlers + dispatch table
+│   ├── routes.py             # WS handler, HTTP endpoints, static files
 │   ├── service.py            # Windows service wrapper (pywin32)
-│   ├── install.py            # Spicetify extension installer (was setup.py)
+│   ├── install.py            # Spicetify extension installer
 │   └── config.json           # Server configuration
 ├── web/
 │   ├── index.html            # Main web UI
@@ -82,6 +89,7 @@ Stream Deck Plugin ────────────────────�
 ### Key Design Decisions
 
 - **Single port** for HTTP + WebSocket (aiohttp handles both)
+- **Server split into modules** — `server.py` is a thin coordinator; `config.py`, `log.py`, `state.py`, `broadcast.py`, `lyrics.py`, `handlers.py`, `routes.py` each own one concern
 - **Discovery server** on port 54321 lets clients auto-find the main port
 - **Delta-based sync** — clients send only changed fields, not full state
 - **Client types** via query param: `?client=spicetify`, `?client=website`, `?client=obs`
@@ -90,7 +98,7 @@ Stream Deck Plugin ────────────────────�
 - **Client-side color extraction** from album art via Canvas API (no server-side processing)
 - **Profanity filter** uses base64-encoded word list to avoid GitHub content moderation flags
 
-### State Shape (server.py)
+### State Shape (state.py)
 
 ```python
 state = {
@@ -141,7 +149,7 @@ state = {
 
 ### JavaScript
 - **No framework** — vanilla JS, no build step for web files
-- **WebSocket reconnect** — exponential backoff (1s → 30s max)
+- **WebSocket reconnect** — exponential backoff (1s → 10s max)
 - **Event listener cleanup** — store references, remove on disconnect (fixed in remoteVolume.js)
 - **onload before src** — always set `img.onload` before `img.src` to catch cached images
 - **Marquee** — CSS `::after` pseudo-element with `data-text` attribute, not JS animation
@@ -207,6 +215,16 @@ npm run build
 11. **`pyproject.toml`** has `asyncio_mode = "auto"` so async tests don't need `@pytest.mark.asyncio`.
 12. **Stream Deck plugin source** is in `streamdeck-plugin/` — the `.streamDeckPlugin` file in root is the pre-built package.
 
+13. **Server split into modules** — `server/server.py` was split into `config.py`, `log.py`, `state.py`, `broadcast.py`, `lyrics.py`, `handlers.py`, `routes.py`. All symbols are re-exported through `server.py` so `import server` and `server.state`, `server.broadcast`, etc. still work in tests.
+
+14. **Lazy import for LYRICS_CACHE_DB** — `lyrics.py` uses a `_get_db_path()` helper that does `from server import LYRICS_CACHE_DB` at call time (not module level). This avoids circular imports and allows tests to `patch.object(server, "LYRICS_CACHE_DB", ...)`.
+
+15. **`_write_state_to_disk` lives in server.py** because tests patch `server.STATE_FILE`. Kept in the entry-point module so the patched value is read by the write function.
+
+16. **Callback pattern for state saves** — `state.py` exposes `set_write_callback()` so `server.py` can register `_write_state_to_disk`. This breaks the circular dependency between `state.py` and `server.py`.
+
+17. **Discovery fetch uses fixed 1s retry** — `fetchServerConfig()` in `remoteVolume.js` retries every 1s instead of using the exponential WebSocket backoff. This prevents long waits when the server starts shortly after the extension.
+
 ---
 
 ## Testing Strategy
@@ -230,8 +248,8 @@ npm run build
 
 ## What to Do When Adding Features
 
-1. **New message type** → add to `MESSAGE_HANDLERS` dict in server.py, add handler function, update client(s)
-2. **New state field** → add to `state` dict, update `broadcast_current_state`, update `get_current_save_data`, update `handle_track_update` if it should persist
+1. **New message type** → add to `MESSAGE_HANDLERS` dict in `handlers.py`, add handler function, update client(s)
+2. **New state field** → add to `state` dict in `state.py`, update `broadcast_current_state` in `broadcast.py`, update `get_current_save_data` in `state.py`, update `handle_track_update` in `handlers.py` if it should persist
 3. **New web UI element** → add to HTML, add to `ui` object in script.js, wire up event listener
 4. **New OBS widget feature** → same pattern but in obs-widget/ files
-5. **Always** → add tests for new handlers, run `ruff check`, run `pytest`
+5. **Always** → add tests for new handlers in `test_server.py`, run `ruff check`, run `pytest`

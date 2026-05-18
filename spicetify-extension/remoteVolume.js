@@ -7,9 +7,10 @@
     config: {
       CONFIG_URL: "http://localhost:54321/api/config",
       SERVER_URL: null,
-      POLLING_INTERVAL_MS: 500, // Reduced frequency since we use events
+      POLLING_INTERVAL_MS: 500,
       RECONNECT_DELAY_BASE: 1000,
-      MAX_RECONNECT_DELAY: 30000,
+      MAX_RECONNECT_DELAY: 10000,
+      CONFIG_RETRY_DELAY: 1000,
     },
 
     // --- State Management ---
@@ -49,7 +50,7 @@
         })
         .catch((err) => {
           console.error("[RemoteVolume] Config fetch failed:", err);
-          this.scheduleReconnect(this.fetchServerConfig.bind(this));
+          setTimeout(this.fetchServerConfig.bind(this), this.config.CONFIG_RETRY_DELAY);
         });
     },
 
