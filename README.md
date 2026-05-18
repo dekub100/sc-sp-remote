@@ -217,7 +217,7 @@ Clone the repo and install dev dependencies:
 ```bash
 git clone https://github.com/dekub100/spicetify-remote
 cd spicetify-remote
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ### Running the Server

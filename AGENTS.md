@@ -13,7 +13,8 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 
 ```
 ├── README.md
-├── requirements.txt          # Python deps (aiohttp, pytest, ruff, etc.)
+├── requirements.txt          # Python runtime deps (aiohttp, pywin32)
+├── requirements-dev.txt     # Python dev deps (pytest, ruff, pytest-asyncio)
 ├── pyproject.toml            # ruff + pytest config
 ├── conftest.py               # pytest: adds server/ to sys.path
 ├── test_server.py            # 48 tests for server logic
