@@ -42,24 +42,22 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 
 ## Installation
 
-1. Clone the repo and navigate to the directory:
+1. Download the latest `spicetify-remote-core-v*.zip` from the [releases page](https://github.com/dekub100/spicetify-remote/releases).
+2. Extract the zip anywhere — it contains `server/`, `web/`, and `spicetify-extension/` folders.
+3. Install the Spicetify extension and Python dependencies:
 
 ```bash
-git clone https://github.com/dekub100/spicetify-remote
-cd spicetify-remote
-```
-
-2. Run the install script to set up the Spicetify extension and required Python dependencies:
-
-```bash
+cd path/to/extracted/folder
 python server/install.py
 ```
 
-3. (Optional) If you'd like to install dependencies manually, you can use:
+4. Start the server:
 
 ```bash
-pip install -r requirements.txt
+python server/server.py
 ```
+
+> **Note:** The install script handles both the Spicetify extension installation and Python dependency setup. If you prefer to install dependencies manually, run `pip install -r requirements.txt` instead.
 
 ## Configuration
 
@@ -168,15 +166,9 @@ This project includes a dedicated Elgato Stream Deck Plugin for direct control o
 - **Toggles**: Shuffle, Repeat, Like.
 - **Displays**: Shows current volume dynamically on the button.
 
-### Building the Plugin
+### Installing
 
-```bash
-cd streamdeck-plugin
-npm install
-npm run build
-```
-
-The built plugin will be output to `com.dekub.spicetify-remote.sdPlugin/`. Double-click the `.streamDeckPlugin` package to install it, or use `npx @elgato/cli install` from the plugin directory.
+Download `com.dekub.spicetify-remote.streamDeckPlugin` from the [releases page](https://github.com/dekub100/spicetify-remote/releases) and double-click to install. See [Development](#development) for building from source.
 
 ### Server Communication
 
@@ -197,17 +189,51 @@ Download the latest `spicetify-remote-core-v*.zip` from the [releases page](http
 - All configuration is handled via `server/config.json`.
 - The Spicetify extension and widgets fetch server config from the dedicated config server on `54321`.
 - If you change the `port` in `config.json`, the extension will automatically find it via the discovery port.
+- Log files are stored in the `logs/` directory, one per session.
 
 ## Security
 
 This server has **no authentication** and is designed for **localhost-only** use. Anyone with network access to the server port can control playback, change volume, and skip tracks. Do not expose this server to the internet or untrusted networks without adding your own authentication layer (reverse proxy, firewall rules, etc.).
 
+---
+
 ## Development
 
-Install dev dependencies:
+For contributors working on the source code.
+
+### Setup
+
+Clone the repo and install dev dependencies:
 
 ```bash
+git clone https://github.com/dekub100/spicetify-remote
+cd spicetify-remote
 pip install -r requirements.txt
+```
+
+### Running the Server
+
+```bash
+python server/server.py
+```
+
+Opens on `http://localhost:8888` with a discovery server on port `54321`.
+
+### Project Structure
+
+```
+server/                # Python backend (split into modules)
+  server.py            #   Entry point, routes, main()
+  config.py            #   Paths, constants, config loading
+  log.py               #   Logger setup, log rotation
+  state.py             #   State dict, JSON persistence
+  broadcast.py         #   WebSocket broadcast functions
+  lyrics.py            #   LRC parser, LRCLIB fetcher, SQLite cache
+  handlers.py          #   Message handlers + dispatch table
+  routes.py            #   WS handler, HTTP endpoints
+web/                   # Frontend (no build step)
+spicetify-extension/   # Spicetify extension (runs inside Spotify)
+streamdeck-plugin/     # Elgato Stream Deck plugin source
 ```
 
 ### Running Tests
@@ -216,8 +242,20 @@ pip install -r requirements.txt
 python -m pytest test_server.py -v
 ```
 
+47 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, and CORS config.
+
 ### Linting
 
 ```bash
 ruff check server/ test_server.py
 ```
+
+### Stream Deck Plugin
+
+```bash
+cd streamdeck-plugin
+npm install
+npm run build
+```
+
+The built plugin outputs to `com.dekub.spicetify-remote.sdPlugin/`. Double-click the `.streamDeckPlugin` package to install, or use `npx @elgato/cli install` from the plugin directory.
