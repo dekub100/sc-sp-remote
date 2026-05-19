@@ -12,6 +12,25 @@ from log import logger
 from state import check_rate_limit, parse_track_input, pendingQueueMeta, state
 
 
+def _build_client_config(client_type: str) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "type": "config",
+        "volumeStep": config.get("volumeStep", 0.05),
+    }
+    if client_type == "spicetify":
+        base.update({
+            "pollingIntervalMs": config.get("spicetifyPollingIntervalMs", 500),
+            "queuePollingIntervalMs": config.get("spicetifyQueuePollingIntervalMs", 2000),
+            "reconnectBaseDelayMs": config.get("spicetifyReconnectBaseDelayMs", 1000),
+            "reconnectMaxDelayMs": config.get("spicetifyReconnectMaxDelayMs", 10000),
+            "progressDeltaThresholdMs": config.get("spicetifyProgressDeltaThresholdMs", 2000),
+            "commandFeedbackDelayMs": config.get("spicetifyCommandFeedbackDelayMs", 150),
+        })
+    elif client_type == "obs":
+        base["upNextThresholdMs"] = config.get("obsUpNextThresholdMs", 15000)
+    return base
+
+
 def _cors_headers(request: web.Request) -> dict[str, str]:
     origins: list[str] = config["allowedOrigins"]
     if "*" in origins:
@@ -30,6 +49,9 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote}
 
     logger.info(f"New connection: {client_type} ({request.remote})")
+
+    client_config = _build_client_config(client_type)
+    await ws.send_json(client_config)
 
     if client_type == "spicetify":
         set_spicetify_client(ws)
@@ -184,7 +206,12 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
     allowed_keys = {
         "port", "allowedOrigins", "defaultVolume", "enableOBS",
         "enableWebsite", "volumeStep", "logLevel", "backupCount",
-        "maxQueueSize", "queueRateLimitSeconds"
+        "maxQueueSize", "queueRateLimitSeconds",
+        "progressBroadcastInterval", "stateSaveDebounceSeconds", "lyricsFetchTimeoutSeconds",
+        "spicetifyPollingIntervalMs", "spicetifyQueuePollingIntervalMs",
+        "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
+        "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
+        "obsUpNextThresholdMs",
     }
     updates = {k: v for k, v in body.items() if k in allowed_keys}
 

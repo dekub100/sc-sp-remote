@@ -30,7 +30,17 @@ config: dict[str, Any] = {
     "logLevel": "INFO",
     "backupCount": 3,
     "maxQueueSize": 50,
-    "queueRateLimitSeconds": 30
+    "queueRateLimitSeconds": 30,
+    "progressBroadcastInterval": 1.0,
+    "stateSaveDebounceSeconds": 2.0,
+    "lyricsFetchTimeoutSeconds": 30,
+    "spicetifyPollingIntervalMs": 500,
+    "spicetifyQueuePollingIntervalMs": 2000,
+    "spicetifyReconnectBaseDelayMs": 1000,
+    "spicetifyReconnectMaxDelayMs": 10000,
+    "spicetifyProgressDeltaThresholdMs": 2000,
+    "spicetifyCommandFeedbackDelayMs": 150,
+    "obsUpNextThresholdMs": 15000,
 }
 
 if os.path.exists(CONFIG_PATH):

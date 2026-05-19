@@ -14,6 +14,7 @@
       PROGRESS_DELTA_THRESHOLD_MS: 2000,
       COMMAND_FEEDBACK_DELAY_MS: 150,
       STALE_CONNECTION_WINDOW_MS: 2000,
+      VOLUME_STEP: 0.05,
     },
 
     // --- State Management ---
@@ -68,8 +69,35 @@
     onOpen() {
       console.log("[RemoteVolume] Connected.");
       this.reconnectAttempts = 0;
-      // No need for manual register, handled by query params
-      this.syncFullState(true); // Force push all state on connect
+      this.syncFullState(true);
+      this.startServices();
+    },
+
+    applyClientConfig(data) {
+      if (data.pollingIntervalMs !== undefined) {
+        this.config.POLLING_INTERVAL_MS = data.pollingIntervalMs;
+        console.log(`[RemoteVolume] Config: pollingInterval = ${data.pollingIntervalMs}ms`);
+      }
+      if (data.queuePollingIntervalMs !== undefined) {
+        this.config.QUEUE_POLLING_INTERVAL_MS = data.queuePollingIntervalMs;
+        console.log(`[RemoteVolume] Config: queuePollingInterval = ${data.queuePollingIntervalMs}ms`);
+      }
+      if (data.reconnectBaseDelayMs !== undefined) {
+        this.config.RECONNECT_DELAY_BASE = data.reconnectBaseDelayMs;
+      }
+      if (data.reconnectMaxDelayMs !== undefined) {
+        this.config.MAX_RECONNECT_DELAY = data.reconnectMaxDelayMs;
+      }
+      if (data.progressDeltaThresholdMs !== undefined) {
+        this.config.PROGRESS_DELTA_THRESHOLD_MS = data.progressDeltaThresholdMs;
+      }
+      if (data.commandFeedbackDelayMs !== undefined) {
+        this.config.COMMAND_FEEDBACK_DELAY_MS = data.commandFeedbackDelayMs;
+      }
+      if (data.volumeStep !== undefined) {
+        this.config.VOLUME_STEP = data.volumeStep;
+      }
+      this.stopServices();
       this.startServices();
     },
 
@@ -77,6 +105,9 @@
       try {
         const data = JSON.parse(event.data);
         switch (data.type) {
+          case "config":
+            this.applyClientConfig(data);
+            break;
           case "stateUpdate":
           case "volumeUpdate":
           case "playbackUpdate":

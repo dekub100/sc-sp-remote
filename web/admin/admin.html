@@ -45,19 +45,19 @@
   <br>
 
   <div id="config-tab" class="tab-content active">
-    <center>
-      <table width="600" cellpadding="6" cellspacing="3" border="0">
-        <tr>
-          <td align="center" class="section-title">
-            <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
-              &#9733; Network Settings &#9733;
-            </font>
-          </td>
-        </tr>
-      </table>
-    </center>
-
     <form id="config-form">
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; Network Settings &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
       <center>
         <table width="600" cellpadding="4" cellspacing="2" border="0">
           <tr>
@@ -145,6 +145,150 @@
             <td>
               <input type="checkbox" id="cfg-website" name="enableWebsite">
               <font face="Verdana" size="2" color="#ffffff"> yes!!</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br>
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; Server Internals &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Progress Broadcast:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-progress-broadcast" name="progressBroadcastInterval" min="0.1" max="5" step="0.1" size="10">
+              <font face="Verdana" size="1" color="#999999"> seconds (how often progress is sent to clients)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">State Save Debounce:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-save-debounce" name="stateSaveDebounceSeconds" min="0.5" max="10" step="0.5" size="10">
+              <font face="Verdana" size="1" color="#999999"> seconds of inactivity before saving to disk</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Lyrics Fetch Timeout:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-lyrics-timeout" name="lyricsFetchTimeoutSeconds" min="5" max="120" size="10">
+              <font face="Verdana" size="1" color="#999999"> seconds before LRCLIB request times out</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br>
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; Extension (Spicetify) &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Polling Interval:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-polling" name="spicetifyPollingIntervalMs" min="100" max="5000" step="50" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (volume/shuffle/repeat/heart check frequency)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Queue Polling:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-queue-polling" name="spicetifyQueuePollingIntervalMs" min="500" max="10000" step="100" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (how often queue state is checked)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Reconnect Base Delay:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-reconnect-base" name="spicetifyReconnectBaseDelayMs" min="200" max="5000" step="100" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (starting delay for reconnect backoff)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Reconnect Max Delay:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-reconnect-max" name="spicetifyReconnectMaxDelayMs" min="1000" max="30000" step="500" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (maximum reconnect backoff cap)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Progress Delta:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-progress-delta" name="spicetifyProgressDeltaThresholdMs" min="500" max="10000" step="100" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (progress drift before broadcasting)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Command Feedback:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-command-feedback" name="spicetifyCommandFeedbackDelayMs" min="50" max="1000" step="10" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (wait after command before checking state)</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br>
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; OBS Widget &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Up Next Threshold:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-up-next" name="obsUpNextThresholdMs" min="5000" max="60000" step="1000" size="10">
+              <font face="Verdana" size="1" color="#999999"> ms (how early to show "Up Next" track)</font>
             </td>
           </tr>
         </table>

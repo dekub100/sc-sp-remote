@@ -27,6 +27,10 @@ function switchTab(name) {
 async function loadConfig() {
   try {
     const res = await fetch(`${API}/api/admin/config`);
+    if (!res.ok) {
+      showConfigStatus('Error loading config: HTTP ' + res.status, 'error');
+      return;
+    }
     const cfg = await res.json();
     document.getElementById('cfg-port').value = cfg.port;
     document.getElementById('cfg-origins').value = (cfg.allowedOrigins || []).join(', ');
@@ -34,11 +38,23 @@ async function loadConfig() {
     document.getElementById('cfg-volume-step').value = cfg.volumeStep;
     document.getElementById('cfg-max-queue').value = cfg.maxQueueSize;
     document.getElementById('cfg-rate-limit').value = cfg.queueRateLimitSeconds;
-    document.getElementById('cfg-obs').checked = cfg.enableOBS;
-    document.getElementById('cfg-website').checked = cfg.enableWebsite;
+    document.getElementById('cfg-obs').checked = !!cfg.enableOBS;
+    document.getElementById('cfg-website').checked = !!cfg.enableWebsite;
     document.getElementById('cfg-log-level').value = cfg.logLevel;
     document.getElementById('cfg-backup').value = cfg.backupCount;
-    document.getElementById('info-port').textContent = cfg.port;
+
+    document.getElementById('cfg-progress-broadcast').value = cfg.progressBroadcastInterval;
+    document.getElementById('cfg-save-debounce').value = cfg.stateSaveDebounceSeconds;
+    document.getElementById('cfg-lyrics-timeout').value = cfg.lyricsFetchTimeoutSeconds;
+
+    document.getElementById('cfg-polling').value = cfg.spicetifyPollingIntervalMs;
+    document.getElementById('cfg-queue-polling').value = cfg.spicetifyQueuePollingIntervalMs;
+    document.getElementById('cfg-reconnect-base').value = cfg.spicetifyReconnectBaseDelayMs;
+    document.getElementById('cfg-reconnect-max').value = cfg.spicetifyReconnectMaxDelayMs;
+    document.getElementById('cfg-progress-delta').value = cfg.spicetifyProgressDeltaThresholdMs;
+    document.getElementById('cfg-command-feedback').value = cfg.spicetifyCommandFeedbackDelayMs;
+
+    document.getElementById('cfg-up-next').value = cfg.obsUpNextThresholdMs;
   } catch (e) {
     showConfigStatus('Error loading config: ' + e.message, 'error');
   }
@@ -66,6 +82,16 @@ async function saveConfig(e) {
     enableWebsite: document.getElementById('cfg-website').checked,
     logLevel: document.getElementById('cfg-log-level').value,
     backupCount: parseInt(document.getElementById('cfg-backup').value),
+    progressBroadcastInterval: parseFloat(document.getElementById('cfg-progress-broadcast').value),
+    stateSaveDebounceSeconds: parseFloat(document.getElementById('cfg-save-debounce').value),
+    lyricsFetchTimeoutSeconds: parseInt(document.getElementById('cfg-lyrics-timeout').value),
+    spicetifyPollingIntervalMs: parseInt(document.getElementById('cfg-polling').value),
+    spicetifyQueuePollingIntervalMs: parseInt(document.getElementById('cfg-queue-polling').value),
+    spicetifyReconnectBaseDelayMs: parseInt(document.getElementById('cfg-reconnect-base').value),
+    spicetifyReconnectMaxDelayMs: parseInt(document.getElementById('cfg-reconnect-max').value),
+    spicetifyProgressDeltaThresholdMs: parseInt(document.getElementById('cfg-progress-delta').value),
+    spicetifyCommandFeedbackDelayMs: parseInt(document.getElementById('cfg-command-feedback').value),
+    obsUpNextThresholdMs: parseInt(document.getElementById('cfg-up-next').value),
   };
 
   try {
@@ -76,7 +102,7 @@ async function saveConfig(e) {
     });
     const data = await res.json();
     if (res.ok) {
-      showConfigStatus('~~ Config saved successfully!! ~~', 'success');
+      showConfigStatus('~~ Config saved!! Reconnect clients to apply. ~~', 'success');
     } else {
       showConfigStatus('Error: ' + (data.error || 'Save failed'), 'error');
     }

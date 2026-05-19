@@ -1,6 +1,8 @@
 {
   "port": 8888,
-  "allowedOrigins": ["*"],
+  "allowedOrigins": [
+    "*"
+  ],
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,
@@ -8,5 +10,15 @@
   "logLevel": "INFO",
   "backupCount": 3,
   "maxQueueSize": 50,
-  "queueRateLimitSeconds": 30
+  "queueRateLimitSeconds": 30,
+  "progressBroadcastInterval": 1,
+  "stateSaveDebounceSeconds": 2,
+  "lyricsFetchTimeoutSeconds": 15,
+  "spicetifyPollingIntervalMs": 500,
+  "spicetifyQueuePollingIntervalMs": 2000,
+  "spicetifyReconnectBaseDelayMs": 1000,
+  "spicetifyReconnectMaxDelayMs": 10000,
+  "spicetifyProgressDeltaThresholdMs": 2000,
+  "spicetifyCommandFeedbackDelayMs": 150,
+  "obsUpNextThresholdMs": 15000
 }

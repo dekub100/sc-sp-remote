@@ -44,7 +44,7 @@ const upNextState = {
   lastTrackUri: "",
 };
 
-const UP_NEXT_THRESHOLD_MS = 15000;
+let UP_NEXT_THRESHOLD_MS = 15000;
 
 /**
  * Applies extracted dominant color to the OBS widget background and progress bar.
@@ -193,6 +193,13 @@ function connect() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
+
+    if (data.type === "config") {
+      if (data.upNextThresholdMs !== undefined) {
+        UP_NEXT_THRESHOLD_MS = data.upNextThresholdMs;
+      }
+      return;
+    }
 
     // Handle Track Info
     if (data.type === "stateUpdate" || data.type === "trackUpdate") {
