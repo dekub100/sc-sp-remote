@@ -5,6 +5,7 @@ public class CPHInline
     public bool Execute()
     {
         CPH.WebsocketSend("{\"type\":\"playbackControl\",\"command\":\"togglePlay\"}", 0);
+        CPH.SendMessage("⏯️ Toggled play/pause");
         return true;
     }
 }

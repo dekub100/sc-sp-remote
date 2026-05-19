@@ -6,5 +6,7 @@
   "enableWebsite": true,
   "volumeStep": 0.05,
   "logLevel": "INFO",
-  "backupCount": 3
+  "backupCount": 3,
+  "maxQueueSize": 50,
+  "queueRateLimitSeconds": 0
 }

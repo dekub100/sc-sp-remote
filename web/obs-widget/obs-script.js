@@ -20,6 +20,8 @@ const elements = {
   totalTime: document.getElementById("totalTime"),
   container: document.querySelector(".widget-container"),
   lyricLine: document.getElementById("lyricLine"),
+  textInfo: document.querySelector(".text-info"),
+  progressSection: document.querySelector(".progress-section"),
 };
 
 // Lyrics state
@@ -31,6 +33,19 @@ const lyricsState = {
   loading: false,
   currentIndex: -1,
 };
+
+// Queue state
+const queueState = {
+  items: [],
+};
+
+// Up Next transition state
+const upNextState = {
+  isActive: false,
+  lastTrackUri: "",
+};
+
+const UP_NEXT_THRESHOLD_MS = 15000;
 
 /**
  * Applies extracted dominant color to the OBS widget background and progress bar.
@@ -100,6 +115,49 @@ function updateCurrentLyricLine(progressMs) {
   setLyricLineText(text);
 }
 
+function handleQueueUpdate(data) {
+  queueState.items = data.queue || [];
+}
+
+function showUpNext() {
+  if (upNextState.isActive) return;
+  const nextTrack = queueState.items[0];
+  if (!nextTrack) return;
+
+  const meta = nextTrack.metadata || {};
+  const title = meta.title || "Unknown Track";
+  const artist = meta.artist_name || "Unknown Artist";
+  const album = meta.album_name || "";
+  const imgUrl = meta.image_url || "";
+
+  upNextState.isActive = true;
+
+  elements.textInfo.classList.add("fade-out");
+
+  setTimeout(() => {
+    elements.songTitle.querySelector(".marquee-wrapper").textContent = `Up Next: ${title}`;
+    elements.songTitle.classList.remove("marquee-active");
+    updateMarquee(elements.artistName, artist);
+    updateMarquee(elements.albumName, album);
+
+    if (imgUrl && elements.albumArt.src !== imgUrl) {
+      elements.albumArt.crossOrigin = "Anonymous";
+      elements.albumArt.onload = () => updateDynamicColors(elements.albumArt);
+      elements.albumArt.src = imgUrl;
+    }
+
+    elements.textInfo.classList.remove("fade-out");
+    elements.textInfo.classList.add("fade-in");
+  }, 400);
+}
+
+function resetUpNext() {
+  if (!upNextState.isActive) return;
+  upNextState.isActive = false;
+
+  elements.textInfo.classList.remove("fade-out", "fade-in");
+}
+
 // Smooth interpolation loop
 function animate() {
   if (lastState.isPlaying) {
@@ -116,6 +174,13 @@ function animate() {
       elements.currentTime.textContent = formatTime(currentProgress);
     }
     updateCurrentLyricLine(currentProgress);
+
+    const remaining = lastState.duration - currentProgress;
+    if (remaining <= UP_NEXT_THRESHOLD_MS && remaining > 0) {
+      showUpNext();
+    } else if (upNextState.isActive) {
+      resetUpNext();
+    }
   }
   requestAnimationFrame(animate);
 }
@@ -143,6 +208,8 @@ function connect() {
 
     // Handle Track Info
     if (data.type === "stateUpdate" || data.type === "trackUpdate") {
+      resetUpNext();
+      if (data.trackUri) upNextState.lastTrackUri = data.trackUri;
       if (data.trackName) updateMarquee(elements.songTitle, data.trackName);
       if (data.artistName) updateMarquee(elements.artistName, data.artistName);
       if (data.albumName) updateMarquee(elements.albumName, data.albumName);
@@ -176,6 +243,11 @@ function connect() {
     // Handle Lyrics
     if (data.type === "lyricsUpdate") {
       handleLyricsUpdate(data);
+    }
+
+    // Handle Queue
+    if (data.type === "queueUpdate") {
+      handleQueueUpdate(data);
     }
   };
 

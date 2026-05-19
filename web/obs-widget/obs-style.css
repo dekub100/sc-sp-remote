@@ -172,3 +172,23 @@ body {
 .lyric-line.hidden {
   display: none;
 }
+
+/* --- Up Next Transitions --- */
+.text-info,
+.progress-section {
+  transition: opacity 0.4s ease;
+}
+
+.text-info.fade-out,
+.progress-section.fade-out,
+.lyric-line.fade-out {
+  opacity: 0;
+}
+
+.text-info.fade-in {
+  opacity: 1;
+}
+
+.hidden {
+  display: none !important;
+}

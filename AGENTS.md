@@ -4,7 +4,7 @@
 
 A Spicetify extension for remote control/viewing of Spotify using WebSockets, without Spotify Premium. Provides a web UI, OBS widget, and Stream Deck plugin — all communicating through a central Python server.
 
-**Version:** 1.4.2
+**Version:** 1.5.0
 **GitHub:** https://github.com/dekub100/spicetify-remote
 
 ---
@@ -17,7 +17,7 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 ├── requirements-dev.txt     # Python dev deps (pytest, ruff, pytest-asyncio)
 ├── pyproject.toml            # ruff + pytest config
 ├── conftest.py               # pytest: adds server/ to sys.path
-├── test_server.py            # 48 tests for server logic
+├── test_server.py            # 76 tests for server logic
 ├── AGENTS.md                 # This file
 ├── CONTRIBUTING.md           # Running things, release workflow
 ├── server/
@@ -73,13 +73,18 @@ OBS Widget (obs-script.js) ──────────────┤
                                          │
 Stream Deck Plugin ──────────────────────┘
                                          │
-                             ┌────────────┴────────────┐
-                             │    server/server.py     │
-                             │  (aiohttp, single port) │
-                             ├─────────────────────────┤
-                             │  HTTP GET /api/state    │
-                             │  (full JSON, mm:ss)     │
-                             └─────────────────────────┘
+                              ┌────────────┴────────────┐
+                              │    server/server.py     │
+                              │  (aiohttp, single port) │
+                              ├─────────────────────────┤
+                              │  HTTP GET /api/state    │
+                              │  (full JSON, mm:ss)     │
+                              │  HTTP GET /api/queue    │
+                              │  (queue + revision)     │
+                              │  POST /api/queue/add    │
+                              │  DELETE /api/queue/remove│
+                              │  POST /api/queue/clear  │
+                              └─────────────────────────┘
                                           │
                              ┌────────────┴────────────┐
                              │  Discovery: port 54321  │
@@ -104,6 +109,10 @@ Stream Deck Plugin ────────────────────�
 - **Debounced state saves** (2s inactivity) to avoid disk thrashing
 - **Client-side color extraction** from album art via Canvas API (no server-side processing)
 - **Profanity filter** uses base64-encoded word list to avoid GitHub content moderation flags
+- **Queue URI normalization** — `parse_track_input()` in `state.py` converts Spotify URLs (including `intl-xx/` variant) and bare URIs to `spotify:track:xxx` format
+- **Queue rate limiting** — per-requester 30s cooldown, configurable via `queueRateLimitSeconds`
+- **Queue polling** — extension polls `Spicetify.Queue` every 2s, sends `queueSnapshot` to server, server matches URIs against `pendingQueueMeta` to inject `requestedBy`
+- **OBS Up Next transition** — when current track has ≤15s remaining, OBS widget fades out current info and shows next queued track's details
 
 ### State Shape (state.py)
 
@@ -119,7 +128,8 @@ state = {
     "repeatStatus": 0|1|2,
     "isLiked": bool,
     "spicetifyClient": WebSocket|None,
-    "lyrics": {"trackUri", "synced": [], "plain": "", "available": bool, "instrumental": bool, "loading": bool}
+    "lyrics": {"trackUri", "synced": [], "plain": "", "available": bool, "instrumental": bool, "loading": bool},
+    "queue": {"nextTracks": [], "queueRevision": ""}
 }
 ```
 
@@ -140,6 +150,12 @@ state = {
 | `playbackControl` | Any→Server | Command routed to spicetify only |
 | `like` | Any→Server | Like command shortcut |
 | `lyricsUpdate` | Server→Clients | Lyrics data push |
+| `queueSnapshot` | Spicetify→Server | Queue state from extension polling |
+| `addToQueue` | Any→Server | Add track (routed to spicetify) |
+| `removeFromQueue` | Any→Server | Remove track (routed to spicetify) |
+| `clearQueue` | Any→Server | Clear queue (routed to spicetify) |
+| `queueUpdate` | Server→Clients | Queue state broadcast |
+| `error` | Any→Server/Client | Error relay |
 
 ---
 
@@ -195,13 +211,33 @@ state = {
 
 17. **Discovery fetch uses fixed 1s retry** — `fetchServerConfig()` in `remoteVolume.js` retries every 1s instead of using the exponential WebSocket backoff. This prevents long waits when the server starts shortly after the extension.
 
+18. **`Spicetify.Queue.nextTracks[i]` wraps ContextTrack**: real structure is `{contextTrack: {uri, uid, metadata}, removed, blocked, provider}`, NOT a flat `{uri, uid, metadata}`. Always use `item.contextTrack.uri`.
+
+19. **`queueRevision` is BigInt**: must `String()` it before JSON serialization and before comparison with stored state.
+
+20. **`nextTracks` includes ALL upcoming tracks**: playlist context + user-requested + pre-fetched autoplay recommendations. Queue-full check must use `pendingQueueMeta.length`, not `nextTracks.length`.
+
+21. **`spotify:delimiter` items**: filter out items with `uri === "spotify:delimiter"`.
+
+22. **`metadata.image_url` is `spotify:image:xxx`**: convert to `https://i.scdn.co/image/` + id before sending to clients.
+
+23. **URI normalization**: users may input `https://open.spotify.com/track/xxx` but snapshot URIs are `spotify:track:xxx`. Normalize both pending metadata and stored URIs with `parse_track_input()`.
+
+24. **Startup timing**: `Spicetify.Player.getVolume/getShuffle/getRepeat/getHeart/getProgress/getDuration` all throw TypeError when internal webpack modules haven't loaded yet. Wrap ALL getters in try/catch (`_safeGet` helper).
+
+25. **Metadata fallback chain**: queue items may have track info in `metadata.title` or `track.name` (top-level). Try `meta.title || t.name || ""`.
+
+26. **Artist fallback chain**: `meta.artist_name` or `t.artists?.[0]?.name || ""`.
+
+27. **Image fallback chain**: `meta.image_url || meta.image_small_url || meta.image_large_url || (t.album?.images?.[0]?.url) || ""`.
+
 ---
 
 ## Testing Strategy
 
 - **Don't test frontend** — runs in browser/Spotify, painful to mock
 - **Don't test full server lifecycle** — requires integration tests, overkill
-- **DO test** — message handlers, input validation, broadcasting, config endpoint, lyrics cache, pure functions
+- **DO test** — message handlers, input validation, broadcasting, config endpoint, lyrics cache, queue handlers, rate limiting, HTTP endpoints, pure functions
 - **State isolation** — `reset_state` fixture runs before every test
 - **Mock broadcasts** — patch `broadcast_*` functions to avoid needing real WebSocket connections
 
@@ -223,3 +259,9 @@ state = {
 3. **New web UI element** → add to HTML, add to `ui` object in script.js, wire up event listener
 4. **New OBS widget feature** → same pattern but in obs-widget/ files
 5. **Always** → add tests for new handlers in `test_server.py`, run `ruff check`, run `pytest`
+
+---
+
+## Queue System Architecture
+
+Native Spotify approach: viewers request songs → server forwards to extension → extension calls `Spicetify.addToQueue()` → extension polls `Spicetify.Queue.nextTracks` and mirrors to server → server broadcasts to clients. Queue-full check uses `pendingQueueMeta.length` (not `nextTracks.length`). `requestedBy` is matched via URI against pending metadata in FIFO order.

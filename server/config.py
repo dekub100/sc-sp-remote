@@ -19,6 +19,10 @@ DISCOVERY_PORT: int = 54321
 STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
+MAX_QUEUE_SIZE: int = 50
+QUEUE_RATE_LIMIT_SECONDS: float = 30.0
+QUEUE_SNAPSHOT_INTERVAL: float = 2.0
+
 config: dict[str, Any] = {
     "port": 8888,
     "allowedOrigins": ["*"],

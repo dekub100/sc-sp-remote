@@ -13,6 +13,7 @@ from broadcast import (  # noqa: F401
     broadcast_lyrics_update,
     broadcast_playback_update,
     broadcast_progress_update,
+    broadcast_queue_update,
     broadcast_volume_update,
     get_spicetify_client,
     set_spicetify_client,
@@ -21,12 +22,18 @@ from broadcast import (  # noqa: F401
 from config import (  # noqa: F401
     DISCOVERY_PORT,
     LYRICS_CACHE_DB,
+    MAX_QUEUE_SIZE,
     PROJECT_ROOT,
+    QUEUE_RATE_LIMIT_SECONDS,
+    QUEUE_SNAPSHOT_INTERVAL,
     STATE_FILE,
     config,
 )
 from handlers import (  # noqa: F401
     MESSAGE_HANDLERS,
+    handle_add_to_queue,
+    handle_clear_queue,
+    handle_error,
     handle_get_initial_state,
     handle_like_command,
     handle_like_update,
@@ -34,8 +41,11 @@ from handlers import (  # noqa: F401
     handle_playback_control,
     handle_playback_update,
     handle_progress_update,
+    handle_queue_snapshot,
     handle_register,
+    handle_remove_from_queue,
     handle_repeat_update,
+    handle_search_and_add,
     handle_shuffle_update,
     handle_track_update,
     handle_volume_update,
@@ -50,16 +60,26 @@ from lyrics import (  # noqa: F401
 )
 from routes import (  # noqa: F401
     handle_config,
+    handle_queue_add,
+    handle_queue_clear,
+    handle_queue_get,
+    handle_queue_remove,
+    handle_queue_search_add,
     handle_state,
     index_handler,
     obs_handler,
     websocket_handler,
 )
 from state import (  # noqa: F401
+    _rate_limit_store,
     _save_timer,
     cancel_pending_save,
+    check_rate_limit,
     get_current_save_data,
+    parse_track_input,
+    pendingQueueMeta,
     read_state_from_file,
+    reset_rate_limit,
     save_state_to_file_debounced,
     set_write_callback,
     state,
@@ -88,6 +108,12 @@ async def main() -> None:
     main_app.router.add_get('/obs/', obs_handler)
     main_app.router.add_get('/api/config', handle_config)
     main_app.router.add_get('/api/state', handle_state)
+
+    main_app.router.add_get('/api/queue', handle_queue_get)
+    main_app.router.add_post('/api/queue/add', handle_queue_add)
+    main_app.router.add_post('/api/queue/search-add', handle_queue_search_add)
+    main_app.router.add_delete('/api/queue/remove', handle_queue_remove)
+    main_app.router.add_post('/api/queue/clear', handle_queue_clear)
 
     main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
     main_app.router.add_static('/', os.path.join(PROJECT_ROOT, 'web'))

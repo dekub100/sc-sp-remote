@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
+import time
 from typing import Any, Callable, Optional
 
-from config import STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
+from config import QUEUE_RATE_LIMIT_SECONDS, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
 from log import logger
 
 state: dict[str, Any] = {
@@ -32,8 +34,16 @@ state: dict[str, Any] = {
         "available": False,
         "instrumental": False,
         "loading": False
+    },
+    "queue": {
+        "nextTracks": [],
+        "queueRevision": ""
     }
 }
+
+pendingQueueMeta: list[dict[str, str]] = []
+
+_rate_limit_store: dict[str, float] = {}
 
 _save_timer: Optional[asyncio.Task[None]] = None
 _write_callback: Optional[Callable[[dict[str, Any]], None]] = None
@@ -97,5 +107,31 @@ def cancel_pending_save() -> None:
         _save_timer.cancel()
         _save_timer = None
         logger.debug("Server: Pending save timer cancelled.")
+
+
+def parse_track_input(text: str) -> str:
+    text = text.strip()
+    match = re.search(r'open\.spotify\.com/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]+)', text)
+    if match:
+        return f"spotify:track:{match.group(1)}"
+    match = re.search(r'spotify:track:([a-zA-Z0-9]+)', text)
+    if match:
+        return f"spotify:track:{match.group(1)}"
+    return text
+
+
+def check_rate_limit(requester: str) -> tuple[bool, str]:
+    now = time.time()
+    last_request = _rate_limit_store.get(requester, 0)
+    elapsed = now - last_request
+    if elapsed < QUEUE_RATE_LIMIT_SECONDS:
+        remaining = int(QUEUE_RATE_LIMIT_SECONDS - elapsed)
+        return False, f"Rate limited. Try again in {remaining}s"
+    _rate_limit_store[requester] = now
+    return True, ""
+
+
+def reset_rate_limit(requester: str) -> None:
+    _rate_limit_store.pop(requester, None)
 
 

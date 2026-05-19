@@ -4,19 +4,16 @@ public class CPHInline
 {
     public bool Execute()
     {
-        // Usage:
-        //   !seek 1:30   → 1 minute 30 seconds
-        //   !seek 90     → 90 seconds
-        //   !seek 45000  → 45000 ms (raw, for power users)
-        // Maps to %position% in command settings
         object posObj;
         if (!CPH.TryGetArg("position", out posObj) && !CPH.TryGetArg("rawInput", out posObj))
+        {
+            CPH.SendMessage("Usage: !seek <seconds> or !seek <mm:ss>");
             return false;
+        }
 
         string input = posObj.ToString().Trim();
         int ms = 0;
 
-        // Try mm:ss format
         int colon = input.IndexOf(':');
         if (colon > 0)
         {
@@ -25,7 +22,6 @@ public class CPHInline
                 int.TryParse(input.Substring(colon + 1), out secs))
                 ms = (mins * 60 + secs) * 1000;
         }
-        // Try number — treat as seconds if < 1000, otherwise ms
         else
         {
             int num;
@@ -34,10 +30,14 @@ public class CPHInline
         }
 
         if (ms <= 0)
+        {
+            CPH.SendMessage("Invalid seek position. Usage: !seek <seconds> or !seek <mm:ss>");
             return false;
+        }
 
         string json = "{\"type\":\"playbackControl\",\"command\":\"seek\",\"position\":" + ms + "}";
         CPH.WebsocketSend(json, 0);
+        CPH.SendMessage($"⏩ Seeked to {input}");
         return true;
     }
 }

@@ -58,6 +58,9 @@
             <button id="lyricsBtn" class="control-btn" title="Toggle Lyrics">
                 <i class="fas fa-microphone-alt"></i>
             </button>
+            <button id="queueBtn" class="control-btn" title="Toggle Queue">
+                <i class="fas fa-list"></i>
+            </button>
         </div>
 
         <!-- Lyrics Panel -->
@@ -65,6 +68,18 @@
             <div id="lyricsContent" class="lyrics-content">
                 <p class="lyrics-placeholder">Waiting for lyrics...</p>
             </div>
+        </div>
+
+        <!-- Queue Panel -->
+        <div id="queuePanel" class="queue-panel hidden">
+            <div class="queue-header">
+                <h3>Queue <span id="queueCount" class="queue-count">0</span></h3>
+            </div>
+            <div class="queue-input-row">
+                <input type="text" id="queueInput" placeholder="Spotify track URL or URI..." class="queue-input">
+                <button id="queueAddBtn" class="queue-add-btn"><i class="fas fa-plus"></i></button>
+            </div>
+            <div id="queueList" class="queue-list"></div>
         </div>
     </div>
 

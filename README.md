@@ -1,6 +1,6 @@
 # spicetify-remote
 
-![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
@@ -35,6 +35,9 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - **Session-based Logging**: Individual log files for each session with configurable levels (DEBUG, INFO, etc.)
 - **Robust Sync**: Specialized protection against state-toggling loops
 - **Immediate Shutdown**: Improved task management for clean shutdown
+- **Song Request Queue**: Viewers can add songs via web UI, Streamer.bot (`!addqueue`), or HTTP API. Queue panel with count badge, remove/clear buttons, and `requestedBy` labels.
+- **OBS "Up Next" Transition**: When a song nears its end (~15s), the OBS widget transitions to show the next queued track's title, artist, album, and album art.
+- **Queue HTTP Endpoints**: Full REST API for queue management (`GET /api/queue`, `POST /api/queue/add`, `DELETE /api/queue/remove`, `POST /api/queue/clear`).
 
 ## Requirements
 
@@ -75,7 +78,9 @@ The server uses a `server/config.json` file for all major settings. You can edit
   "enableWebsite": true,
   "volumeStep": 0.05,
   "logLevel": "INFO",
-  "backupCount": 3
+  "backupCount": 3,
+  "maxQueueSize": 50,
+  "queueRateLimitSeconds": 30
 }
 ```
 
@@ -86,6 +91,8 @@ The server uses a `server/config.json` file for all major settings. You can edit
 - `enableWebsite`: Enable or disable the web interface
 - `logLevel`: Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`)
 - `backupCount`: Number of old session log files to keep in `logs/`
+- `maxQueueSize`: Maximum number of tracks in the queue (default: 50)
+- `queueRateLimitSeconds`: Cooldown between queue adds per requester (default: 30)
 
 **Notes:**
 
@@ -181,7 +188,7 @@ Control Spotify and display now-playing info from [Streamer.bot](https://streame
 
 [`streamerbot-commands/README.md`](streamerbot-commands/README.md)
 
-Includes `!play`, `!pause`, `!next`, `!prev`, `!volume`, `!shuffle`, `!repeat`, `!like`, `!seek`, plus display-only commands (`!np`, `!song`, `!current`) via HTTP.
+Includes `!play`, `!pause`, `!next`, `!prev`, `!volume`, `!shuffle`, `!repeat`, `!like`, `!seek`, `!addqueue <url>`, `!clearqueue`, plus display-only commands (`!np`, `!song`, `!current`) via HTTP. Queue commands also available via HTTP endpoints for non-WebSocket integrations.
 
 ## Lyrics
 
@@ -251,7 +258,7 @@ streamdeck-plugin/     # Elgato Stream Deck plugin source
 python -m pytest test_server.py -v
 ```
 
-48 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, and client registration.
+76 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, client registration, queue handlers, rate limiting, URI normalization, and HTTP queue endpoints.
 
 ### Linting
 

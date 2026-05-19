@@ -14,7 +14,6 @@
     },
 
     // --- State Management ---
-    // We keep a local copy to avoid sending redundant updates to the server.
     state: {
       volume: -1,
       isPlaying: false,
@@ -24,11 +23,13 @@
       trackUri: null,
       progress: -1,
       timestamp: 0,
+      queueRevision: "",
     },
 
     ws: null,
     reconnectAttempts: 0,
     pollInterval: null,
+    queueInterval: null,
 
     // --- Initialization ---
     init() {
@@ -97,6 +98,15 @@
           case "playbackControl":
             this.handleCommand(data);
             break;
+          case "addToQueue":
+            this.handleAddToQueue(data);
+            break;
+          case "removeFromQueue":
+            this.handleRemoveFromQueue(data);
+            break;
+          case "clearQueue":
+            this.handleClearQueue();
+            break;
         }
       } catch (err) {
         console.error("[RemoteVolume] Message parse error:", err);
@@ -126,8 +136,14 @@
 
     send(data) {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify(data));
+        this.ws.send(JSON.stringify(data, (_key, value) =>
+          typeof value === 'bigint' ? value.toString() : value
+        ));
       }
+    },
+
+    _safeGet(fn, fallback) {
+      try { return fn(); } catch { return fallback; }
     },
 
     // --- Helpers ---
@@ -159,12 +175,22 @@
           this.config.POLLING_INTERVAL_MS
         );
       }
+      if (!this.queueInterval) {
+        this.queueInterval = setInterval(
+          this.checkQueue.bind(this),
+          2000
+        );
+      }
     },
 
     stopServices() {
       if (this.pollInterval) {
         clearInterval(this.pollInterval);
         this.pollInterval = null;
+      }
+      if (this.queueInterval) {
+        clearInterval(this.queueInterval);
+        this.queueInterval = null;
       }
       if (this._onSongChange) {
         Spicetify.Player.removeEventListener("songchange", this._onSongChange);
@@ -195,7 +221,6 @@
     },
 
     syncFullState() {
-      // This is the "Snapshot" - sent only on connection
       const data = Spicetify.Player.data || {};
       const track = data.item;
       if (!track) return;
@@ -204,30 +229,31 @@
       const artUrl = this.getAlbumArtUrl(track);
 
       const snapshot = {
-        type: "stateUpdate", 
-        volume: Spicetify.Player.getVolume(),
-        isPlaying: Spicetify.Player.isPlaying(),
-        isShuffling: Spicetify.Player.getShuffle(),
-        repeatStatus: Spicetify.Player.getRepeat(),
-        isLiked: Spicetify.Player.getHeart(),
+        type: "stateUpdate",
+        volume: this._safeGet(() => Spicetify.Player.getVolume(), 0.5),
+        isPlaying: this._safeGet(() => Spicetify.Player.isPlaying(), false),
+        isShuffling: this._safeGet(() => Spicetify.Player.getShuffle(), false),
+        repeatStatus: this._safeGet(() => Spicetify.Player.getRepeat(), 0),
+        isLiked: this._safeGet(() => Spicetify.Player.getHeart(), false),
         trackName: track.name || meta.title || "Unknown Track",
         artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
         albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
         trackUri: track.uri || meta.uri || "",
         albumUri: (track.album && track.album.uri) || meta.album_uri || "",
         albumArtUrl: artUrl,
-        duration: Spicetify.Player.getDuration(),
-        progress: Spicetify.Player.getProgress()
+        duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+        progress: this._safeGet(() => Spicetify.Player.getProgress(), 0)
       };
 
       this.state = { ...snapshot };
       this.send(snapshot);
+      this.checkQueue();
     },
 
     // --- Individual Checkers (The Deltas) ---
 
     checkVolume(force = false) {
-      const vol = Spicetify.Player.getVolume();
+      const vol = this._safeGet(() => Spicetify.Player.getVolume(), this.state.volume);
       if (force || Math.abs(vol - this.state.volume) > 0.001) {
         this.state.volume = vol;
         this.send({ type: "volumeUpdate", volume: vol });
@@ -235,15 +261,15 @@
     },
 
     checkPlaybackStatus(force = false) {
-      const isPlaying = Spicetify.Player.isPlaying();
+      const isPlaying = this._safeGet(() => Spicetify.Player.isPlaying(), this.state.isPlaying);
       if (force || isPlaying !== this.state.isPlaying) {
         this.state.isPlaying = isPlaying;
-        this.send({ type: "playbackUpdate", isPlaying: isPlaying, progress: Spicetify.Player.getProgress() });
+        this.send({ type: "playbackUpdate", isPlaying: isPlaying, progress: this._safeGet(() => Spicetify.Player.getProgress(), 0) });
       }
     },
 
     checkShuffle(force = false) {
-      const isShuffling = Spicetify.Player.getShuffle();
+      const isShuffling = this._safeGet(() => Spicetify.Player.getShuffle(), this.state.isShuffling);
       if (force || isShuffling !== this.state.isShuffling) {
         this.state.isShuffling = isShuffling;
         this.send({ type: "shuffleUpdate", isShuffling: isShuffling });
@@ -251,7 +277,7 @@
     },
 
     checkRepeat(force = false) {
-      const repeat = Spicetify.Player.getRepeat();
+      const repeat = this._safeGet(() => Spicetify.Player.getRepeat(), this.state.repeatStatus);
       if (force || repeat !== this.state.repeatStatus) {
         this.state.repeatStatus = repeat;
         this.send({ type: "repeatUpdate", repeatStatus: repeat });
@@ -259,7 +285,7 @@
     },
 
     checkLikeStatus(force = false) {
-      const isLiked = Spicetify.Player.getHeart();
+      const isLiked = this._safeGet(() => Spicetify.Player.getHeart(), this.state.isLiked);
       if (force || isLiked !== this.state.isLiked) {
         this.state.isLiked = isLiked;
         this.send({ type: "likeUpdate", isLiked: isLiked });
@@ -284,23 +310,23 @@
           trackUri: track.uri || meta.uri || "",
           albumUri: (track.album && track.album.uri) || meta.album_uri || "",
           albumArtUrl: artUrl,
-          duration: Spicetify.Player.getDuration(),
-          progress: 0 // New tracks always start at 0
+          duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+          progress: 0
         };
 
         this.send(metadata);
+        this.checkQueue();
       }
     },
 
     checkProgressChange(force = false) {
-      let progress = Spicetify.Player.getProgress();
-      // Only send update if progress has drifted significantly (> 2 sec)
+      let progress = this._safeGet(() => Spicetify.Player.getProgress(), this.state.progress);
       if (force || Math.abs(progress - this.state.progress) > 2000) {
         this.state.progress = progress;
         this.send({
           type: "progressUpdate",
           progress: progress,
-          duration: Spicetify.Player.getDuration(),
+          duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
         });
       }
     },
@@ -308,44 +334,54 @@
     // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
-      // Intentional 2-second "stale window" after connect.
-      // Prevents echo loops where the server's initial state dump triggers
-      // a command back to Spotify before the extension's local state is synced.
       const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
 
       if (serverState.volume !== undefined) {
-        if (Math.abs(Spicetify.Player.getVolume() - serverState.volume) > 0.01) {
+        const currentVol = this._safeGet(() => Spicetify.Player.getVolume(), this.state.volume);
+        if (Math.abs(currentVol - serverState.volume) > 0.01) {
           Spicetify.Player.setVolume(serverState.volume);
           this.state.volume = serverState.volume;
         }
       }
 
       if (serverState.isPlaying !== undefined) {
-        if (!isStaleWindow && Spicetify.Player.isPlaying() !== serverState.isPlaying) {
-          if (serverState.isPlaying) Spicetify.Player.play();
-          else Spicetify.Player.pause();
-          this.state.isPlaying = serverState.isPlaying;
+        if (!isStaleWindow) {
+          const currentlyPlaying = this._safeGet(() => Spicetify.Player.isPlaying(), this.state.isPlaying);
+          if (currentlyPlaying !== serverState.isPlaying) {
+            if (serverState.isPlaying) Spicetify.Player.play();
+            else Spicetify.Player.pause();
+            this.state.isPlaying = serverState.isPlaying;
+          }
         }
       }
 
       if (serverState.isShuffling !== undefined) {
-        if (!isStaleWindow && Spicetify.Player.getShuffle() !== serverState.isShuffling) {
-          Spicetify.Player.toggleShuffle();
-          this.state.isShuffling = serverState.isShuffling;
+        if (!isStaleWindow) {
+          const currentShuffle = this._safeGet(() => Spicetify.Player.getShuffle(), this.state.isShuffling);
+          if (currentShuffle !== serverState.isShuffling) {
+            Spicetify.Player.toggleShuffle();
+            this.state.isShuffling = serverState.isShuffling;
+          }
         }
       }
 
       if (serverState.repeatStatus !== undefined) {
-        if (!isStaleWindow && Spicetify.Player.getRepeat() !== serverState.repeatStatus) {
-          Spicetify.Player.setRepeat(serverState.repeatStatus);
-          this.state.repeatStatus = serverState.repeatStatus;
+        if (!isStaleWindow) {
+          const currentRepeat = this._safeGet(() => Spicetify.Player.getRepeat(), this.state.repeatStatus);
+          if (currentRepeat !== serverState.repeatStatus) {
+            Spicetify.Player.setRepeat(serverState.repeatStatus);
+            this.state.repeatStatus = serverState.repeatStatus;
+          }
         }
       }
 
       if (serverState.isLiked !== undefined) {
-        if (!isStaleWindow && Spicetify.Player.getHeart() !== serverState.isLiked) {
-          Spicetify.Player.toggleHeart();
-          this.state.isLiked = serverState.isLiked;
+        if (!isStaleWindow) {
+          const currentLiked = this._safeGet(() => Spicetify.Player.getHeart(), this.state.isLiked);
+          if (currentLiked !== serverState.isLiked) {
+            Spicetify.Player.toggleHeart();
+            this.state.isLiked = serverState.isLiked;
+          }
         }
       }
     },
@@ -371,7 +407,7 @@
           Spicetify.Player.toggleShuffle();
           break;
         case "toggleRepeat":
-          Spicetify.Player.setRepeat((Spicetify.Player.getRepeat() + 1) % 3);
+          Spicetify.Player.setRepeat((this._safeGet(() => Spicetify.Player.getRepeat(), 0) + 1) % 3);
           break;
         case "like":
           Spicetify.Player.toggleHeart();
@@ -383,9 +419,7 @@
           Spicetify.Player.decreaseVolume();
           break;
       }
-      
-      // OPTIMIZED SYNC: Only check the specific thing likely to have changed.
-      // 150ms delay gives Spotify enough time to update its internal state.
+
       setTimeout(() => {
         if (["next", "previous"].includes(data.command)) this.checkTrackChange();
         else if (["play", "pause", "togglePlay"].includes(data.command)) this.checkPlaybackStatus();
@@ -394,6 +428,92 @@
         else if (data.command === "like") this.checkLikeStatus();
         else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
       }, 150);
+    },
+
+    checkQueue() {
+      const q = Spicetify.Queue;
+      if (!q) return;
+      const rev = String(q.queueRevision);
+      if (rev === this.state.queueRevision) return;
+      this.state.queueRevision = rev;
+      const rawItems = q.nextTracks || [];
+      const tracks = rawItems
+        .filter(item => {
+          const ct = item.contextTrack || item;
+          return ct.uri && ct.uri !== "spotify:delimiter";
+        })
+        .map(item => {
+          const ct = item.contextTrack || item;
+          const meta = ct.metadata || {};
+          const rawImg = meta.image_url || meta.image_small_url || meta.image_large_url || "";
+          return {
+            uri: ct.uri || "",
+            uid: String(ct.uid ?? ""),
+            metadata: {
+              title: meta.title || ct.name || "",
+              artist_name: meta.artist_name || (ct.artists?.[0]?.name) || "",
+              album_name: meta.album_title || meta.album_name || (ct.album?.name) || "",
+              image_url: rawImg.startsWith("spotify:image:")
+                ? "https://i.scdn.co/image/" + rawImg.substring(14)
+                : rawImg,
+              duration: meta.duration || ""
+            }
+          };
+        });
+      this.send({ type: "queueSnapshot", nextTracks: tracks, queueRevision: rev });
+    },
+
+    async handleAddToQueue(data) {
+      try {
+        const uri = data.uri;
+        if (!uri) return;
+        await Spicetify.addToQueue([{ uri }]);
+        console.log(`[RemoteVolume] Added to queue: ${uri}`);
+      } catch (err) {
+        console.error("[RemoteVolume] addToQueue failed:", err);
+        this.send({ type: "error", message: `Failed to add track: ${err.message}` });
+      }
+    },
+
+    async handleRemoveFromQueue(data) {
+      try {
+        const uri = data.uri;
+        const uid = data.uid;
+        if (!uri) return;
+        if (!uid) {
+          console.warn("[RemoteVolume] removeFromQueue: no uid provided, may remove duplicates");
+        }
+        const track = { uri };
+        if (uid) track.uid = uid;
+        await Spicetify.removeFromQueue([track]);
+        console.log(`[RemoteVolume] Removed from queue: ${uri}`);
+      } catch (err) {
+        console.error("[RemoteVolume] removeFromQueue failed:", err);
+        this.send({ type: "error", message: `Failed to remove track: ${err.message}` });
+      }
+    },
+
+    async handleClearQueue() {
+      try {
+        const q = Spicetify.Queue;
+        if (!q || !q.nextTracks || q.nextTracks.length === 0) return;
+        const items = q.nextTracks
+          .filter(item => {
+            const ct = item.contextTrack || item;
+            return ct.uri && ct.uri !== "spotify:delimiter";
+          })
+          .map(item => {
+            const ct = item.contextTrack || item;
+            const track = { uri: ct.uri };
+            if (ct.uid) track.uid = ct.uid;
+            return track;
+          });
+        await Spicetify.removeFromQueue(items);
+        console.log(`[RemoteVolume] Cleared ${items.length} tracks from queue`);
+      } catch (err) {
+        console.error("[RemoteVolume] clearQueue failed:", err);
+        this.send({ type: "error", message: `Failed to clear queue: ${err.message}` });
+      }
     }
   };
 

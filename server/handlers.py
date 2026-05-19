@@ -13,13 +13,20 @@ from broadcast import (
     broadcast_lyrics_update,
     broadcast_playback_update,
     broadcast_progress_update,
+    broadcast_queue_update,
     broadcast_volume_update,
     set_spicetify_client,
 )
-from config import config
+from config import MAX_QUEUE_SIZE, config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
-from state import save_state_to_file_debounced, state
+from state import (
+    check_rate_limit,
+    parse_track_input,
+    pendingQueueMeta,
+    save_state_to_file_debounced,
+    state,
+)
 
 KNOWN_CLIENT_TYPES: frozenset[str] = frozenset({"spicetify", "website", "obs"})
 
@@ -63,6 +70,12 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "plain": lyrics["plain"]
     })
     await ws.send_str(lyrics_msg)
+    queue_msg: str = json.dumps({
+        "type": "queueUpdate",
+        "queue": state["queue"]["nextTracks"],
+        "queueRevision": state["queue"]["queueRevision"]
+    })
+    await ws.send_str(queue_msg)
 
 
 async def handle_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
@@ -171,11 +184,94 @@ async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -
     await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify", exclude_ws=ws)
 
 
+async def handle_queue_snapshot(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    next_tracks = data.get("nextTracks", [])
+    queue_revision = str(data.get("queueRevision", ""))
+    state["queue"]["nextTracks"] = next_tracks
+    state["queue"]["queueRevision"] = queue_revision
+
+    if next_tracks and pendingQueueMeta:
+        uri_to_meta: dict[str, dict[str, str]] = {}
+        for meta in pendingQueueMeta:
+            uri_to_meta[meta["uri"]] = meta
+
+        matched_uris: list[str] = []
+        for track in next_tracks:
+            track_uri = track.get("uri", "")
+            if track_uri in uri_to_meta:
+                track["requestedBy"] = uri_to_meta[track_uri]["requestedBy"]
+                matched_uris.append(track_uri)
+
+        for uri in matched_uris:
+            pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
+
+    await broadcast_queue_update()
+
+
+async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    raw_input = data.get("input", data.get("trackUri", ""))
+    normalized_uri = parse_track_input(raw_input)
+    requester = data.get("requestedBy", "anonymous")
+
+    allowed, msg = check_rate_limit(requester)
+    if not allowed:
+        await ws.send_str(json.dumps({"type": "error", "message": msg}))
+        return
+
+    if len(pendingQueueMeta) >= MAX_QUEUE_SIZE:
+        await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
+        return
+
+    meta_entry = {"uri": normalized_uri, "requestedBy": requester}
+    pendingQueueMeta.append(meta_entry)
+
+    await broadcast({
+        "type": "addToQueue",
+        "uri": normalized_uri,
+        "requestedBy": requester
+    }, target_type="spicetify")
+
+    logger.info(f"Queue: Added {normalized_uri} (requested by {requester})")
+
+
+async def handle_remove_from_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    uri = data.get("uri", "")
+    uid = data.get("uid", "")
+    await broadcast({
+        "type": "removeFromQueue",
+        "uri": uri,
+        "uid": uid
+    }, target_type="spicetify")
+    logger.info(f"Queue: Removed {uri}")
+
+
+async def handle_clear_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    pendingQueueMeta.clear()
+    await broadcast({"type": "clearQueue"}, target_type="spicetify")
+    logger.info("Queue: Cleared")
+
+
+async def handle_search_and_add(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    query = data.get("query", "")
+    requester = data.get("requestedBy", "anonymous")
+
+    await broadcast({
+        "type": "searchAndAdd",
+        "query": query,
+        "requestedBy": requester
+    }, target_type="spicetify")
+    logger.info(f"Queue: Search '{query}' forwarded to spicetify (requested by {requester})")
+
+
+async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    message = data.get("message", "Unknown error")
+    logger.warning(f"Extension error: {message}")
+    await broadcast({"type": "error", "message": message})
+
+
 MESSAGE_HANDLERS: dict[str, Any] = {
     "register": handle_register,
     "getInitialState": handle_get_initial_state,
-    # stateUpdate (full snapshot on spicetify connect) and trackUpdate (new-track event)
-    # carry overlapping fields; both map to handle_track_update intentionally
     "stateUpdate": handle_track_update,
     "volumeUpdate": handle_volume_update,
     "playbackUpdate": handle_playback_update,
@@ -185,7 +281,13 @@ MESSAGE_HANDLERS: dict[str, Any] = {
     "trackUpdate": handle_track_update,
     "progressUpdate": handle_progress_update,
     "playbackControl": handle_playback_control,
-    "like": handle_like_command
+    "like": handle_like_command,
+    "queueSnapshot": handle_queue_snapshot,
+    "addToQueue": handle_add_to_queue,
+    "removeFromQueue": handle_remove_from_queue,
+    "clearQueue": handle_clear_queue,
+    "searchAndAdd": handle_search_and_add,
+    "error": handle_error
 }
 
 

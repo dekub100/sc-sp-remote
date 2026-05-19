@@ -31,7 +31,13 @@ const ui = {
     likeBtn: document.getElementById('likeBtn'),
     lyricsBtn: document.getElementById('lyricsBtn'),
     lyricsPanel: document.getElementById('lyricsPanel'),
-    lyricsContent: document.getElementById('lyricsContent')
+    lyricsContent: document.getElementById('lyricsContent'),
+    queueBtn: document.getElementById('queueBtn'),
+    queuePanel: document.getElementById('queuePanel'),
+    queueList: document.getElementById('queueList'),
+    queueCount: document.getElementById('queueCount'),
+    queueInput: document.getElementById('queueInput'),
+    queueAddBtn: document.getElementById('queueAddBtn')
 };
 
 // Lyrics state
@@ -42,6 +48,12 @@ const lyricsState = {
     instrumental: false,
     loading: false,
     currentIndex: -1,
+    isVisible: false
+};
+
+// Queue state
+const queueState = {
+    items: [],
     isVisible: false
 };
 
@@ -151,14 +163,62 @@ function handleLyricsUpdate(data) {
 
 function toggleLyrics() {
     lyricsState.isVisible = !lyricsState.isVisible;
+    ui.queuePanel.classList.add('hidden');
+    ui.queueBtn.classList.remove('active');
+    queueState.isVisible = false;
     ui.lyricsPanel.classList.toggle('hidden', !lyricsState.isVisible);
     ui.lyricsBtn.classList.toggle('active', lyricsState.isVisible);
-    // Scroll to active line when opening
     if (lyricsState.isVisible && lyricsState.currentIndex >= 0) {
         const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
         const activeLine = lines[lyricsState.currentIndex];
         if (activeLine) setTimeout(() => activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
     }
+}
+
+function handleQueueUpdate(data) {
+    queueState.items = data.queue || [];
+    renderQueue();
+}
+
+function renderQueue() {
+    const requestedItems = queueState.items.filter(i => i.requestedBy);
+    ui.queueCount.textContent = requestedItems.length;
+
+    if (queueState.items.length === 0) {
+        ui.queueList.innerHTML = '<p class="queue-empty">Queue is empty</p>';
+        return;
+    }
+
+    ui.queueList.innerHTML = queueState.items.map((item, index) => {
+        const meta = item.metadata || {};
+        const title = meta.title || '';
+        const artist = meta.artist_name || '';
+        const imgUrl = meta.image_url || '';
+        const requestedBy = item.requestedBy ? `<span class="queue-requested">by ${filterText(item.requestedBy)}</span>` : '';
+        const uid = item.uid || '';
+        const uri = item.uri || '';
+
+        return `<div class="queue-item" data-index="${index}">
+            ${imgUrl ? `<img class="queue-thumb" src="${imgUrl}" alt="" loading="lazy">` : '<div class="queue-thumb-placeholder"><i class="fas fa-music"></i></div>'}
+            <div class="queue-item-info">
+                <div class="queue-item-title">${filterText(title)}</div>
+                <div class="queue-item-artist">${filterText(artist)}</div>
+                ${requestedBy}
+            </div>
+            <button class="queue-remove-btn" data-uri="${uri}" data-uid="${uid}" title="Remove">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>`;
+    }).join('');
+}
+
+function toggleQueue() {
+    queueState.isVisible = !queueState.isVisible;
+    ui.lyricsPanel.classList.add('hidden');
+    ui.lyricsBtn.classList.remove('active');
+    lyricsState.isVisible = false;
+    ui.queuePanel.classList.toggle('hidden', !queueState.isVisible);
+    ui.queueBtn.classList.toggle('active', queueState.isVisible);
 }
 
 function debounce(fn, delay) {
@@ -273,6 +333,16 @@ function connect() {
         if (data.type === 'lyricsUpdate') {
             handleLyricsUpdate(data);
         }
+
+        // Handle Queue
+        if (data.type === 'queueUpdate') {
+            handleQueueUpdate(data);
+        }
+
+        // Handle Errors
+        if (data.type === 'error') {
+            console.error('Server error:', data.message);
+        }
     };
 
     ws.onclose = () => {
@@ -301,6 +371,42 @@ ui.shuffleBtn.onclick = () => send({type: 'playbackControl', command: 'toggleShu
 ui.repeatBtn.onclick = () => send({type: 'playbackControl', command: 'toggleRepeat'});
 ui.likeBtn.onclick = () => send({type: 'like'});
 ui.lyricsBtn.onclick = () => toggleLyrics();
+ui.queueBtn.onclick = () => toggleQueue();
+
+ui.queueAddBtn.onclick = () => {
+    const input = ui.queueInput.value.trim();
+    if (!input) return;
+    const isUri = input.startsWith('spotify:') || input.includes('open.spotify.com');
+    if (isUri) {
+        send({type: 'addToQueue', input, requestedBy: 'web'});
+        ui.queueInput.value = '';
+    } else {
+        alert('Please enter a valid Spotify track URL or URI (e.g., spotify:track:... or https://open.spotify.com/track/...)');
+    }
+};
+
+ui.queueInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const input = ui.queueInput.value.trim();
+        if (!input) return;
+        const isUri = input.startsWith('spotify:') || input.includes('open.spotify.com');
+        if (isUri) {
+            send({type: 'addToQueue', input, requestedBy: 'web'});
+            ui.queueInput.value = '';
+        } else {
+            alert('Please enter a valid Spotify track URL or URI (e.g., spotify:track:... or https://open.spotify.com/track/...)');
+        }
+    }
+});
+
+ui.queueList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.queue-remove-btn');
+    if (btn) {
+        const uri = btn.dataset.uri;
+        const uid = btn.dataset.uid;
+        send({type: 'removeFromQueue', uri, uid});
+    }
+});
 
 const sendVolume = debounce((val) => send({type: 'volumeUpdate', volume: val}), 150);
 ui.volumeSlider.oninput = (e) => {
