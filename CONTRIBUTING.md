@@ -1,23 +1,31 @@
 # Contributing
 
-## Running Things
+## Quick Setup
 
-### Server
+### Windows (one-click)
+```powershell
+.\setup.bat
+```
+Installs dependencies, creates `data/` with default config, copies the Spicetify extension, and optionally installs as a Windows service.
+
+### Manual
+
+#### Server
 ```bash
 python server/server.py
 ```
 
-### Windows Service
+#### Windows Service
 ```powershell
-python server/service.py install
-python server/service.py start
-python server/service.py stop
-python server/service.py remove
+python tools/service.py install
+python tools/service.py start
+python tools/service.py stop
+python tools/service.py remove
 ```
 
-### Spicetify Extension Install
+#### Spicetify Extension Install
 ```bash
-python server/install.py
+python tools/install.py
 ```
 
 ### Tests
@@ -58,7 +66,10 @@ Only runtime files — no dev artifacts:
 ```
 README.md
 requirements.txt
+setup.bat
 server/              # everything except __pycache__/
+data/config.json     # default config only (no state.json, logs/, etc.)
+tools/               # install.py, service.py
 spicetify-extension/
 web/                 # everything
 ```
@@ -73,9 +84,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pyc
-logs/
-state.json
-lyrics_cache.db
+data/state.json      # runtime state
+data/logs/           # runtime logs
+data/lyrics_cache.db # runtime cache
 *.streamDeckPlugin   # shipped separately, not in core zip
 streamerbot-commands/ # setup guide only, link in release notes
 ```
@@ -86,7 +97,7 @@ streamerbot-commands/ # setup guide only, link in release notes
 Remove-Item spicetify-remote-core-vX.X.X.zip -Force -ErrorAction SilentlyContinue
 
 # Create with proper folder structure
-7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt server\ spicetify-extension\ web\
+7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt setup.bat server\ data\config.json tools\ spicetify-extension\ web\
 ```
 
 Pitfalls to avoid:

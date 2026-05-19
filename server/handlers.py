@@ -222,6 +222,10 @@ async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -
         await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
         return
 
+    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
+        await ws.send_str(json.dumps({"type": "error", "message": "Track already in queue"}))
+        return
+
     meta_entry = {"uri": normalized_uri, "requestedBy": requester}
     pendingQueueMeta.append(meta_entry)
 
@@ -237,6 +241,7 @@ async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -
 async def handle_remove_from_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     uri = data.get("uri", "")
     uid = data.get("uid", "")
+    pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
     await broadcast({
         "type": "removeFromQueue",
         "uri": uri,
@@ -247,20 +252,11 @@ async def handle_remove_from_queue(ws: web.WebSocketResponse, data: dict[str, An
 
 async def handle_clear_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     pendingQueueMeta.clear()
+    state["queue"]["nextTracks"] = []
+    state["queue"]["queueRevision"] = ""
     await broadcast({"type": "clearQueue"}, target_type="spicetify")
+    await broadcast_queue_update()
     logger.info("Queue: Cleared")
-
-
-async def handle_search_and_add(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    query = data.get("query", "")
-    requester = data.get("requestedBy", "anonymous")
-
-    await broadcast({
-        "type": "searchAndAdd",
-        "query": query,
-        "requestedBy": requester
-    }, target_type="spicetify")
-    logger.info(f"Queue: Search '{query}' forwarded to spicetify (requested by {requester})")
 
 
 async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
@@ -286,7 +282,6 @@ MESSAGE_HANDLERS: dict[str, Any] = {
     "addToQueue": handle_add_to_queue,
     "removeFromQueue": handle_remove_from_queue,
     "clearQueue": handle_clear_queue,
-    "searchAndAdd": handle_search_and_add,
     "error": handle_error
 }
 

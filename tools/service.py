@@ -41,9 +41,8 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
         self.main()
 
     def main(self):
-        server_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(server_dir)
-        script_path = os.path.join(server_dir, "server.py")
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script_path = os.path.join(project_root, "server", "server.py")
 
         python_exe = sys.executable
         if not python_exe.endswith("python.exe"):

@@ -45,7 +45,6 @@ from handlers import (  # noqa: F401
     handle_register,
     handle_remove_from_queue,
     handle_repeat_update,
-    handle_search_and_add,
     handle_shuffle_update,
     handle_track_update,
     handle_volume_update,
@@ -64,7 +63,6 @@ from routes import (  # noqa: F401
     handle_queue_clear,
     handle_queue_get,
     handle_queue_remove,
-    handle_queue_search_add,
     handle_state,
     index_handler,
     obs_handler,
@@ -111,7 +109,6 @@ async def main() -> None:
 
     main_app.router.add_get('/api/queue', handle_queue_get)
     main_app.router.add_post('/api/queue/add', handle_queue_add)
-    main_app.router.add_post('/api/queue/search-add', handle_queue_search_add)
     main_app.router.add_delete('/api/queue/remove', handle_queue_remove)
     main_app.router.add_post('/api/queue/clear', handle_queue_clear)
 

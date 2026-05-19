@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 from aiohttp import web
-from broadcast import CLIENTS, broadcast, set_spicetify_client
+from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_spicetify_client
 from config import DISCOVERY_PORT, MAX_QUEUE_SIZE, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
@@ -130,6 +130,9 @@ async def handle_queue_add(request: web.Request) -> web.Response:
     if len(pendingQueueMeta) >= MAX_QUEUE_SIZE:
         return web.json_response({"error": "Queue is full"}, status=400, headers=_cors_headers(request))
 
+    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
+        return web.json_response({"error": "Track already in queue"}, status=400, headers=_cors_headers(request))
+
     pendingQueueMeta.append({"uri": normalized_uri, "requestedBy": requester})
     await broadcast({
         "type": "addToQueue",
@@ -139,29 +142,6 @@ async def handle_queue_add(request: web.Request) -> web.Response:
 
     logger.info(f"Queue (HTTP): Added {normalized_uri} (requested by {requester})")
     return web.json_response({"status": "ok", "uri": normalized_uri}, headers=_cors_headers(request))
-
-
-async def handle_queue_search_add(request: web.Request) -> web.Response:
-    try:
-        body: dict[str, Any] = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400, headers=_cors_headers(request))
-
-    query = body.get("query", "")
-    requester = body.get("requestedBy", "http")
-
-    allowed, msg = check_rate_limit(requester)
-    if not allowed:
-        return web.json_response({"error": msg}, status=429, headers=_cors_headers(request))
-
-    await broadcast({
-        "type": "searchAndAdd",
-        "query": query,
-        "requestedBy": requester
-    }, target_type="spicetify")
-
-    logger.info(f"Queue (HTTP): Search '{query}' forwarded (requested by {requester})")
-    return web.json_response({"status": "ok", "query": query}, headers=_cors_headers(request))
 
 
 async def handle_queue_remove(request: web.Request) -> web.Response:
@@ -184,6 +164,9 @@ async def handle_queue_remove(request: web.Request) -> web.Response:
 
 async def handle_queue_clear(request: web.Request) -> web.Response:
     pendingQueueMeta.clear()
+    state["queue"]["nextTracks"] = []
+    state["queue"]["queueRevision"] = ""
     await broadcast({"type": "clearQueue"}, target_type="spicetify")
+    await broadcast_queue_update()
     logger.info("Queue (HTTP): Cleared")
     return web.json_response({"status": "ok"}, headers=_cors_headers(request))

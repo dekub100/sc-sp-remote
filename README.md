@@ -47,12 +47,12 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 ## Installation
 
 1. Download the latest `spicetify-remote-core-v*.zip` from the [releases page](https://github.com/dekub100/spicetify-remote/releases).
-2. Extract the zip anywhere — it contains `server/`, `web/`, and `spicetify-extension/` folders.
+2. Extract the zip anywhere — it contains `server/`, `web/`, `tools/`, and `spicetify-extension/` folders.
 3. Install the Spicetify extension and Python dependencies:
 
 ```bash
 cd path/to/extracted/folder
-python server/install.py
+python tools/install.py
 ```
 
 4. Start the server:
@@ -61,11 +61,11 @@ python server/install.py
 python server/server.py
 ```
 
-> **Note:** The install script handles both the Spicetify extension installation and Python dependency setup. If you prefer to install dependencies manually, run `pip install -r requirements.txt` instead.
+> **Note:** Or just run `setup.bat` for a one-click install on Windows. The install script handles both the Spicetify extension installation and Python dependency setup. If you prefer to install dependencies manually, run `pip install -r requirements.txt` instead.
 
 ## Configuration
 
-The server uses a `server/config.json` file for all major settings. You can edit this file to change the ports, allowed origins, default volume, log levels, and more.
+The server uses a `data/config.json` file for all major settings. You can edit this file to change the ports, allowed origins, default volume, log levels, and more.
 
 **Example `config.json`:**
 
@@ -122,8 +122,8 @@ You can run the server as a background Windows Service. The script will automati
 ### Install & Start
 
 ```powershell
-python server/service.py install
-python server/service.py start
+python tools/service.py install
+python tools/service.py start
 ```
 
 ## Service Management (Linux)
@@ -194,7 +194,7 @@ Includes `!play`, `!pause`, `!next`, `!prev`, `!volume`, `!shuffle`, `!repeat`, 
 
 Lyrics are fetched from [LRCLIB](https://lrclib.net) and cached locally in `lyrics_cache.db` (SQLite). On the first play of a track the server fetches from LRCLIB's external sources which may take a few seconds; subsequent plays are instant from the local cache. Synced lyrics are highlighted in real-time on the website; plain lyrics are shown as static text when synced aren't available.
 
-To clear the cache, delete `lyrics_cache.db` and restart the server.
+To clear the cache, delete `data/lyrics_cache.db` and restart the server.
 
 ### Updating
 
@@ -202,10 +202,10 @@ Download the latest `spicetify-remote-core-v*.zip` from the [releases page](http
 
 ## Notes
 
-- All configuration is handled via `server/config.json`.
+- All configuration is handled via `data/config.json`.
 - The Spicetify extension and widgets fetch server config from the dedicated config server on `54321`.
 - If you change the `port` in `config.json`, the extension will automatically find it via the discovery port.
-- Log files are stored in the `logs/` directory, one per session.
+- Log files are stored in the `data/logs/` directory, one per session.
 
 ## Security
 
@@ -238,6 +238,8 @@ Opens on `http://localhost:8888` with a discovery server on port `54321`.
 ### Project Structure
 
 ```
+data/                  # Runtime data (config, state, logs, cache)
+  config.json          #   Default server configuration (shipped)
 server/                # Python backend (split into modules)
   server.py            #   Entry point, routes, main()
   config.py            #   Paths, constants, config loading
@@ -247,6 +249,9 @@ server/                # Python backend (split into modules)
   lyrics.py            #   LRC parser, LRCLIB fetcher, SQLite cache
   handlers.py          #   Message handlers + dispatch table
   routes.py            #   WS handler, HTTP endpoints
+tools/                 # Deployment utilities
+  install.py           #   Spicetify extension installer
+  service.py           #   Windows service wrapper
 web/                   # Frontend (no build step)
 spicetify-extension/   # Spicetify extension (runs inside Spotify)
 streamdeck-plugin/     # Elgato Stream Deck plugin source

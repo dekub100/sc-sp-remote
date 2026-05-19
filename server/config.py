@@ -6,10 +6,11 @@ from typing import Any
 
 PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR: str = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH: str = os.path.join(SERVER_DIR, "config.json")
-STATE_FILE: str = os.path.join(PROJECT_ROOT, "state.json")
-LOG_DIR: str = os.path.join(PROJECT_ROOT, "logs")
-LYRICS_CACHE_DB: str = os.path.join(PROJECT_ROOT, "lyrics_cache.db")
+DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
+CONFIG_PATH: str = os.path.join(DATA_DIR, "config.json")
+STATE_FILE: str = os.path.join(DATA_DIR, "state.json")
+LOG_DIR: str = os.path.join(DATA_DIR, "logs")
+LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
@@ -19,7 +20,6 @@ DISCOVERY_PORT: int = 54321
 STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
-MAX_QUEUE_SIZE: int = 50
 QUEUE_RATE_LIMIT_SECONDS: float = 30.0
 QUEUE_SNAPSHOT_INTERVAL: float = 2.0
 
@@ -31,7 +31,9 @@ config: dict[str, Any] = {
     "enableWebsite": True,
     "volumeStep": 0.05,
     "logLevel": "INFO",
-    "backupCount": 3
+    "backupCount": 3,
+    "maxQueueSize": 50,
+    "queueRateLimitSeconds": 30
 }
 
 if os.path.exists(CONFIG_PATH):
@@ -40,3 +42,6 @@ if os.path.exists(CONFIG_PATH):
             config.update(json.load(f))
     except Exception as e:
         print(f"Failed to read config.json, using defaults: {e}")
+
+MAX_QUEUE_SIZE: int = int(config.get("maxQueueSize", 50))
+QUEUE_RATE_LIMIT_SECONDS: float = float(config.get("queueRateLimitSeconds", 30))

@@ -121,7 +121,7 @@ function handleQueueUpdate(data) {
 
 function showUpNext() {
   if (upNextState.isActive) return;
-  const nextTrack = queueState.items[0];
+  const nextTrack = queueState.items.find(i => i.requestedBy) || queueState.items[0];
   if (!nextTrack) return;
 
   const meta = nextTrack.metadata || {};

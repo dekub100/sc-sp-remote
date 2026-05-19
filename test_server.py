@@ -535,25 +535,29 @@ class TestParseTrackInput:
 
 class TestRateLimit:
     def test_first_request_allowed(self) -> None:
-        allowed, msg = server.check_rate_limit("user1")
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            allowed, msg = server.check_rate_limit("user1")
         assert allowed is True
         assert msg == ""
 
     def test_second_request_blocked(self) -> None:
-        server.check_rate_limit("user2")
-        allowed, msg = server.check_rate_limit("user2")
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            server.check_rate_limit("user2")
+            allowed, msg = server.check_rate_limit("user2")
         assert allowed is False
         assert "Rate limited" in msg
 
     def test_different_users_independent(self) -> None:
-        server.check_rate_limit("userA")
-        allowed, _ = server.check_rate_limit("userB")
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            server.check_rate_limit("userA")
+            allowed, _ = server.check_rate_limit("userB")
         assert allowed is True
 
     def test_reset_rate_limit(self) -> None:
-        server.check_rate_limit("user3")
-        server.reset_rate_limit("user3")
-        allowed, _ = server.check_rate_limit("user3")
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            server.check_rate_limit("user3")
+            server.reset_rate_limit("user3")
+            allowed, _ = server.check_rate_limit("user3")
         assert allowed is True
 
 
@@ -607,18 +611,19 @@ class TestQueueHandlers:
         assert len(server.pendingQueueMeta) == 1
 
     async def test_handle_add_to_queue_rate_limited(self, mock_ws: AsyncMock) -> None:
-        server.check_rate_limit("ratelimited_user")
-        with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_add_to_queue(mock_ws, {
-                "type": "addToQueue",
-                "input": "spotify:track:abc",
-                "requestedBy": "ratelimited_user"
-            })
-        mock_broadcast.assert_not_called()
-        assert len(server.pendingQueueMeta) == 0
-        mock_ws.send_str.assert_called_once()
-        sent = json.loads(mock_ws.send_str.call_args[0][0])
-        assert sent["type"] == "error"
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            server.check_rate_limit("ratelimited_user")
+            with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
+                await server.handle_add_to_queue(mock_ws, {
+                    "type": "addToQueue",
+                    "input": "spotify:track:abc",
+                    "requestedBy": "ratelimited_user"
+                })
+            mock_broadcast.assert_not_called()
+            assert len(server.pendingQueueMeta) == 0
+            mock_ws.send_str.assert_called_once()
+            sent = json.loads(mock_ws.send_str.call_args[0][0])
+            assert sent["type"] == "error"
 
     async def test_handle_add_to_queue_full(self, mock_ws: AsyncMock) -> None:
         for i in range(server.MAX_QUEUE_SIZE):
@@ -650,23 +655,44 @@ class TestQueueHandlers:
 
     async def test_handle_clear_queue_clears_pending(self, mock_ws: AsyncMock) -> None:
         server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             await server.handle_clear_queue(mock_ws, {"type": "clearQueue"})
         assert len(server.pendingQueueMeta) == 0
+        assert len(server.state["queue"]["nextTracks"]) == 0
+        assert server.state["queue"]["queueRevision"] == ""
         mock_broadcast.assert_called_once()
         assert mock_broadcast.call_args[0][0]["type"] == "clearQueue"
 
-    async def test_handle_search_and_add_forwards(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_remove_from_queue_clears_pending(self, mock_ws: AsyncMock) -> None:
+        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        server.pendingQueueMeta.append({"uri": "spotify:track:xyz", "requestedBy": "bob"})
+        spicetify_ws = AsyncMock()
+        server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_search_and_add(mock_ws, {
-                "type": "searchAndAdd",
-                "query": "Bohemian Rhapsody",
-                "requestedBy": "viewer2"
+            await server.handle_remove_from_queue(mock_ws, {
+                "type": "removeFromQueue",
+                "uri": "spotify:track:abc",
+                "uid": "1"
             })
+        assert len(server.pendingQueueMeta) == 1
+        assert server.pendingQueueMeta[0]["uri"] == "spotify:track:xyz"
         mock_broadcast.assert_called_once()
-        call_args = mock_broadcast.call_args[0][0]
-        assert call_args["type"] == "searchAndAdd"
-        assert call_args["query"] == "Bohemian Rhapsody"
+
+    async def test_handle_add_to_queue_dedup(self, mock_ws: AsyncMock) -> None:
+        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.handle_add_to_queue(mock_ws, {
+                "type": "addToQueue",
+                "input": "spotify:track:abc",
+                "requestedBy": "bob"
+            })
+        mock_broadcast.assert_not_called()
+        assert len(server.pendingQueueMeta) == 1
+        mock_ws.send_str.assert_called_once()
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["type"] == "error"
+        assert "already" in sent["message"].lower()
 
     async def test_handle_get_initial_state_includes_queue(self, mock_ws: AsyncMock) -> None:
         server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:test"}]
@@ -687,7 +713,6 @@ class TestQueueHttpEndpoints:
         app = web.Application()
         app.router.add_get('/api/queue', server.handle_queue_get)
         app.router.add_post('/api/queue/add', server.handle_queue_add)
-        app.router.add_post('/api/queue/search-add', server.handle_queue_search_add)
         app.router.add_delete('/api/queue/remove', server.handle_queue_remove)
         app.router.add_post('/api/queue/clear', server.handle_queue_clear)
         async with TestClient(TestServer(app)) as tc:
@@ -715,12 +740,13 @@ class TestQueueHttpEndpoints:
             assert len(server.pendingQueueMeta) == 1
 
     async def test_post_add_queue_rate_limited(self, client) -> None:
-        server.check_rate_limit("http_rl_user")
-        with patch("routes.broadcast", new_callable=AsyncMock):
-            resp = await client.post('/api/queue/add', json={
-                "trackUri": "spotify:track:abc",
-                "requestedBy": "http_rl_user"
-            })
+        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+            server.check_rate_limit("http_rl_user")
+            with patch("routes.broadcast", new_callable=AsyncMock):
+                resp = await client.post('/api/queue/add', json={
+                    "trackUri": "spotify:track:abc",
+                    "requestedBy": "http_rl_user"
+                })
             assert resp.status == 429
             data = await resp.json()
             assert "error" in data
@@ -741,31 +767,25 @@ class TestQueueHttpEndpoints:
         resp = await client.post('/api/queue/add', data="not json", headers={"Content-Type": "application/json"})
         assert resp.status == 400
 
-    async def test_post_search_add_forwards_query(self, client) -> None:
-        with patch("routes.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            resp = await client.post('/api/queue/search-add', json={
-                "query": "Bohemian Rhapsody",
-                "requestedBy": "viewer"
-            })
-            assert resp.status == 200
-            mock_broadcast.assert_called_once()
-            call_args = mock_broadcast.call_args[0][0]
-            assert call_args["query"] == "Bohemian Rhapsody"
-
-    async def test_delete_remove_forwards(self, client) -> None:
-        with patch("routes.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            resp = await client.delete('/api/queue/remove', json={
-                "uri": "spotify:track:abc",
-                "uid": "1"
-            })
-            assert resp.status == 200
-            mock_broadcast.assert_called_once()
-            call_args = mock_broadcast.call_args[0][0]
-            assert call_args["type"] == "removeFromQueue"
-
-    async def test_post_clear_clears_pending(self, client) -> None:
+    async def test_post_add_queue_dedup(self, client) -> None:
         server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        with patch("routes.broadcast", new_callable=AsyncMock):
+            resp = await client.post('/api/queue/add', json={
+                "trackUri": "spotify:track:abc",
+                "requestedBy": "bob"
+            })
+            assert resp.status == 400
+            data = await resp.json()
+            assert "already" in data["error"].lower()
+            assert len(server.pendingQueueMeta) == 1
+
+    async def test_post_clear_clears_all_state(self, client) -> None:
+        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
+        server.state["queue"]["queueRevision"] = "rev1"
         with patch("routes.broadcast", new_callable=AsyncMock):
             resp = await client.post('/api/queue/clear')
             assert resp.status == 200
             assert len(server.pendingQueueMeta) == 0
+            assert len(server.state["queue"]["nextTracks"]) == 0
+            assert server.state["queue"]["queueRevision"] == ""

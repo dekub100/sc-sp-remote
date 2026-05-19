@@ -8,5 +8,5 @@
   "logLevel": "INFO",
   "backupCount": 3,
   "maxQueueSize": 50,
-  "queueRateLimitSeconds": 0
+  "queueRateLimitSeconds": 30
 }

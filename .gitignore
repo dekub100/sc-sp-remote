@@ -1,9 +1,17 @@
 __pycache__/
 *.pyc
 *.pyo
-logs/
+
+# Runtime data (new location)
+data/state.json
+data/logs/
+data/lyrics_cache.db
+
+# Runtime data (legacy root location — backward compat)
 state.json
+logs/
 lyrics_cache.db
+
 *.egg-info/
 dist/
 build/

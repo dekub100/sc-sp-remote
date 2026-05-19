@@ -18,8 +18,12 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 ├── pyproject.toml            # ruff + pytest config
 ├── conftest.py               # pytest: adds server/ to sys.path
 ├── test_server.py            # 76 tests for server logic
+├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # This file
 ├── CONTRIBUTING.md           # Running things, release workflow
+├── data/
+│   ├── config.json           # Default server configuration
+│   └── (state.json, logs/, lyrics_cache.db — runtime only, gitignored)
 ├── server/
 │   ├── server.py             # Entry point, imports all modules, routes + main()
 │   ├── config.py             # Paths, constants, config.json loading
@@ -28,10 +32,10 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 │   ├── broadcast.py          # CLIENTS dict, WebSocket broadcast functions
 │   ├── lyrics.py             # LRC parser, LRCLIB fetcher, SQLite cache
 │   ├── handlers.py           # Message handlers + dispatch table
-│   ├── routes.py             # WS handler, HTTP endpoints, static files
+│   └── routes.py             # WS handler, HTTP endpoints, static files
+├── tools/
 │   ├── service.py            # Windows service wrapper (pywin32)
-│   ├── install.py            # Spicetify extension installer
-│   └── config.json           # Server configuration
+│   └── install.py            # Spicetify extension installer
 ├── web/
 │   ├── index.html            # Main web UI
 │   ├── style.css
