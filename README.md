@@ -96,12 +96,8 @@ The server uses a `data/config.json` file for all major settings. You can edit t
 
 **Notes:**
 
-- The Discovery Server is standardized on port `54321`. The Spicetify extension and widgets use this to automatically find your main `port`.
-- If you change the `port`, be sure to restart your server and do
-
-```bash
-spicetify apply
-```
+- All clients (Spicetify extension, website, OBS widget) connect directly to the main server port.
+- If you change the `port` in `config.json`, update the `DEFAULT_PORT` in `spicetify-extension/remoteVolume.js` and run `spicetify apply`.
 
 ## Running the Server
 
@@ -113,7 +109,7 @@ python server/server.py
 
 - **Website**: `http://localhost:8888/`
 - **OBS Widget**: `http://localhost:8888/obs`
-- **Discovery API**: `http://localhost:54321/api/config`
+- **Admin Panel**: `http://localhost:8888/admin`
 
 ## Service Management (Windows)
 
@@ -203,8 +199,7 @@ Download the latest `spicetify-remote-core-v*.zip` from the [releases page](http
 ## Notes
 
 - All configuration is handled via `data/config.json`.
-- The Spicetify extension and widgets fetch server config from the dedicated config server on `54321`.
-- If you change the `port` in `config.json`, the extension will automatically find it via the discovery port.
+- The Spicetify extension connects directly to the main server port — no discovery step.
 - Log files are stored in the `data/logs/` directory, one per session.
 
 ## Security
@@ -233,7 +228,7 @@ pip install -r requirements-dev.txt
 python server/server.py
 ```
 
-Opens on `http://localhost:8888` with a discovery server on port `54321`.
+Opens on `http://localhost:8888`.
 
 ### Project Structure
 

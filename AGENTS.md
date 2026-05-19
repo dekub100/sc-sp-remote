@@ -91,11 +91,6 @@ Stream Deck Plugin ────────────────────�
                               └─────────────────────────┘
                                           │
                              ┌────────────┴────────────┐
-                             │  Discovery: port 54321  │
-                             │  /api/config → port #   │
-                             └─────────────────────────┘
-                                          │
-                             ┌────────────┴────────────┐
                              │    LRCLIB API (HTTPS)   │
                              │    SQLite cache (local) │
                              └─────────────────────────┘
@@ -105,7 +100,7 @@ Stream Deck Plugin ────────────────────�
 
 - **Single port** for HTTP + WebSocket (aiohttp handles both)
 - **Server split into modules** — `server.py` is a thin coordinator; `config.py`, `log.py`, `state.py`, `broadcast.py`, `lyrics.py`, `handlers.py`, `routes.py` each own one concern
-- **Discovery server** on port 54321 lets clients auto-find the main port
+- **Clients connect directly** to the main port — no discovery step needed
 - **Delta-based sync** — clients send only changed fields, not full state
 - **Client types** via query param: `?client=spicetify`, `?client=website`, `?client=obs`
 - **`/api/state` HTTP endpoint** — returns full Spotify state as JSON with pre-formatted `progressFmt`/`durationFmt` (mm:ss). Used by Streamer.bot display commands; no WebSocket needed.

@@ -1,12 +1,11 @@
 import WebSocket from "ws";
 import { EventEmitter } from "events";
-import http from "http";
 
 export class WebSocketManager extends EventEmitter {
     private static instance: WebSocketManager | null = null;
     private websocket: WebSocket | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
-    private port: number = 8888; // Default, will be updated
+    private readonly port: number = 8888;
     private refCount: number = 0;
     private isConnecting: boolean = false;
 
@@ -31,33 +30,13 @@ export class WebSocketManager extends EventEmitter {
         this.doConnect();
     }
 
-    private async fetchConfig(): Promise<number> {
-        return new Promise((resolve) => {
-            http.get("http://localhost:54321/api/config", (res) => {
-                let data = "";
-                res.on("data", (chunk) => data += chunk);
-                res.on("end", () => {
-                    try {
-                        const config = JSON.parse(data);
-                        resolve(config.port || 8888);
-                    } catch (e) {
-                        resolve(8888);
-                    }
-                });
-            }).on("error", () => {
-                resolve(8888);
-            });
-        });
-    }
-
-    private async doConnect() {
+    private doConnect() {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
         }
 
         this.isConnecting = true;
-        this.port = await this.fetchConfig();
 
         this.websocket = new WebSocket(`ws://localhost:${this.port}/?client=streamdeck`);
 

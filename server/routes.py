@@ -6,7 +6,7 @@ from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_spicetify_client
-from config import DISCOVERY_PORT, MAX_QUEUE_SIZE, PROJECT_ROOT, config
+from config import CONFIG_PATH, LOG_DIR, MAX_QUEUE_SIZE, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import check_rate_limit, parse_track_input, pendingQueueMeta, state
@@ -62,7 +62,6 @@ async def handle_config(request: web.Request) -> web.Response:
     headers: dict[str, str] = {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
     return web.json_response({
         "port": config["port"],
-        "discoveryPort": DISCOVERY_PORT,
         "allowedOrigins": origins,
         "defaultVolume": config["defaultVolume"],
         "enableOBS": config.get("enableOBS", True),
@@ -170,3 +169,70 @@ async def handle_queue_clear(request: web.Request) -> web.Response:
     await broadcast_queue_update()
     logger.info("Queue (HTTP): Cleared")
     return web.json_response({"status": "ok"}, headers=_cors_headers(request))
+
+
+async def handle_admin_config_get(request: web.Request) -> web.Response:
+    return web.json_response(config, headers=_cors_headers(request))
+
+
+async def handle_admin_config_put(request: web.Request) -> web.Response:
+    try:
+        body: dict[str, Any] = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "Invalid JSON"}, status=400, headers=_cors_headers(request))
+
+    allowed_keys = {
+        "port", "allowedOrigins", "defaultVolume", "enableOBS",
+        "enableWebsite", "volumeStep", "logLevel", "backupCount",
+        "maxQueueSize", "queueRateLimitSeconds"
+    }
+    updates = {k: v for k, v in body.items() if k in allowed_keys}
+
+    if "allowedOrigins" in updates and not isinstance(updates["allowedOrigins"], list):
+        return web.json_response({"error": "allowedOrigins must be a list"}, status=400, headers=_cors_headers(request))
+
+    config.update(updates)
+    try:
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        return web.json_response({"error": f"Failed to save config: {str(e)}"}, status=500, headers=_cors_headers(request))
+
+    logger.info(f"Admin: Config updated ({', '.join(updates.keys())})")
+    return web.json_response({"status": "ok", "updated": list(updates.keys())}, headers=_cors_headers(request))
+
+
+async def handle_admin_logs_list(request: web.Request) -> web.Response:
+    try:
+        files = []
+        if os.path.exists(LOG_DIR):
+            for f in os.listdir(LOG_DIR):
+                if f.endswith(".log"):
+                    path = os.path.join(LOG_DIR, f)
+                    stat = os.stat(path)
+                    files.append({
+                        "name": f,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime
+                    })
+        files.sort(key=lambda x: x["modified"], reverse=True)
+        return web.json_response({"logs": files}, headers=_cors_headers(request))
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500, headers=_cors_headers(request))
+
+
+async def handle_admin_log_file(request: web.Request) -> web.Response:
+    filename = request.match_info["filename"]
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return web.json_response({"error": "Invalid filename"}, status=400, headers=_cors_headers(request))
+
+    path = os.path.join(LOG_DIR, filename)
+    if not os.path.exists(path) or not filename.endswith(".log"):
+        return web.json_response({"error": "Log file not found"}, status=404, headers=_cors_headers(request))
+
+    try:
+        with open(path, "r") as f:
+            content = f.read()
+        return web.Response(text=content, content_type="text/plain", headers=_cors_headers(request))
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500, headers=_cors_headers(request))

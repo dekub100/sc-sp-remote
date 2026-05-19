@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>~*~ Spicetify Remote Admin ~*~</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<center>
+  <br>
+  <marquee scrollamount="2" class="top-marquee" width="700">
+    *** Welcome to the Spicetify Remote Admin Page!!! *** You are visitor #<span id="visitor-count">004821</span> *** Last updated: 05/19/2026 *** Sign my guestbook!! ***
+  </marquee>
+  <br><br>
+
+  <table width="700" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center">
+        <font face="Comic Sans MS, cursive" size="6" color="#ff00ff">
+          ~*~ Spicetify Remote Admin ~*~
+        </font>
+        <br>
+        <font face="Comic Sans MS, cursive" size="2" color="#00ffff">
+          ~~ the coolest way to control ur Spotify ~~
+        </font>
+        <br><br>
+      </td>
+    </tr>
+  </table>
+
+  <hr size="2" color="#ff00ff" width="700" noshade>
+
+  <br>
+
+  <center>
+    <font face="Comic Sans MS, cursive" size="3" color="#ffff00">
+      <b>[ <a href="#" onclick="switchTab('config'); return false;" class="nav-inline">Server Config</a> ]</b>
+      &nbsp;&nbsp;&nbsp;
+      <b>[ <a href="#" onclick="switchTab('logs'); return false;" class="nav-inline">Log Viewer</a> ]</b>
+    </font>
+  </center>
+
+  <br>
+
+  <div id="config-tab" class="tab-content active">
+    <center>
+      <table width="600" cellpadding="6" cellspacing="3" border="0">
+        <tr>
+          <td align="center" class="section-title">
+            <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+              &#9733; Network Settings &#9733;
+            </font>
+          </td>
+        </tr>
+      </table>
+    </center>
+
+    <form id="config-form">
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Server Port:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-port" name="port" min="1" max="65535" size="10">
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Allowed Origins:</font>
+            </td>
+            <td>
+              <input type="text" id="cfg-origins" name="allowedOrigins" size="40" placeholder="*">
+              <br><font face="Verdana" size="1" color="#999999">comma separated. use * for everyone!!</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br>
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; Playback Settings &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Default Volume:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-volume" name="defaultVolume" min="0" max="1" step="0.01" size="10">
+              <font face="Verdana" size="1" color="#999999"> (0.0 - 1.0)</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Volume Step:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-volume-step" name="volumeStep" min="0.01" max="1" step="0.01" size="10">
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Max Queue Size:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-max-queue" name="maxQueueSize" min="1" max="500" size="10">
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Queue Rate Limit:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-rate-limit" name="queueRateLimitSeconds" min="1" max="300" size="10">
+              <font face="Verdana" size="1" color="#999999"> seconds between requests</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Enable OBS Widget:</font>
+            </td>
+            <td>
+              <input type="checkbox" id="cfg-obs" name="enableOBS">
+              <font face="Verdana" size="2" color="#ffffff"> yes!!</font>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Enable Web UI:</font>
+            </td>
+            <td>
+              <input type="checkbox" id="cfg-website" name="enableWebsite">
+              <font face="Verdana" size="2" color="#ffffff"> yes!!</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br>
+      <center>
+        <table width="600" cellpadding="6" cellspacing="3" border="0">
+          <tr>
+            <td align="center" class="section-title">
+              <font face="Comic Sans MS, cursive" size="4" color="#ffff00">
+                &#9733; Logging &#9733;
+              </font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <center>
+        <table width="600" cellpadding="4" cellspacing="2" border="0">
+          <tr>
+            <td class="config-label" width="180">
+              <font face="Verdana" size="2" color="#ffffff">Log Level:</font>
+            </td>
+            <td>
+              <select id="cfg-log-level" name="logLevel">
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
+            </td>
+          </tr>
+          <tr>
+            <td class="config-label">
+              <font face="Verdana" size="2" color="#ffffff">Backup Count:</font>
+            </td>
+            <td>
+              <input type="number" id="cfg-backup" name="backupCount" min="1" max="20" size="10">
+              <font face="Verdana" size="1" color="#999999"> how many old logs to keep</font>
+            </td>
+          </tr>
+        </table>
+      </center>
+
+      <br><br>
+      <center>
+        <input type="submit" id="save-btn" value="  ~~ Save Config ~~  ">
+        &nbsp;&nbsp;
+        <input type="reset" value="  ~~ Reset ~~  ">
+        <br><br>
+        <font face="Comic Sans MS, cursive" size="2" color="#00ff00">
+          <span id="config-status"></span>
+        </font>
+      </center>
+    </form>
+  </div>
+
+  <div id="logs-tab" class="tab-content">
+    <center>
+      <font face="Comic Sans MS, cursive" size="4" color="#00ffff">
+        <b>~*~ Log Viewer ~*~</b>
+      </font>
+      <br><br>
+      <input type="button" id="refresh-logs-btn" value="  ~~ Refresh ~~  ">
+      <br><br>
+    </center>
+
+    <center>
+      <div id="log-list" class="log-list" style="width: 600px;"></div>
+    </center>
+
+    <div id="log-viewer" class="log-viewer hidden">
+      <center>
+        <table width="600" cellpadding="4" cellspacing="0" border="0">
+          <tr>
+            <td class="log-viewer-header" width="540">
+              <font face="Comic Sans MS, cursive" size="2" color="#00ffff">
+                Viewing: <span id="log-viewer-title"></span>
+              </font>
+            </td>
+            <td width="60" align="right">
+              <input type="button" id="close-log-btn" value=" X ">
+            </td>
+          </tr>
+        </table>
+      </center>
+      <div class="log-viewer-body">
+        <pre id="log-content"></pre>
+      </div>
+    </div>
+  </div>
+
+  <br><br>
+  <hr size="2" color="#ff00ff" width="700" noshade>
+
+  <br>
+  <center>
+    <table width="500" cellpadding="8" cellspacing="0" border="0" class="note-box">
+      <tr>
+        <td>
+          <font face="Comic Sans MS, cursive" size="2" color="#ffcc00">
+            <b>?? why does this look like this ??</b>
+            <br><br>
+            <font color="#cccccc">
+              because someone asked for "2000s personal website" and i said "hold my notepad."
+              the log viewer is modern though, because reading green-on-black logs at 2am is a crime against humanity.
+            </font>
+          </font>
+        </td>
+      </tr>
+    </table>
+  </center>
+  <br><br>
+
+  <font face="Comic Sans MS, cursive" size="2" color="#999999">
+    (c) 2026 Spicetify Remote | made with notepad!!<br>
+    <a href="/">back to main page</a>
+    <br><br>
+    <font size="1">you are visitor number <span id="visitor-count2">004821</span></font>
+  </font>
+  <br><br>
+</center>
+
+<script src="admin.js"></script>
+</body>
+</html>

@@ -1,6 +1,5 @@
 // Simplified Main Website Script with Client-Side Color Extraction
 let ws;
-let serverUrl = null;
 let isSeeking = false;
 
 // Interpolation state
@@ -244,15 +243,7 @@ function animate() {
 }
 
 function connect() {
-    if (!serverUrl) {
-        fetch('/api/config').then(r => r.json()).then(cfg => {
-            serverUrl = `ws://${window.location.hostname}:${cfg.port}/?client=website`;
-            connect();
-        }).catch(() => setTimeout(connect, 5000));
-        return;
-    }
-
-    ws = new WebSocket(serverUrl);
+    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website`);
     
     ws.onopen = () => {
         ui.container.classList.remove('hidden');

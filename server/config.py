@@ -15,13 +15,10 @@ LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
-DISCOVERY_PORT: int = 54321
-
 STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
 QUEUE_RATE_LIMIT_SECONDS: float = 30.0
-QUEUE_SNAPSHOT_INTERVAL: float = 2.0
 
 config: dict[str, Any] = {
     "port": 8888,

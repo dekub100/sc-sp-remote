@@ -501,7 +501,6 @@ class TestConfigEndpoint:
         body: bytes = resp.body
         data: dict[str, Any] = json.loads(body)
         assert data["port"] == 9999
-        assert data["discoveryPort"] == 54321
         assert data["defaultVolume"] == 0.7
         assert data["enableOBS"] is False
         assert data["enableWebsite"] is True

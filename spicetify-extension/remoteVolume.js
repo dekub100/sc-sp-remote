@@ -5,12 +5,15 @@
   const SpotifyRemote = {
     // --- Configuration ---
     config: {
-      CONFIG_URL: "http://localhost:54321/api/config",
+      DEFAULT_PORT: 8888,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
+      QUEUE_POLLING_INTERVAL_MS: 2000,
       RECONNECT_DELAY_BASE: 1000,
       MAX_RECONNECT_DELAY: 10000,
-      CONFIG_RETRY_DELAY: 1000,
+      PROGRESS_DELTA_THRESHOLD_MS: 2000,
+      COMMAND_FEEDBACK_DELAY_MS: 150,
+      STALE_CONNECTION_WINDOW_MS: 2000,
     },
 
     // --- State Management ---
@@ -38,21 +41,8 @@
         return;
       }
       console.log("[RemoteVolume] Spicetify ready. Initializing...");
-      this.fetchServerConfig();
-    },
-
-    fetchServerConfig() {
-      fetch(this.config.CONFIG_URL)
-        .then((res) => res.json())
-        .then((cfg) => {
-          this.config.SERVER_URL = `ws://localhost:${cfg.port}/?client=spicetify`;
-          this.reconnectAttempts = 0;
-          this.connect();
-        })
-        .catch((err) => {
-          console.error("[RemoteVolume] Config fetch failed:", err);
-          setTimeout(this.fetchServerConfig.bind(this), this.config.CONFIG_RETRY_DELAY);
-        });
+      this.config.SERVER_URL = `ws://localhost:${this.config.DEFAULT_PORT}/?client=spicetify`;
+      this.connect();
     },
 
     // --- WebSocket Logic ---
@@ -178,7 +168,7 @@
       if (!this.queueInterval) {
         this.queueInterval = setInterval(
           this.checkQueue.bind(this),
-          2000
+          this.config.QUEUE_POLLING_INTERVAL_MS
         );
       }
     },
@@ -321,7 +311,7 @@
 
     checkProgressChange(force = false) {
       let progress = this._safeGet(() => Spicetify.Player.getProgress(), this.state.progress);
-      if (force || Math.abs(progress - this.state.progress) > 2000) {
+      if (force || Math.abs(progress - this.state.progress) > this.config.PROGRESS_DELTA_THRESHOLD_MS) {
         this.state.progress = progress;
         this.send({
           type: "progressUpdate",
@@ -334,7 +324,7 @@
     // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
-      const isStaleWindow = (Date.now() - this.connectionTimestamp) < 2000;
+      const isStaleWindow = (Date.now() - this.connectionTimestamp) < this.config.STALE_CONNECTION_WINDOW_MS;
 
       if (serverState.volume !== undefined) {
         const currentVol = this._safeGet(() => Spicetify.Player.getVolume(), this.state.volume);
@@ -427,7 +417,7 @@
         else if (data.command === "toggleRepeat") this.checkRepeat();
         else if (data.command === "like") this.checkLikeStatus();
         else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
-      }, 150);
+      }, this.config.COMMAND_FEEDBACK_DELAY_MS);
     },
 
     checkQueue() {

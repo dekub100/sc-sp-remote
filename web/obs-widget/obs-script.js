@@ -1,6 +1,5 @@
 // Simplified OBS Widget Script with Client-Side Color Extraction
 let ws;
-let serverUrl = null;
 
 // Interpolation state
 let lastState = {
@@ -186,18 +185,7 @@ function animate() {
 }
 
 function connect() {
-  if (!serverUrl) {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((cfg) => {
-        serverUrl = `ws://${window.location.hostname}:${cfg.port}/?client=obs`;
-        connect();
-      })
-      .catch(() => setTimeout(connect, 2000));
-    return;
-  }
-
-  ws = new WebSocket(serverUrl);
+  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs`);
 
   ws.onopen = () => {
     // Register handled by query param

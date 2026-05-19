@@ -20,12 +20,10 @@ from broadcast import (  # noqa: F401
     start_progress_broadcasting,
 )
 from config import (  # noqa: F401
-    DISCOVERY_PORT,
     LYRICS_CACHE_DB,
     MAX_QUEUE_SIZE,
     PROJECT_ROOT,
     QUEUE_RATE_LIMIT_SECONDS,
-    QUEUE_SNAPSHOT_INTERVAL,
     STATE_FILE,
     config,
 )
@@ -58,6 +56,10 @@ from lyrics import (  # noqa: F401
     set_cached_lyrics,
 )
 from routes import (  # noqa: F401
+    handle_admin_config_get,
+    handle_admin_config_put,
+    handle_admin_log_file,
+    handle_admin_logs_list,
     handle_config,
     handle_queue_add,
     handle_queue_clear,
@@ -112,28 +114,31 @@ async def main() -> None:
     main_app.router.add_delete('/api/queue/remove', handle_queue_remove)
     main_app.router.add_post('/api/queue/clear', handle_queue_clear)
 
+    main_app.router.add_get('/api/admin/config', handle_admin_config_get)
+    main_app.router.add_put('/api/admin/config', handle_admin_config_put)
+    main_app.router.add_get('/api/admin/logs', handle_admin_logs_list)
+    main_app.router.add_get('/api/admin/logs/{filename}', handle_admin_log_file)
+
+    async def admin_redirect(request: web.Request) -> web.Response:
+        return web.HTTPFound('/static/admin/admin.html')
+
+    main_app.router.add_get('/admin', admin_redirect)
+    main_app.router.add_get('/admin/', admin_redirect)
+
     main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
-    main_app.router.add_static('/', os.path.join(PROJECT_ROOT, 'web'))
+    main_app.router.add_static('/static/', os.path.join(PROJECT_ROOT, 'web'))
 
     main_runner: web.AppRunner = web.AppRunner(main_app)
     await main_runner.setup()
 
-    config_app: web.Application = web.Application()
-    config_app.router.add_get('/api/config', handle_config)
-    config_runner: web.AppRunner = web.AppRunner(config_app)
-    await config_runner.setup()
-
-    logger.info(f"Main Server: http://localhost:{config['port']}")
-    logger.info(f"Discovery Server: http://localhost:{DISCOVERY_PORT}")
+    logger.info(f"Server: http://localhost:{config['port']}")
 
     stop_event: asyncio.Event = asyncio.Event()
 
     try:
         main_site: web.TCPSite = web.TCPSite(main_runner, '0.0.0.0', config['port'])
-        config_site: web.TCPSite = web.TCPSite(config_runner, '0.0.0.0', DISCOVERY_PORT)
 
         await main_site.start()
-        await config_site.start()
 
         progress_task: asyncio.Task[None] = asyncio.create_task(start_progress_broadcasting())
 
@@ -168,10 +173,6 @@ async def main() -> None:
         logger.debug("Server: Cleaning up main runner...")
         await main_runner.cleanup()
         logger.debug("Server: Main runner cleaned up.")
-
-        logger.debug("Server: Cleaning up config runner...")
-        await config_runner.cleanup()
-        logger.debug("Server: Config runner cleaned up.")
 
         logger.info("Server: Shutdown complete.")
 
