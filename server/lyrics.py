@@ -7,13 +7,9 @@ from typing import Any, Optional
 
 import aiohttp
 from broadcast import broadcast_lyrics_update
+from config import LYRICS_CACHE_DB
 from log import logger
 from state import state
-
-
-def _get_db_path() -> str:
-    from server import LYRICS_CACHE_DB
-    return LYRICS_CACHE_DB
 
 
 def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
@@ -38,7 +34,7 @@ def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
 
 
 def init_lyrics_cache() -> None:
-    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
+    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS lyrics_cache (
             artist_name TEXT NOT NULL,
@@ -54,11 +50,11 @@ def init_lyrics_cache() -> None:
     """)
     conn.commit()
     conn.close()
-    logger.info(f"Lyrics cache: Initialized at {_get_db_path()}")
+    logger.info(f"Lyrics cache: Initialized at {LYRICS_CACHE_DB}")
 
 
 def get_cached_lyrics(params: dict[str, Any]) -> Optional[tuple[Any, ...]]:
-    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
+    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
     try:
         row: Optional[tuple[Any, ...]] = conn.execute(
             "SELECT synced_lyrics, plain_lyrics, instrumental FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
@@ -70,7 +66,7 @@ def get_cached_lyrics(params: dict[str, Any]) -> Optional[tuple[Any, ...]]:
 
 
 def set_cached_lyrics(params: dict[str, Any], synced_lyrics: Optional[str], plain_lyrics: Optional[str], instrumental: bool) -> None:
-    conn: sqlite3.Connection = sqlite3.connect(_get_db_path())
+    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
     try:
         conn.execute(
             "INSERT OR REPLACE INTO lyrics_cache (artist_name, track_name, album_name, duration, synced_lyrics, plain_lyrics, instrumental) VALUES (?, ?, ?, ?, ?, ?, ?)",

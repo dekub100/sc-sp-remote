@@ -4,7 +4,7 @@ import os
 from typing import Any
 
 from aiohttp import web
-from broadcast import CLIENTS
+from broadcast import CLIENTS, set_spicetify_client
 from config import DISCOVERY_PORT, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
@@ -21,7 +21,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     logger.info(f"New connection: {client_type} ({request.remote})")
 
     if client_type == "spicetify":
-        state["spicetifyClient"] = ws
+        set_spicetify_client(ws)
     else:
         await handle_get_initial_state(ws, {})
 
@@ -34,7 +34,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     finally:
         info: dict[str, Any] | None = CLIENTS.pop(ws, None)
         if info and info.get("type") == "spicetify":
-            state["spicetifyClient"] = None
+            set_spicetify_client(None)
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
 
     return ws

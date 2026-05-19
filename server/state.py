@@ -25,7 +25,6 @@ state: dict[str, Any] = {
     "isShuffling": False,
     "repeatStatus": 0,
     "isLiked": False,
-    "spicetifyClient": None,
     "lyrics": {
         "trackUri": "",
         "synced": [],
@@ -100,4 +99,3 @@ def cancel_pending_save() -> None:
         logger.debug("Server: Pending save timer cancelled.")
 
 
-read_state_from_file()

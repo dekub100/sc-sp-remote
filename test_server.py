@@ -29,7 +29,6 @@ def reset_state():
         "isShuffling": False,
         "repeatStatus": 0,
         "isLiked": False,
-        "spicetifyClient": None,
         "lyrics": {
             "trackUri": "",
             "synced": [],
@@ -40,6 +39,7 @@ def reset_state():
         }
     })
     server.CLIENTS.clear()
+    server.set_spicetify_client(None)
     server._save_timer = None
     yield
 
@@ -150,7 +150,7 @@ class TestLyricsCache:
         }
 
     def test_cache_miss(self) -> None:
-        with patch.object(server, "LYRICS_CACHE_DB", self.db_path):
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
             result: Any = server.get_cached_lyrics(self._cache_params())
         assert result is None
 
@@ -158,7 +158,7 @@ class TestLyricsCache:
         params: dict[str, Any] = self._cache_params()
         synced: str = "[00:01.00]Line one"
         plain: str = "Plain text"
-        with patch.object(server, "LYRICS_CACHE_DB", self.db_path):
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
             server.set_cached_lyrics(params, synced, plain, False)
             result: Any = server.get_cached_lyrics(params)
         assert result is not None
@@ -168,14 +168,14 @@ class TestLyricsCache:
 
     def test_cache_instrumental_flag(self) -> None:
         params = self._cache_params()
-        with patch.object(server, "LYRICS_CACHE_DB", self.db_path):
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
             server.set_cached_lyrics(params, None, None, True)
             result = server.get_cached_lyrics(params)
         assert result[2] == 1
 
     def test_cache_overwrite(self) -> None:
         params = self._cache_params()
-        with patch.object(server, "LYRICS_CACHE_DB", self.db_path):
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
             server.set_cached_lyrics(params, "old", "old_plain", False)
             server.set_cached_lyrics(params, "new", "new_plain", True)
             result = server.get_cached_lyrics(params)
@@ -321,13 +321,13 @@ class TestMessageHandlers:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
         await server.handle_register(mock_ws, {"type": "register", "client": "spicetify"})
         assert server.CLIENTS[mock_ws]["type"] == "spicetify"
-        assert server.state["spicetifyClient"] is mock_ws
+        assert server.get_spicetify_client() is mock_ws
 
     async def test_handle_register_website(self, mock_ws: AsyncMock) -> None:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
         await server.handle_register(mock_ws, {"type": "register", "client": "website"})
         assert server.CLIENTS[mock_ws]["type"] == "website"
-        assert server.state["spicetifyClient"] is None
+        assert server.get_spicetify_client() is None
 
     async def test_handle_register_unknown(self, mock_ws: AsyncMock) -> None:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}

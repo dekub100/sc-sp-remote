@@ -14,6 +14,8 @@ from broadcast import (  # noqa: F401
     broadcast_playback_update,
     broadcast_progress_update,
     broadcast_volume_update,
+    get_spicetify_client,
+    set_spicetify_client,
     start_progress_broadcasting,
 )
 from config import (  # noqa: F401
@@ -75,6 +77,7 @@ def save_state_to_file() -> None:
 
 init_lyrics_cache()
 set_write_callback(_write_state_to_disk)
+read_state_from_file()
 
 
 async def main() -> None:

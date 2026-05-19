@@ -14,6 +14,7 @@ from broadcast import (
     broadcast_playback_update,
     broadcast_progress_update,
     broadcast_volume_update,
+    set_spicetify_client,
 )
 from config import config
 from log import logger
@@ -30,7 +31,7 @@ async def handle_register(ws: web.WebSocketResponse, data: dict[str, Any]) -> No
         client_type = "unknown"
     CLIENTS[ws]["type"] = client_type
     if client_type == "spicetify":
-        state["spicetifyClient"] = ws
+        set_spicetify_client(ws)
     logger.info(f"Client registered as: {client_type}")
 
 
@@ -173,6 +174,8 @@ async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -
 MESSAGE_HANDLERS: dict[str, Any] = {
     "register": handle_register,
     "getInitialState": handle_get_initial_state,
+    # stateUpdate (full snapshot on spicetify connect) and trackUpdate (new-track event)
+    # carry overlapping fields; both map to handle_track_update intentionally
     "stateUpdate": handle_track_update,
     "volumeUpdate": handle_volume_update,
     "playbackUpdate": handle_playback_update,

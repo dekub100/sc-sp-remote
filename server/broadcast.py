@@ -12,6 +12,17 @@ from state import state
 
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
+spicetify_client: Optional[web.WebSocketResponse] = None
+
+
+def set_spicetify_client(ws: Optional[web.WebSocketResponse]) -> None:
+    global spicetify_client
+    spicetify_client = ws
+
+
+def get_spicetify_client() -> Optional[web.WebSocketResponse]:
+    return spicetify_client
+
 
 async def broadcast(
     message: dict[str, Any],
