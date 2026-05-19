@@ -272,6 +272,8 @@ ruff check server/ test_server.py
 cd streamdeck-plugin
 npm install
 npm run build
+cd ..
+npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
 ```
 
-The built plugin outputs to `com.dekub.spicetify-remote.sdPlugin/`. Double-click the `.streamDeckPlugin` package to install, or use `npx @elgato/cli install` from the plugin directory.
+The `.streamDeckPlugin` file is output to the project root. Double-click to install, or use `npx @elgato/cli install com.dekub.spicetify-remote`.
