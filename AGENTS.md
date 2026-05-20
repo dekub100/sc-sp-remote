@@ -4,7 +4,7 @@
 
 A Spicetify extension for remote control/viewing of Spotify using WebSockets, without Spotify Premium. Provides a web UI, OBS widget, and Stream Deck plugin — all communicating through a central Python server.
 
-**Version:** 1.5.1
+**Version:** 1.5.2
 **GitHub:** https://github.com/dekub100/spicetify-remote
 
 ---
@@ -230,7 +230,22 @@ state = {
 
 27. **Image fallback chain**: `meta.image_url || meta.image_small_url || meta.image_large_url || (t.album?.images?.[0]?.url) || ""`.
 
+28. **CORS non-match should omit header, not leak `origins[0]`**: old `_cors_headers()` fell back to `origins[0]` when request origin wasn't in the allowlist, leaking an allowed origin to the requester. Fixed to return empty dict.
+
+29. **SQLite connection reuse**: `lyrics.py` used to open/close a connection on every cache operation. Now uses a module-level persistent connection with `_get_conn()` that auto-reconnects if `LYRICS_CACHE_DB` changes (supports test patching).
+
+30. **Admin config PUT validates types**: `handle_admin_config_put` now coerces and validates types (`port` must be int 1-65535, `defaultVolume` 0.0-1.0, etc.). Returns 400 with specific error messages instead of silently storing garbage values.
+
+31. **`host` config field**: server bind address is now configurable via `config.json` (`"host": "127.0.0.1"` default). Previously hardcoded to `0.0.0.0`.
+
+32. **`tools/install.py` auto-patches port**: reads `data/config.json` and does regex replacement of `DEFAULT_PORT` in `remoteVolume.js` before copying to Spicetify Extensions dir. No more manual edits when changing ports.
+
+33. **Stream Deck PI registration uses `uuid` not `context`**: the Property Inspector's registration message must use `uuid: inUUID` (not `context: uuid`). The Stream Deck software silently drops wrong-format registrations, making the PI appear to do nothing.
+
+34. **Stream Deck global port via `setGlobalSettings`**: port is configured once via Property Inspector, stored as global settings, and shared across all action instances. `plugin.ts` listens for `didReceiveGlobalSettings` and calls `wsManager.setPort()`.
+
 ---
+
 
 ## Testing Strategy
 

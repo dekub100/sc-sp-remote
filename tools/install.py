@@ -75,7 +75,7 @@ def setup_extension():
 
     patched_content = re.sub(r'(DEFAULT_PORT:\s*)\d+', rf'\g<1>{port}', content)
     if patched_content == content:
-        print(f"Warning: Could not patch DEFAULT_PORT in remoteVolume.js")
+        print("Warning: Could not patch DEFAULT_PORT in remoteVolume.js")
 
     dest_path = os.path.join(extensions_path, "remoteVolume.js")
     with open(dest_path, "w", encoding="utf-8") as f:

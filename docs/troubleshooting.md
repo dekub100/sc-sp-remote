@@ -8,6 +8,8 @@ Check that the port in `data/config.json` isn't already in use. Change the port 
 { "port": 8889 }
 ```
 
+If the server binds to `127.0.0.1`, only localhost can reach it. Change to `"0.0.0.0"` for LAN access.
+
 ## Extension not connecting
 
 1. Verify the server is running: `http://localhost:8888/` should load the web UI.

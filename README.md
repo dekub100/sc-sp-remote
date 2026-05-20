@@ -1,6 +1,6 @@
 # spicetify-remote
 
-![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.2-blue.svg)
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
@@ -41,7 +41,7 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - [spicetify-cli](https://spicetify.app/docs/getting-started)
 
 ## Installation
@@ -72,6 +72,7 @@ The server uses a `data/config.json` file for all major settings. You can edit t
 ```json
 {
   "port": 8888,
+  "host": "127.0.0.1",
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
   "enableOBS": true,
@@ -85,6 +86,7 @@ The server uses a `data/config.json` file for all major settings. You can edit t
 ```
 
 - `port`: Main server port (for website, OBS widget, and WebSocket)
+- `host`: Bind address (default: `"127.0.0.1"` for localhost-only; change to `"0.0.0.0"` for LAN access)
 - `allowedOrigins`: List of allowed origins for CORS (default: `["*"]`)
 - `defaultVolume`: Initial volume value when the server starts
 - `enableOBS`: Enable or disable the OBS widget routes
