@@ -1,35 +1,39 @@
 let websocket;
 let uuid;
 
+function send(event, payload) {
+  websocket.send(JSON.stringify({ event, context: uuid, payload }));
+}
+
 function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo) {
   uuid = inUUID;
   websocket = new WebSocket("ws://127.0.0.1:" + inPort);
 
   websocket.onopen = function () {
     console.log("PI: WebSocket opened.");
-    const json = {
-      event: inRegisterEvent,
-      uuid: inUUID,
-    };
-    websocket.send(JSON.stringify(json));
-    // Request settings when PI opens
-    websocket.send(JSON.stringify({
-      event: "getSettings",
-      context: uuid,
-    }));
+    send(inRegisterEvent);
+    send("getSettings");
+    send("getGlobalSettings");
   };
 
   websocket.onmessage = function (event) {
-    const { payload, event: type, context } = JSON.parse(event.data);
+    const { payload, event: type } = JSON.parse(event.data);
     console.log("PI: Received message:", type, payload);
     if (type === "didReceiveSettings") {
       const { settings } = payload;
       const volumeInput = document.getElementById("volumeInput");
 
       if (volumeInput && settings.volume !== undefined) {
-        // Convert volume (0.0-1.0) to percentage (0-100) for the input field
         volumeInput.value = (settings.volume * 100).toFixed(0);
         console.log("PI: Settings loaded into UI:", settings.volume);
+      }
+    }
+    if (type === "didReceiveGlobalSettings") {
+      const { settings } = payload;
+      const portInput = document.getElementById("portInput");
+      if (portInput && settings.port !== undefined) {
+        portInput.value = settings.port;
+        console.log("PI: Global settings loaded, port:", settings.port);
       }
     }
   };
@@ -46,22 +50,27 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo) 
 document.addEventListener("DOMContentLoaded", function () {
   const volumeInput = document.getElementById("volumeInput");
   if (volumeInput) {
-    volumeInput.addEventListener("change", function (e) { // Use 'change' event for number input
+    volumeInput.addEventListener("change", function (e) {
       let newVolume = parseInt(e.target.value);
-      if (isNaN(newVolume)) newVolume = 0; // Handle non-numeric input
-      newVolume = Math.max(0, Math.min(100, newVolume)); // Clamp between 0 and 100
-      e.target.value = newVolume; // Update input field if clamped
+      if (isNaN(newVolume)) newVolume = 0;
+      newVolume = Math.max(0, Math.min(100, newVolume));
+      e.target.value = newVolume;
 
-      const volumeToSend = newVolume / 100; // Convert percentage back to 0.0-1.0
-      const json = {
-        event: "setSettings",
-        context: uuid,
-        payload: {
-          volume: volumeToSend,
-        },
-      };
-      websocket.send(JSON.stringify(json));
+      const volumeToSend = newVolume / 100;
+      send("setSettings", { volume: volumeToSend });
       console.log("PI: Settings sent to plugin:", volumeToSend);
+    });
+  }
+
+  const portInput = document.getElementById("portInput");
+  if (portInput) {
+    portInput.addEventListener("change", function (e) {
+      let newPort = parseInt(e.target.value);
+      if (isNaN(newPort) || newPort < 1) newPort = 8888;
+      if (newPort > 65535) newPort = 65535;
+      e.target.value = newPort;
+      send("setGlobalSettings", { port: newPort });
+      console.log("PI: Global port set to:", newPort);
     });
   }
 });

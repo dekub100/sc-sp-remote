@@ -5,12 +5,33 @@ export class WebSocketManager extends EventEmitter {
     private static instance: WebSocketManager | null = null;
     private websocket: WebSocket | null = null;
     private reconnectTimeout: NodeJS.Timeout | null = null;
-    private readonly port: number = 8888;
+    private _port: number = 8888;
     private refCount: number = 0;
     private isConnecting: boolean = false;
 
+    public get port(): number {
+        return this._port;
+    }
+
     private constructor() {
         super();
+    }
+
+    public setPort(newPort: number): void {
+        if (newPort === this._port) return;
+        this._port = newPort;
+        if (this.websocket) {
+            this.websocket.onclose = () => {};
+            this.websocket.close();
+            this.websocket = null;
+        }
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        if (this.refCount > 0) {
+            this.doConnect();
+        }
     }
 
     public static getInstance(): WebSocketManager {
@@ -38,7 +59,7 @@ export class WebSocketManager extends EventEmitter {
 
         this.isConnecting = true;
 
-        this.websocket = new WebSocket(`ws://localhost:${this.port}/?client=streamdeck`);
+        this.websocket = new WebSocket(`ws://localhost:${this._port}/?client=streamdeck`);
 
         this.websocket.onopen = () => {
             this.isConnecting = false;

@@ -10,9 +10,24 @@ import { ToggleRepeat } from "./actions/toggle-repeat";
 import { ToggleLike } from "./actions/toggle-like";
 import { VolumeDisplay } from "./actions/volume-display";
 import { SetVolume } from "./actions/set-volume";
+import { wsManager } from "./websocket-manager";
 
 // We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
 streamDeck.logger.setLevel("trace");
+
+// Apply global port setting across all actions.
+streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {
+    if (settings.port) {
+        wsManager.setPort(settings.port as number);
+    }
+});
+
+// Fetch saved port on startup.
+streamDeck.settings.getGlobalSettings().then((settings) => {
+    if (settings.port) {
+        wsManager.setPort(settings.port as number);
+    }
+});
 
 // Register the actions.
 streamDeck.actions.registerAction(new PlayPause());
