@@ -244,10 +244,12 @@ state = {
 
 ## Security Model
 
-- **No authentication** — by design, localhost-only
-- **CORS** — configurable via `allowedOrigins` in config.json
+- **No authentication** — by design, localhost-only. This is a media remote for your own Spotify player — no user accounts, no PII, no database of secrets, no cloud.
+- **Threat model** — an attacker on your LAN can see now-playing and skip/pause. That's annoying, not sensitive. The admin API (`/api/admin/config`) is the only surface worth locking down, but it's localhost-only by default.
+- **CORS** — configurable via `allowedOrigins` in config.json. Default `*` since the web UI and OBS widget are served same-origin (no CORS needed) and WebSocket connections bypass CORS entirely.
 - **Input validation** — JSON parse errors, type checks, unknown message types all handled gracefully
-- **Do not expose to internet** without reverse proxy + auth layer
+- **Do not expose to internet** — this tool isn't designed for internet exposure. If you must, add a reverse proxy with auth (the `authToken` concept from config.json would need implementing). Not recommended.
+- **Auth not worth implementing** for the default localhost use case. Adding token-based auth would require changes to 4+ client types (web, OBS, Stream Deck, Spicetify extension) with reconnect handling — ~80 lines of code for a marginal security gain on a tool that already only binds to localhost. Queue-adding for chat viewers is already handled via Streamer.bot → localhost HTTP API. Protecting the admin config endpoints from localhost access is theater.
 
 ---
 

@@ -49,6 +49,7 @@ from handlers import (  # noqa: F401
 )
 from log import logger
 from lyrics import (  # noqa: F401
+    _close_connection,
     fetch_and_broadcast_lyrics,
     get_cached_lyrics,
     init_lyrics_cache,
@@ -136,7 +137,7 @@ async def main() -> None:
     stop_event: asyncio.Event = asyncio.Event()
 
     try:
-        main_site: web.TCPSite = web.TCPSite(main_runner, '0.0.0.0', config['port'])
+        main_site: web.TCPSite = web.TCPSite(main_runner, config.get('host', '0.0.0.0'), config['port'])
 
         await main_site.start()
 

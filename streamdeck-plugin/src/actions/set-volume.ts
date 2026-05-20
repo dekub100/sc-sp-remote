@@ -1,4 +1,4 @@
-import { action, KeyDownEvent, SingletonAction, DidReceiveSettingsEvent, KeyAction, WillAppearEvent } from "@elgato/streamdeck";
+import { action, KeyUpEvent, SingletonAction, DidReceiveSettingsEvent, KeyAction, WillAppearEvent } from "@elgato/streamdeck";
 import { wsManager } from "../websocket-manager";
 
 interface SetVolumeSettings {

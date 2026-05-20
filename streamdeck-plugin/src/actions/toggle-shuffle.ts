@@ -1,7 +1,7 @@
 import {
   action,
   KeyAction,
-  KeyDownEvent,
+  KeyUpEvent,
   SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,

@@ -1,8 +1,7 @@
 {
   "port": 8888,
-  "allowedOrigins": [
-    "*"
-  ],
+  "host": "127.0.0.1",
+  "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,

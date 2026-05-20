@@ -22,6 +22,7 @@ QUEUE_RATE_LIMIT_SECONDS: float = 30.0
 
 config: dict[str, Any] = {
     "port": 8888,
+    "host": "127.0.0.1",
     "allowedOrigins": ["*"],
     "defaultVolume": 0.5,
     "enableOBS": True,

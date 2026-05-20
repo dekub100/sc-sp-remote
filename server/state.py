@@ -93,7 +93,8 @@ async def _actually_save_after_delay(delay: float) -> None:
     try:
         await asyncio.sleep(delay)
         if _write_callback:
-            await asyncio.to_thread(_write_callback, get_current_save_data())
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _write_callback, get_current_save_data())
         logger.info("Server: Saved state to state.json (debounced)")
     except asyncio.CancelledError:
         pass

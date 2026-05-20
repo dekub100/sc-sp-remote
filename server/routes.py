@@ -38,7 +38,7 @@ def _cors_headers(request: web.Request) -> dict[str, str]:
     req_origin: str = request.headers.get("Origin", "")
     if req_origin and req_origin in origins:
         return {"Access-Control-Allow-Origin": req_origin}
-    return {"Access-Control-Allow-Origin": origins[0]} if origins else {}
+    return {}
 
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
@@ -74,17 +74,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
 
 
 async def handle_config(request: web.Request) -> web.Response:
-    origins: list[str] = config["allowedOrigins"]
-    if "*" in origins:
-        cors_origin: str = "*"
-    else:
-        req_origin: str = request.headers.get("Origin", "")
-        cors_origin = req_origin if req_origin in origins else origins[0] if origins else ""
-
-    headers: dict[str, str] = {"Access-Control-Allow-Origin": cors_origin} if cors_origin else {}
+    headers: dict[str, str] = _cors_headers(request)
     return web.json_response({
         "port": config["port"],
-        "allowedOrigins": origins,
+        "allowedOrigins": config["allowedOrigins"],
         "defaultVolume": config["defaultVolume"],
         "enableOBS": config.get("enableOBS", True),
         "enableWebsite": config.get("enableWebsite", True)
@@ -173,6 +166,7 @@ async def handle_queue_remove(request: web.Request) -> web.Response:
 
     uri = body.get("uri", "")
     uid = body.get("uid", "")
+    pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
     await broadcast({
         "type": "removeFromQueue",
         "uri": uri,
@@ -197,26 +191,101 @@ async def handle_admin_config_get(request: web.Request) -> web.Response:
     return web.json_response(config, headers=_cors_headers(request))
 
 
+_CONFIG_VALIDATORS: dict[str, tuple[type, str]] = {
+    "port": (int, "must be an integer between 1 and 65535"),
+    "host": (str, "must be a valid IP address or hostname"),
+    "defaultVolume": ((int, float), "must be a number between 0.0 and 1.0"),
+    "volumeStep": ((int, float), "must be a number between 0.001 and 1.0"),
+    "maxQueueSize": (int, "must be a positive integer"),
+    "queueRateLimitSeconds": ((int, float), "must be a non-negative number"),
+    "backupCount": (int, "must be a non-negative integer"),
+    "progressBroadcastInterval": ((int, float), "must be a positive number"),
+    "stateSaveDebounceSeconds": ((int, float), "must be a positive number"),
+    "lyricsFetchTimeoutSeconds": ((int, float), "must be a positive number"),
+    "spicetifyPollingIntervalMs": (int, "must be a positive integer"),
+    "spicetifyQueuePollingIntervalMs": (int, "must be a positive integer"),
+    "spicetifyReconnectBaseDelayMs": (int, "must be a positive integer"),
+    "spicetifyReconnectMaxDelayMs": (int, "must be a positive integer"),
+    "spicetifyProgressDeltaThresholdMs": (int, "must be a positive integer"),
+    "spicetifyCommandFeedbackDelayMs": (int, "must be a positive integer"),
+    "obsUpNextThresholdMs": (int, "must be a positive integer"),
+    "enableOBS": (bool, "must be a boolean"),
+    "enableWebsite": (bool, "must be a boolean"),
+    "logLevel": (str, "must be a string"),
+    "allowedOrigins": (list, "must be a list of strings"),
+}
+
+
+def _coerce_type(value: Any, expected_type: type) -> Any:
+    if expected_type in ((int, float),):
+        return float(value)
+    if isinstance(expected_type, tuple):
+        return expected_type[0](value)
+    if expected_type is list:
+        if not isinstance(value, list):
+            raise TypeError(f"expected list, got {type(value).__name__}")
+        return value
+    return expected_type(value)
+
+
 async def handle_admin_config_put(request: web.Request) -> web.Response:
     try:
         body: dict[str, Any] = await request.json()
     except json.JSONDecodeError:
         return web.json_response({"error": "Invalid JSON"}, status=400, headers=_cors_headers(request))
 
-    allowed_keys = {
-        "port", "allowedOrigins", "defaultVolume", "enableOBS",
-        "enableWebsite", "volumeStep", "logLevel", "backupCount",
-        "maxQueueSize", "queueRateLimitSeconds",
-        "progressBroadcastInterval", "stateSaveDebounceSeconds", "lyricsFetchTimeoutSeconds",
-        "spicetifyPollingIntervalMs", "spicetifyQueuePollingIntervalMs",
-        "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
-        "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
-        "obsUpNextThresholdMs",
-    }
-    updates = {k: v for k, v in body.items() if k in allowed_keys}
+    errors: list[str] = []
+    updates: dict[str, Any] = {}
+    for key, value in body.items():
+        if key not in _CONFIG_VALIDATORS:
+            continue
+        expected_type, error_msg = _CONFIG_VALIDATORS[key]
+        try:
+            coerced = _coerce_type(value, expected_type)
+        except (ValueError, TypeError):
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if isinstance(expected_type, tuple):
+            if not isinstance(coerced, expected_type):
+                errors.append(f"{key}: {error_msg}")
+                continue
+        elif not isinstance(coerced, expected_type):
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key == "port" and (coerced < 1 or coerced > 65535):
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key in ("defaultVolume",) and (coerced < 0.0 or coerced > 1.0):
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key in ("volumeStep",) and (coerced < 0.001 or coerced > 1.0):
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key in ("maxQueueSize", "backupCount") and coerced < 0:
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key in ("queueRateLimitSeconds",) and coerced < 0:
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key in ("progressBroadcastInterval", "stateSaveDebounceSeconds",
+                     "lyricsFetchTimeoutSeconds",
+                     "spicetifyPollingIntervalMs", "spicetifyQueuePollingIntervalMs",
+                     "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
+                     "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
+                     "obsUpNextThresholdMs") and coerced <= 0:
+            errors.append(f"{key}: {error_msg}")
+            continue
+        if key == "logLevel" and coerced not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+            errors.append(f"{key}: must be one of DEBUG, INFO, WARNING, ERROR")
+            continue
+        if key == "allowedOrigins":
+            if not all(isinstance(o, str) for o in coerced):
+                errors.append(f"{key}: must be a list of strings")
+                continue
+        updates[key] = coerced
 
-    if "allowedOrigins" in updates and not isinstance(updates["allowedOrigins"], list):
-        return web.json_response({"error": "allowedOrigins must be a list"}, status=400, headers=_cors_headers(request))
+    if errors:
+        return web.json_response({"error": "Validation failed", "details": errors}, status=400, headers=_cors_headers(request))
 
     config.update(updates)
     try:

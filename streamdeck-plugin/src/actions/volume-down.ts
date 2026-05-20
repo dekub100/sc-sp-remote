@@ -1,4 +1,4 @@
-import { action, KeyDownEvent, SingletonAction } from "@elgato/streamdeck";
+import { action, KeyUpEvent, SingletonAction } from "@elgato/streamdeck";
 import { wsManager } from "../websocket-manager";
 
 @action({ UUID: "com.dekub.spicetify-remote.volumedown" })

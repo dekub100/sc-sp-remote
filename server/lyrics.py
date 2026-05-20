@@ -11,6 +11,35 @@ from config import LYRICS_CACHE_DB
 from log import logger
 from state import state
 
+_connection: sqlite3.Connection | None = None
+_connection_path: str | None = None
+_session: aiohttp.ClientSession | None = None
+
+
+def _get_session() -> aiohttp.ClientSession:
+    global _session
+    if _session is None:
+        _session = aiohttp.ClientSession(headers={"User-Agent": "SpicetifyRemote/1.0 (https://github.com/dekub/spicetify-remote)"})
+    return _session
+
+
+def _get_conn() -> sqlite3.Connection:
+    global _connection, _connection_path
+    if _connection is None or _connection_path != LYRICS_CACHE_DB:
+        if _connection is not None:
+            _connection.close()
+        _connection = sqlite3.connect(LYRICS_CACHE_DB, check_same_thread=False)
+        _connection_path = LYRICS_CACHE_DB
+    return _connection
+
+
+def _close_connection() -> None:
+    global _connection, _connection_path
+    if _connection is not None:
+        _connection.close()
+        _connection = None
+        _connection_path = None
+
 
 def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
     lines: list[dict[str, Any]] = []
@@ -34,7 +63,7 @@ def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
 
 
 def init_lyrics_cache() -> None:
-    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
+    conn: sqlite3.Connection = _get_conn()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS lyrics_cache (
             artist_name TEXT NOT NULL,
@@ -49,32 +78,25 @@ def init_lyrics_cache() -> None:
         )
     """)
     conn.commit()
-    conn.close()
     logger.info(f"Lyrics cache: Initialized at {LYRICS_CACHE_DB}")
 
 
 def get_cached_lyrics(params: dict[str, Any]) -> Optional[tuple[Any, ...]]:
-    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
-    try:
-        row: Optional[tuple[Any, ...]] = conn.execute(
-            "SELECT synced_lyrics, plain_lyrics, instrumental FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
-            (params["artist_name"], params["track_name"], params["album_name"], params["duration"])
-        ).fetchone()
-        return row
-    finally:
-        conn.close()
+    conn: sqlite3.Connection = _get_conn()
+    row: Optional[tuple[Any, ...]] = conn.execute(
+        "SELECT synced_lyrics, plain_lyrics, instrumental FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
+        (params["artist_name"], params["track_name"], params["album_name"], params["duration"])
+    ).fetchone()
+    return row
 
 
 def set_cached_lyrics(params: dict[str, Any], synced_lyrics: Optional[str], plain_lyrics: Optional[str], instrumental: bool) -> None:
-    conn: sqlite3.Connection = sqlite3.connect(LYRICS_CACHE_DB)
-    try:
-        conn.execute(
-            "INSERT OR REPLACE INTO lyrics_cache (artist_name, track_name, album_name, duration, synced_lyrics, plain_lyrics, instrumental) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (params["artist_name"], params["track_name"], params["album_name"], params["duration"], synced_lyrics, plain_lyrics, 1 if instrumental else 0)
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    conn: sqlite3.Connection = _get_conn()
+    conn.execute(
+        "INSERT OR REPLACE INTO lyrics_cache (artist_name, track_name, album_name, duration, synced_lyrics, plain_lyrics, instrumental) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (params["artist_name"], params["track_name"], params["album_name"], params["duration"], synced_lyrics, plain_lyrics, 1 if instrumental else 0)
+    )
+    conn.commit()
 
 
 async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_name: str, album_name: str, duration_ms: int) -> None:
@@ -106,12 +128,12 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
         return
 
     try:
-        async with aiohttp.ClientSession(headers={"User-Agent": "SpicetifyRemote/1.0 (https://github.com/dekub/spicetify-remote)"}) as session:
-            async with session.get(
-                "https://lrclib.net/api/get",
-                params=params,
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as resp:
+        session = _get_session()
+        async with session.get(
+            "https://lrclib.net/api/get",
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as resp:
                 if resp.status == 200:
                     data: dict[str, Any] = await resp.json()
                     if state["currentTrack"]["trackUri"] != track_uri:

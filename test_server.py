@@ -64,6 +64,7 @@ def temp_db():
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     yield path
+    server._close_connection()
     os.unlink(path)
 
 
@@ -481,7 +482,7 @@ class TestConfigEndpoint:
             resp = await server.handle_config(req)
         finally:
             server.config["allowedOrigins"] = orig
-        assert resp.headers.get("Access-Control-Allow-Origin") == "http://localhost:3000"
+        assert resp.headers.get("Access-Control-Allow-Origin") is None
 
     async def test_config_response_body(self) -> None:
         req = MagicMock()
