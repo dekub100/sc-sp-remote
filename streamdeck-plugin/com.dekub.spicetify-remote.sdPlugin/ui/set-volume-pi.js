@@ -1,19 +1,24 @@
 let websocket;
 let uuid;
 
-function send(event, payload) {
-  websocket.send(JSON.stringify({ event, context: uuid, payload }));
-}
-
 function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo) {
   uuid = inUUID;
   websocket = new WebSocket("ws://127.0.0.1:" + inPort);
 
   websocket.onopen = function () {
     console.log("PI: WebSocket opened.");
-    send(inRegisterEvent);
-    send("getSettings");
-    send("getGlobalSettings");
+    websocket.send(JSON.stringify({
+      event: inRegisterEvent,
+      uuid: inUUID,
+    }));
+    websocket.send(JSON.stringify({
+      event: "getSettings",
+      context: uuid,
+    }));
+    websocket.send(JSON.stringify({
+      event: "getGlobalSettings",
+      context: uuid,
+    }));
   };
 
   websocket.onmessage = function (event) {
@@ -22,7 +27,6 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo) 
     if (type === "didReceiveSettings") {
       const { settings } = payload;
       const volumeInput = document.getElementById("volumeInput");
-
       if (volumeInput && settings.volume !== undefined) {
         volumeInput.value = (settings.volume * 100).toFixed(0);
         console.log("PI: Settings loaded into UI:", settings.volume);
@@ -33,7 +37,7 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo) 
       const portInput = document.getElementById("portInput");
       if (portInput && settings.port !== undefined) {
         portInput.value = settings.port;
-        console.log("PI: Global settings loaded, port:", settings.port);
+        console.log("PI: Global port loaded:", settings.port);
       }
     }
   };
@@ -57,8 +61,12 @@ document.addEventListener("DOMContentLoaded", function () {
       e.target.value = newVolume;
 
       const volumeToSend = newVolume / 100;
-      send("setSettings", { volume: volumeToSend });
-      console.log("PI: Settings sent to plugin:", volumeToSend);
+      websocket.send(JSON.stringify({
+        event: "setSettings",
+        context: uuid,
+        payload: { volume: volumeToSend },
+      }));
+      console.log("PI: Volume sent:", volumeToSend);
     });
   }
 
@@ -69,7 +77,11 @@ document.addEventListener("DOMContentLoaded", function () {
       if (isNaN(newPort) || newPort < 1) newPort = 8888;
       if (newPort > 65535) newPort = 65535;
       e.target.value = newPort;
-      send("setGlobalSettings", { port: newPort });
+      websocket.send(JSON.stringify({
+        event: "setGlobalSettings",
+        context: uuid,
+        payload: { port: newPort },
+      }));
       console.log("PI: Global port set to:", newPort);
     });
   }
