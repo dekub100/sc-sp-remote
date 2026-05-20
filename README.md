@@ -13,12 +13,12 @@ _Code was made with the help of AI, but its honestly so simple i think it just w
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Server](#running-the-server)
-- [Service Management (Windows)](#service-management-windows)
-- [Service Management (Linux)](#service-management-linux)
+- [Service Management](#service-management)
 - [Elgato Stream Deck Integration](#elgato-stream-deck-integration)
 - [Streamer.bot Integration](#streamerbot-integration)
 - [Lyrics](#lyrics)
 - [Updating](#updating)
+- [Detailed Documentation](#detailed-documentation)
 - [Notes](#notes)
 - [Security](#security)
 - [Development](#development)
@@ -97,7 +97,7 @@ The server uses a `data/config.json` file for all major settings. You can edit t
 **Notes:**
 
 - All clients (Spicetify extension, website, OBS widget) connect directly to the main server port.
-- If you change the `port` in `config.json`, update the `DEFAULT_PORT` in `spicetify-extension/remoteVolume.js` and run `spicetify apply`.
+- If you change the `port` in `config.json`, re-run `python tools/install.py` to patch the extension automatically.
 
 ## Running the Server
 
@@ -111,72 +111,13 @@ python server/server.py
 - **OBS Widget**: `http://localhost:8888/obs`
 - **Admin Panel**: `http://localhost:8888/admin`
 
-## Service Management (Windows)
+## Service Management
 
-You can run the server as a background Windows Service. The script will automatically ask for Administrator privileges if needed.
-
-### Install & Start
-
-```powershell
-python tools/service.py install
-python tools/service.py start
-```
-
-## Service Management (Linux)
-
-On Linux, you can use `systemd` to run the server in the background.
-
-1. Create a service file:
-
-```bash
-sudo nano /etc/systemd/system/spicetify-remote.service
-```
-
-2. Paste the following (replace `YOUR_USER` and `YOUR_PATH`):
-
-```ini
-[Unit]
-Description=Spicetify Remote Server
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /path/to/spicetify-remote/server/server.py
-WorkingDirectory=/path/to/spicetify-remote
-StandardOutput=inherit
-StandardError=inherit
-Restart=always
-User=YOUR_USER
-
-[Install]
-WantedBy=multi-user.target
-```
-
-3. Start and enable the service:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable spicetify-remote
-sudo systemctl start spicetify-remote
-```
+Run the server as a background service (Windows or Linux). See [`docs/service.md`](docs/service.md) for Windows service and Linux systemd setup.
 
 ## Elgato Stream Deck Integration
 
-This project includes a dedicated Elgato Stream Deck Plugin for direct control of Spotify via your local `spicetify-remote` server. The source code is in `streamdeck-plugin/`.
-
-### Available Actions
-
-- **Set Volume**: Configurable to an exact percentage.
-- **Playback Control**: Play/Pause, Next, Previous.
-- **Toggles**: Shuffle, Repeat, Like.
-- **Displays**: Shows current volume dynamically on the button.
-
-### Installing
-
-Download `com.dekub.spicetify-remote.streamDeckPlugin` from the [releases page](https://github.com/dekub100/spicetify-remote/releases) and double-click to install. See [Development](#development) for building from source.
-
-### Server Communication
-
-The Stream Deck plugin communicates with the server via WebSockets. Ensure your server is running (`python server/server.py` or as a service) for the actions to function.
+Includes a dedicated Stream Deck plugin for direct Spotify control. See [`docs/stream-deck.md`](docs/stream-deck.md) for available actions, installation, building from source, and global port configuration.
 
 ## Streamer.bot Integration
 
@@ -195,6 +136,13 @@ To clear the cache, delete `data/lyrics_cache.db` and restart the server.
 ### Updating
 
 Download the latest `spicetify-remote-core-v*.zip` from the [releases page](https://github.com/dekub100/spicetify-remote/releases) and extract it over your existing installation — this replaces the server, web files, and extension. Restart the server afterwards.
+
+## Detailed Documentation
+
+- [`docs/service.md`](docs/service.md) — Windows service and Linux systemd setup
+- [`docs/stream-deck.md`](docs/stream-deck.md) — Stream Deck plugin details and build instructions
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — Common issues and fixes
+- [`streamerbot-commands/README.md`](streamerbot-commands/README.md) — Streamer.bot integration and chat commands
 
 ## Notes
 
@@ -268,12 +216,4 @@ ruff check server/ test_server.py
 
 ### Stream Deck Plugin
 
-```bash
-cd streamdeck-plugin
-npm install
-npm run build
-cd ..
-npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
-```
-
-The `.streamDeckPlugin` file is output to the project root. Double-click to install, or use `npx @elgato/cli install com.dekub.spicetify-remote`.
+See [`docs/stream-deck.md`](docs/stream-deck.md) for build instructions.
