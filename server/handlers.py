@@ -17,11 +17,12 @@ from broadcast import (
     broadcast_volume_update,
     set_spicetify_client,
 )
-from config import MAX_QUEUE_SIZE, config
+from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
     check_rate_limit,
+    is_queue_full,
     parse_track_input,
     pendingQueueMeta,
     save_state_to_file_debounced,
@@ -29,17 +30,21 @@ from state import (
 )
 
 KNOWN_CLIENT_TYPES: frozenset[str] = frozenset({"spicetify", "website", "obs"})
+PROTOCOL_VERSION: int = 1
 
 
 async def handle_register(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     client_type: str = data.get("client", "unknown")
+    client_version: int = data.get("protocolVersion", 0)
     if client_type not in KNOWN_CLIENT_TYPES:
         logger.warning(f"Unknown client type registration: {client_type}")
         client_type = "unknown"
     CLIENTS[ws]["type"] = client_type
+    CLIENTS[ws]["protocolVersion"] = client_version
     if client_type == "spicetify":
         set_spicetify_client(ws)
-    logger.info(f"Client registered as: {client_type}")
+    logger.info(f"Client registered as: {client_type} (protocol v{client_version})")
+    await ws.send_str(json.dumps({"type": "registered", "protocolVersion": PROTOCOL_VERSION}))
 
 
 async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
@@ -218,7 +223,7 @@ async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -
         await ws.send_str(json.dumps({"type": "error", "message": msg}))
         return
 
-    if len(pendingQueueMeta) >= MAX_QUEUE_SIZE:
+    if is_queue_full():
         await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
         return
 

@@ -185,7 +185,7 @@ function animate() {
 }
 
 function connect() {
-  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs`);
+  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs&protocolVersion=1`);
 
   ws.onopen = () => {
     // Register handled by query param

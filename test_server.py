@@ -535,26 +535,26 @@ class TestParseTrackInput:
 
 class TestRateLimit:
     def test_first_request_allowed(self) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             allowed, msg = server.check_rate_limit("user1")
         assert allowed is True
         assert msg == ""
 
     def test_second_request_blocked(self) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             server.check_rate_limit("user2")
             allowed, msg = server.check_rate_limit("user2")
         assert allowed is False
         assert "Rate limited" in msg
 
     def test_different_users_independent(self) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             server.check_rate_limit("userA")
             allowed, _ = server.check_rate_limit("userB")
         assert allowed is True
 
     def test_reset_rate_limit(self) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             server.check_rate_limit("user3")
             server.reset_rate_limit("user3")
             allowed, _ = server.check_rate_limit("user3")
@@ -611,7 +611,7 @@ class TestQueueHandlers:
         assert len(server.pendingQueueMeta) == 1
 
     async def test_handle_add_to_queue_rate_limited(self, mock_ws: AsyncMock) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             server.check_rate_limit("ratelimited_user")
             with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
                 await server.handle_add_to_queue(mock_ws, {
@@ -740,7 +740,7 @@ class TestQueueHttpEndpoints:
             assert len(server.pendingQueueMeta) == 1
 
     async def test_post_add_queue_rate_limited(self, client) -> None:
-        with patch("state.QUEUE_RATE_LIMIT_SECONDS", 30.0):
+        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
             server.check_rate_limit("http_rl_user")
             with patch("routes.broadcast", new_callable=AsyncMock):
                 resp = await client.post('/api/queue/add', json={
@@ -789,3 +789,124 @@ class TestQueueHttpEndpoints:
             assert len(server.pendingQueueMeta) == 0
             assert len(server.state["queue"]["nextTracks"]) == 0
             assert server.state["queue"]["queueRevision"] == ""
+
+
+class TestAdminConfigPut:
+    @pytest.fixture
+    async def client(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        app.router.add_put('/api/admin/config', server.handle_admin_config_put)
+        app.router.add_get('/api/admin/config', server.handle_admin_config_get)
+        async with TestClient(TestServer(app)) as tc:
+            yield tc
+
+    async def test_valid_port_update(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"port": 9090})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["status"] == "ok"
+        assert server.config["port"] == 9090
+
+    async def test_port_out_of_range(self, client) -> None:
+        orig = server.config["port"]
+        resp = await client.put('/api/admin/config', json={"port": 99999})
+        assert resp.status == 400
+        data = await resp.json()
+        assert "port" in data["error"].lower() or "validation" in data["error"].lower()
+        assert server.config["port"] == orig
+
+    async def test_port_zero_rejected(self, client) -> None:
+        orig = server.config["port"]
+        resp = await client.put('/api/admin/config', json={"port": 0})
+        assert resp.status == 400
+        assert server.config["port"] == orig
+
+    async def test_default_volume_clamped(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"defaultVolume": 0.75})
+        assert resp.status == 200
+        assert server.config["defaultVolume"] == 0.75
+
+    async def test_default_volume_out_of_range(self, client) -> None:
+        orig = server.config["defaultVolume"]
+        resp = await client.put('/api/admin/config', json={"defaultVolume": 5.0})
+        assert resp.status == 400
+        assert server.config["defaultVolume"] == orig
+
+    async def test_volume_step_out_of_range(self, client) -> None:
+        orig = server.config.get("volumeStep", 0.05)
+        resp = await client.put('/api/admin/config', json={"volumeStep": 0.0001})
+        assert resp.status == 400
+        assert server.config.get("volumeStep", orig) == orig
+
+    async def test_max_queue_size_negative(self, client) -> None:
+        orig = server.config.get("maxQueueSize", 50)
+        resp = await client.put('/api/admin/config', json={"maxQueueSize": -1})
+        assert resp.status == 400
+        assert server.config.get("maxQueueSize", orig) == orig
+
+    async def test_queue_rate_limit_negative(self, client) -> None:
+        orig = server.config.get("queueRateLimitSeconds", 30)
+        resp = await client.put('/api/admin/config', json={"queueRateLimitSeconds": -5})
+        assert resp.status == 400
+        assert server.config.get("queueRateLimitSeconds", orig) == orig
+
+    async def test_log_level_valid(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"logLevel": "DEBUG"})
+        assert resp.status == 200
+        assert server.config["logLevel"] == "DEBUG"
+
+    async def test_log_level_invalid(self, client) -> None:
+        orig = server.config.get("logLevel")
+        resp = await client.put('/api/admin/config', json={"logLevel": "VERBOSE"})
+        assert resp.status == 400
+        assert server.config.get("logLevel") == orig
+
+    async def test_allowed_origins_valid(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"allowedOrigins": ["http://localhost:3000"]})
+        assert resp.status == 200
+        assert server.config["allowedOrigins"] == ["http://localhost:3000"]
+
+    async def test_allowed_origins_not_list(self, client) -> None:
+        orig = server.config["allowedOrigins"].copy()
+        resp = await client.put('/api/admin/config', json={"allowedOrigins": "not-a-list"})
+        assert resp.status == 400
+        assert server.config["allowedOrigins"] == orig
+
+    async def test_allowed_origins_non_string_items(self, client) -> None:
+        orig = server.config["allowedOrigins"].copy()
+        resp = await client.put('/api/admin/config', json={"allowedOrigins": [123, 456]})
+        assert resp.status == 400
+        assert server.config["allowedOrigins"] == orig
+
+    async def test_unknown_field_ignored(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"unknownField": "value"})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["updated"] == []
+
+    async def test_multiple_fields_partial_fail(self, client) -> None:
+        orig_port = server.config["port"]
+        resp = await client.put('/api/admin/config', json={"port": 7777, "defaultVolume": 5.0})
+        assert resp.status == 400
+        data = await resp.json()
+        details = data.get("details", [])
+        assert any("defaultVolume" in d for d in details)
+        assert server.config["port"] == orig_port
+
+    async def test_invalid_json(self, client) -> None:
+        resp = await client.put('/api/admin/config', data="not json", headers={"Content-Type": "application/json"})
+        assert resp.status == 400
+        data = await resp.json()
+        assert "Invalid JSON" in data["error"]
+
+    async def test_type_coercion_port_string_to_int(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"port": "9090"})
+        assert resp.status == 200
+        assert server.config["port"] == 9090
+
+    async def test_type_coercion_volume_string_to_float(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"defaultVolume": "0.8"})
+        assert resp.status == 200
+        assert server.config["defaultVolume"] == 0.8

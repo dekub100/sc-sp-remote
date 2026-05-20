@@ -6,10 +6,10 @@ from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_spicetify_client
-from config import CONFIG_PATH, LOG_DIR, MAX_QUEUE_SIZE, PROJECT_ROOT, config
+from config import CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
-from state import check_rate_limit, parse_track_input, pendingQueueMeta, state
+from state import check_rate_limit, is_queue_full, parse_track_input, pendingQueueMeta, state
 
 
 def _build_client_config(client_type: str) -> dict[str, Any]:
@@ -46,9 +46,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     await ws.prepare(request)
 
     client_type: str = request.query.get("client", "unknown")
-    CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote}
+    client_version: int = int(request.query.get("protocolVersion", 0))
+    CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote, "protocolVersion": client_version}
 
-    logger.info(f"New connection: {client_type} ({request.remote})")
+    logger.info(f"New connection: {client_type} (protocol v{client_version}, {request.remote})")
 
     client_config = _build_client_config(client_type)
     await ws.send_json(client_config)
@@ -141,7 +142,7 @@ async def handle_queue_add(request: web.Request) -> web.Response:
     if not allowed:
         return web.json_response({"error": msg}, status=429, headers=_cors_headers(request))
 
-    if len(pendingQueueMeta) >= MAX_QUEUE_SIZE:
+    if is_queue_full():
         return web.json_response({"error": "Queue is full"}, status=400, headers=_cors_headers(request))
 
     if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
@@ -194,14 +195,14 @@ async def handle_admin_config_get(request: web.Request) -> web.Response:
 _CONFIG_VALIDATORS: dict[str, tuple[type, str]] = {
     "port": (int, "must be an integer between 1 and 65535"),
     "host": (str, "must be a valid IP address or hostname"),
-    "defaultVolume": ((int, float), "must be a number between 0.0 and 1.0"),
-    "volumeStep": ((int, float), "must be a number between 0.001 and 1.0"),
+    "defaultVolume": (float, "must be a number between 0.0 and 1.0"),
+    "volumeStep": (float, "must be a number between 0.001 and 1.0"),
     "maxQueueSize": (int, "must be a positive integer"),
-    "queueRateLimitSeconds": ((int, float), "must be a non-negative number"),
+    "queueRateLimitSeconds": (float, "must be a non-negative number"),
     "backupCount": (int, "must be a non-negative integer"),
-    "progressBroadcastInterval": ((int, float), "must be a positive number"),
-    "stateSaveDebounceSeconds": ((int, float), "must be a positive number"),
-    "lyricsFetchTimeoutSeconds": ((int, float), "must be a positive number"),
+    "progressBroadcastInterval": (float, "must be a positive number"),
+    "stateSaveDebounceSeconds": (float, "must be a positive number"),
+    "lyricsFetchTimeoutSeconds": (float, "must be a positive number"),
     "spicetifyPollingIntervalMs": (int, "must be a positive integer"),
     "spicetifyQueuePollingIntervalMs": (int, "must be a positive integer"),
     "spicetifyReconnectBaseDelayMs": (int, "must be a positive integer"),
@@ -217,10 +218,6 @@ _CONFIG_VALIDATORS: dict[str, tuple[type, str]] = {
 
 
 def _coerce_type(value: Any, expected_type: type) -> Any:
-    if expected_type in ((int, float),):
-        return float(value)
-    if isinstance(expected_type, tuple):
-        return expected_type[0](value)
     if expected_type is list:
         if not isinstance(value, list):
             raise TypeError(f"expected list, got {type(value).__name__}")
@@ -245,11 +242,7 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
         except (ValueError, TypeError):
             errors.append(f"{key}: {error_msg}")
             continue
-        if isinstance(expected_type, tuple):
-            if not isinstance(coerced, expected_type):
-                errors.append(f"{key}: {error_msg}")
-                continue
-        elif not isinstance(coerced, expected_type):
+        if not isinstance(coerced, expected_type):
             errors.append(f"{key}: {error_msg}")
             continue
         if key == "port" and (coerced < 1 or coerced > 65535):

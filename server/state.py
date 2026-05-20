@@ -7,7 +7,7 @@ import re
 import time
 from typing import Any, Callable, Optional
 
-from config import QUEUE_RATE_LIMIT_SECONDS, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
+from config import STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
 from log import logger
 
 state: dict[str, Any] = {
@@ -125,8 +125,9 @@ def check_rate_limit(requester: str) -> tuple[bool, str]:
     now = time.time()
     last_request = _rate_limit_store.get(requester, 0)
     elapsed = now - last_request
-    if elapsed < QUEUE_RATE_LIMIT_SECONDS:
-        remaining = int(QUEUE_RATE_LIMIT_SECONDS - elapsed)
+    limit = float(config.get("queueRateLimitSeconds", 30))
+    if elapsed < limit:
+        remaining = int(limit - elapsed)
         return False, f"Rate limited. Try again in {remaining}s"
     _rate_limit_store[requester] = now
     return True, ""
@@ -134,5 +135,10 @@ def check_rate_limit(requester: str) -> tuple[bool, str]:
 
 def reset_rate_limit(requester: str) -> None:
     _rate_limit_store.pop(requester, None)
+
+
+def is_queue_full() -> bool:
+    from config import MAX_QUEUE_SIZE
+    return len(pendingQueueMeta) >= MAX_QUEUE_SIZE
 
 

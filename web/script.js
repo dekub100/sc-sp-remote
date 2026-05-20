@@ -56,10 +56,6 @@ const queueState = {
     isVisible: false
 };
 
-// Canvas for color extraction (hidden, kept for legacy reasons but now uses lib.js)
-const canvas = document.createElement('canvas');
-const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
 function send(data) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
 }
@@ -243,7 +239,7 @@ function animate() {
 }
 
 function connect() {
-    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website`);
+    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website&protocolVersion=1`);
     
     ws.onopen = () => {
         ui.container.classList.remove('hidden');

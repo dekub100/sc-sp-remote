@@ -18,8 +18,6 @@ if not os.path.exists(LOG_DIR):
 STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
-QUEUE_RATE_LIMIT_SECONDS: float = 30.0
-
 config: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",

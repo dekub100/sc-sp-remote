@@ -23,7 +23,6 @@ from config import (  # noqa: F401
     LYRICS_CACHE_DB,
     MAX_QUEUE_SIZE,
     PROJECT_ROOT,
-    QUEUE_RATE_LIMIT_SECONDS,
     STATE_FILE,
     config,
 )
@@ -153,6 +152,9 @@ async def main() -> None:
 
         save_state_to_file()
         logger.info("Server: State saved to disk.")
+
+        _close_connection()
+        logger.debug("Server: SQLite connection closed.")
 
         if CLIENTS:
             logger.debug(f"Server: Closing {len(CLIENTS)} active connections...")

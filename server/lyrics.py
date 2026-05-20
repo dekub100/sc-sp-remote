@@ -134,36 +134,36 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
             params=params,
             timeout=aiohttp.ClientTimeout(total=30)
         ) as resp:
-                if resp.status == 200:
-                    data: dict[str, Any] = await resp.json()
-                    if state["currentTrack"]["trackUri"] != track_uri:
-                        logger.info("Lyrics: Track changed during fetch, discarding.")
-                        return
-                    synced_raw = data.get("syncedLyrics") or ""
-                    plain = data.get("plainLyrics") or ""
-                    instrumental = data.get("instrumental", False)
-                    synced = parse_synced_lyrics(synced_raw) if synced_raw else []
-                    state["lyrics"] = {
-                        "trackUri": track_uri,
-                        "synced": synced,
-                        "plain": plain,
-                        "available": True,
-                        "instrumental": instrumental,
-                        "loading": False
-                    }
-                    logger.info(f"Lyrics: Found {len(synced)} synced lines for '{track_name}'")
-                    set_cached_lyrics(params, synced_raw, "" if synced_raw else plain, instrumental)
+            if resp.status == 200:
+                data: dict[str, Any] = await resp.json()
+                if state["currentTrack"]["trackUri"] != track_uri:
+                    logger.info("Lyrics: Track changed during fetch, discarding.")
+                    return
+                synced_raw = data.get("syncedLyrics") or ""
+                plain = data.get("plainLyrics") or ""
+                instrumental = data.get("instrumental", False)
+                synced = parse_synced_lyrics(synced_raw) if synced_raw else []
+                state["lyrics"] = {
+                    "trackUri": track_uri,
+                    "synced": synced,
+                    "plain": plain,
+                    "available": True,
+                    "instrumental": instrumental,
+                    "loading": False
+                }
+                logger.info(f"Lyrics: Found {len(synced)} synced lines for '{track_name}'")
+                set_cached_lyrics(params, synced_raw, "" if synced_raw else plain, instrumental)
+                await broadcast_lyrics_update()
+            elif resp.status == 404:
+                logger.info(f"Lyrics: Not found for '{track_name}'")
+                if state["currentTrack"]["trackUri"] == track_uri:
+                    state["lyrics"] = {"trackUri": track_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
                     await broadcast_lyrics_update()
-                elif resp.status == 404:
-                    logger.info(f"Lyrics: Not found for '{track_name}'")
-                    if state["currentTrack"]["trackUri"] == track_uri:
-                        state["lyrics"] = {"trackUri": track_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
-                        await broadcast_lyrics_update()
-                else:
-                    logger.warning(f"Lyrics: LRCLIB returned status {resp.status}")
-                    if state["currentTrack"]["trackUri"] == track_uri:
-                        state["lyrics"]["loading"] = False
-                        await broadcast_lyrics_update()
+            else:
+                logger.warning(f"Lyrics: LRCLIB returned status {resp.status}")
+                if state["currentTrack"]["trackUri"] == track_uri:
+                    state["lyrics"]["loading"] = False
+                    await broadcast_lyrics_update()
     except asyncio.TimeoutError:
         logger.error(f"Lyrics: Timed out after 30s for '{track_name}' by '{artist_name}'")
         if state["currentTrack"]["trackUri"] == track_uri:

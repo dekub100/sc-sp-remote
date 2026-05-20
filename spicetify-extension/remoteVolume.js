@@ -13,6 +13,7 @@
       MAX_RECONNECT_DELAY: 10000,
       PROGRESS_DELTA_THRESHOLD_MS: 2000,
       COMMAND_FEEDBACK_DELAY_MS: 150,
+      PROTOCOL_VERSION: 1,
       STALE_CONNECTION_WINDOW_MS: 2000,
       VOLUME_STEP: 0.05,
     },
@@ -42,7 +43,7 @@
         return;
       }
       console.log("[RemoteVolume] Spicetify ready. Initializing...");
-      this.config.SERVER_URL = `ws://localhost:${this.config.DEFAULT_PORT}/?client=spicetify`;
+      this.config.SERVER_URL = `ws://localhost:${this.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${this.config.PROTOCOL_VERSION}`;
       this.connect();
     },
 
@@ -69,7 +70,7 @@
     onOpen() {
       console.log("[RemoteVolume] Connected.");
       this.reconnectAttempts = 0;
-      this.syncFullState(true);
+      this.syncFullState();
       this.startServices();
     },
 
