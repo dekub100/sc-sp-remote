@@ -1,10 +1,12 @@
+import json
 import os
 import platform
-import shutil
+import re
 import subprocess
 import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.json")
 
 
 def run_command(command):
@@ -59,8 +61,27 @@ def setup_extension():
         print(f"Error: remoteVolume.js not found at {source_file}")
         return
 
-    print(f"Copying remoteVolume.js to {extensions_path}...")
-    shutil.copy(source_file, extensions_path)
+    port = 8888
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                cfg = json.load(f)
+            port = int(cfg.get("port", 8888))
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"Warning: Could not read config.json port, using default 8888: {e}")
+
+    with open(source_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    patched_content = re.sub(r'(DEFAULT_PORT:\s*)\d+', rf'\g<1>{port}', content)
+    if patched_content == content:
+        print(f"Warning: Could not patch DEFAULT_PORT in remoteVolume.js")
+
+    dest_path = os.path.join(extensions_path, "remoteVolume.js")
+    with open(dest_path, "w", encoding="utf-8") as f:
+        f.write(patched_content)
+
+    print(f"Extension patched to use port {port}")
 
     print("Registering extension with Spicetify...")
     if run_command(["spicetify", "config", "extensions", "remoteVolume.js"]):
