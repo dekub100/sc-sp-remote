@@ -4,7 +4,13 @@
 
 A Spicetify extension for remote control/viewing info using WebSockets, without the use of Spotify Premium.
 
-_Code was made with the help of AI, but its honestly so simple i think it just works._
+## 🤖 AI-Generated Project
+
+This entire project — every line of Python, JavaScript, HTML, CSS, config files, this README, the docs, the tests — was written by AI (Claude, ChatGPT, Copilot, Cursor, etc.). I did not write a single line of code myself.
+
+The commits in git history are mine, but the code is not. I've been the product manager and QA: describing what I wanted, reviewing outputs, copy-pasting, and running tests. The AI did the actual programming.
+
+I'm putting this front and center because I don't want to be disingenuous about it.
 
 ## Table of Contents
 
