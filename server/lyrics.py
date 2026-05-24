@@ -41,6 +41,12 @@ def _close_connection() -> None:
         _connection_path = None
 
 
+def _close_session() -> None:
+    global _session
+    if _session is not None:
+        _session = None
+
+
 def parse_synced_lyrics(lrc_text: str) -> list[dict[str, Any]]:
     lines: list[dict[str, Any]] = []
     pattern: re.Pattern[str] = re.compile(r'\[(\d+):(\d+)[.,](\d+)\](.*)')

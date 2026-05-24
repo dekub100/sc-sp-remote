@@ -43,12 +43,13 @@ from handlers import (  # noqa: F401
     handle_remove_from_queue,
     handle_repeat_update,
     handle_shuffle_update,
-    handle_track_update,
+    handle_state_update,
     handle_volume_update,
 )
 from log import logger
 from lyrics import (  # noqa: F401
     _close_connection,
+    _close_session,
     fetch_and_broadcast_lyrics,
     get_cached_lyrics,
     init_lyrics_cache,
@@ -152,6 +153,9 @@ async def main() -> None:
 
         save_state_to_file()
         logger.info("Server: State saved to disk.")
+
+        _close_session()
+        logger.debug("Server: HTTP session closed.")
 
         _close_connection()
         logger.debug("Server: SQLite connection closed.")

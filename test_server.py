@@ -264,11 +264,11 @@ class TestMessageHandlers:
                 await server.handle_like_update(mock_ws, {"type": "likeUpdate", "isLiked": True})
         assert server.state["isLiked"] is True
 
-    async def test_handle_track_update_new_track(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_state_update_new_track(self, mock_ws: AsyncMock) -> None:
         with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
             with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock):
                 with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_track_update(mock_ws, {
+                    await server.handle_state_update(mock_ws, {
                         "type": "trackUpdate",
                         "trackName": "New Song",
                         "artistName": "New Artist",
@@ -282,13 +282,13 @@ class TestMessageHandlers:
         assert server.state["trackDuration"] == 200000
         assert server.state["lyrics"]["loading"] is True
 
-    async def test_handle_track_update_same_track_no_lyrics_fetch(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_state_update_same_track_no_lyrics_fetch(self, mock_ws: AsyncMock) -> None:
         server.state["currentTrack"]["trackUri"] = "spotify:track:existing"
         server.state["lyrics"]["loading"] = False
         with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
             with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_lyrics:
                 with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_track_update(mock_ws, {
+                    await server.handle_state_update(mock_ws, {
                         "type": "trackUpdate",
                         "trackName": "Updated",
                         "artistName": "Artist",
@@ -299,11 +299,11 @@ class TestMessageHandlers:
         mock_lyrics.assert_not_called()
         assert server.state["lyrics"]["loading"] is False
 
-    async def test_handle_track_update_batched_fields(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_state_update_batched_fields(self, mock_ws: AsyncMock) -> None:
         with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
             with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock):
                 with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_track_update(mock_ws, {
+                    await server.handle_state_update(mock_ws, {
                         "type": "stateUpdate",
                         "trackUri": "spotify:track:batch",
                         "trackName": "Batch",

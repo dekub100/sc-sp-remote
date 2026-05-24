@@ -7,7 +7,7 @@ from typing import Any
 PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR: str = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
-CONFIG_PATH: str = os.path.join(DATA_DIR, "config.json")
+CONFIG_PATH: str = os.environ.get("SPICETIFY_CONFIG", os.path.join(DATA_DIR, "config.json"))
 STATE_FILE: str = os.path.join(DATA_DIR, "state.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")

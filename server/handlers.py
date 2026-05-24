@@ -122,7 +122,7 @@ async def handle_like_update(ws: web.WebSocketResponse, data: dict[str, Any]) ->
     await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=ws)
 
 
-async def handle_track_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+async def handle_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     if "volume" in data:
         state["volume"] = data["volume"]
     if "isPlaying" in data:
@@ -273,13 +273,13 @@ async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
 MESSAGE_HANDLERS: dict[str, Any] = {
     "register": handle_register,
     "getInitialState": handle_get_initial_state,
-    "stateUpdate": handle_track_update,
+    "stateUpdate": handle_state_update,
     "volumeUpdate": handle_volume_update,
     "playbackUpdate": handle_playback_update,
     "shuffleUpdate": handle_shuffle_update,
     "repeatUpdate": handle_repeat_update,
     "likeUpdate": handle_like_update,
-    "trackUpdate": handle_track_update,
+    "trackUpdate": handle_state_update,
     "progressUpdate": handle_progress_update,
     "playbackControl": handle_playback_control,
     "like": handle_like_command,

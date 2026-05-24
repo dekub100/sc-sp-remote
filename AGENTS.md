@@ -34,13 +34,14 @@ A Spicetify extension for remote control/viewing of Spotify using WebSockets, wi
 │   ├── handlers.py           # Message handlers + dispatch table
 │   └── routes.py             # WS handler, HTTP endpoints, static files
 ├── tools/
+│   ├── dev.py                # Dev server launcher (auto-reload, port isolation, ext management)
 │   ├── service.py            # Windows service wrapper (pywin32)
 │   └── install.py            # Spicetify extension installer
 ├── web/
 │   ├── index.html            # Main web UI
 │   ├── style.css
 │   ├── script.js             # Web UI logic + WebSocket client
-│   ├── filter.js             # Shared profanity filter (base64-encoded slur list)
+│   ├── filter.js             # Profanity filter for streamer OBS safety (base64-encoded slur list)
 │   └── obs-widget/
 │       ├── obs-widget.html   # OBS browser source widget
 │       ├── obs-style.css
@@ -195,7 +196,7 @@ state = {
 6. **`input()` hang** in elevated service.py — replaced with 10s auto-close timeout.
 7. **`albumArt.onload` race** — handler was set AFTER `src`, so cached images would miss the event. Fixed by setting handler first.
 8. **Volume validation** — absolute volume values were not clamped. Fixed to `max(0.0, min(1.0, value))`.
-9. **Profanity filter base64** — NOT security through obscurity. It's to avoid GitHub's automated content moderation flagging repos with slur lists in plaintext.
+9. **Profanity filter base64** — two reasons: (a) protects streamers from accidentally displaying slurs in lyrics on stream/OBS, (b) avoids GitHub's automated content moderation flagging the repo for having a slur list in plaintext. NOT security through obscurity — it's trivially decoded in the browser.
 10. **`conftest.py`** adds `server/` to `sys.path` so `import server` works in tests.
 11. **`pyproject.toml`** has `asyncio_mode = "auto"` so async tests don't need `@pytest.mark.asyncio`.
 12. **Stream Deck plugin source** is in `streamdeck-plugin/` — the `.streamDeckPlugin` file in root is the pre-built package.
@@ -244,6 +245,8 @@ state = {
 
 34. **Stream Deck global port via `setGlobalSettings`**: port is configured once via Property Inspector, stored as global settings, and shared across all action instances. `plugin.ts` listens for `didReceiveGlobalSettings` and calls `wsManager.setPort()`.
 
+35. **`SPICETIFY_CONFIG` env var**: `config.py` checks the `SPICETIFY_CONFIG` env var to override `CONFIG_PATH`. Used by `tools/dev.py` to point the server at `data/config.dev.json` without touching the production config. Set it yourself to use a different config file without modifying `config.json`.
+
 ---
 
 
@@ -268,10 +271,32 @@ state = {
 
 ---
 
+## Development Workflow
+
+Use `tools/dev.py` to avoid conflicts with a production server running as a service:
+
+```
+python tools/dev.py                        # Start on port 8889 with auto-reload
+python tools/dev.py --port 7777            # Custom port
+python tools/dev.py --no-reload            # No file watcher
+```
+
+**Typical loop:**
+```
+# Start dev server (auto-patches extension, no manual steps)
+python tools/dev.py
+# ... make changes, server restarts automatically ...
+# Ctrl+C stops server, auto-restores extension to production port
+```
+
+The dev tool automatically checks if the Spicetify extension is pointing at the dev port before starting — if not, it backs up the production extension and patches it. On exit (Ctrl+C), it restores the backup. No manual `--install-ext` / `--restore-ext` needed.
+
+The dev tool writes `data/config.dev.json` (seeded from `config.json` with port/logLevel overrides) and tells the server to use it via `SPICETIFY_CONFIG` env var. The file is cleaned up on exit. No production files are touched.
+
 ## What to Do When Adding Features
 
 1. **New message type** → add to `MESSAGE_HANDLERS` dict in `handlers.py`, add handler function, update client(s)
-2. **New state field** → add to `state` dict in `state.py`, update `broadcast_current_state` in `broadcast.py`, update `get_current_save_data` in `state.py`, update `handle_track_update` in `handlers.py` if it should persist
+2. **New state field** → add to `state` dict in `state.py`, update `broadcast_current_state` in `broadcast.py`, update `get_current_save_data` in `state.py`, update `handle_state_update` in `handlers.py` if it should persist
 3. **New web UI element** → add to HTML, add to `ui` object in script.js, wire up event listener
 4. **New OBS widget feature** → same pattern but in obs-widget/ files
 5. **Always** → add tests for new handlers in `test_server.py`, run `ruff check`, run `pytest`

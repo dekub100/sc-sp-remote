@@ -13,6 +13,15 @@ ignore = [
     "E501",  # line length (handled by formatter)
 ]
 
+[tool.mypy]
+python_version = "3.9"
+strict = false
+ignore_missing_imports = true
+warn_unreachable = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+warn_unused_ignores = true
+
 [tool.pytest.ini_options]
 testpaths = ["."]
 asyncio_mode = "auto"

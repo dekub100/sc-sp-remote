@@ -7,7 +7,7 @@ import re
 import time
 from typing import Any, Callable, Optional
 
-from config import STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
+from config import MAX_QUEUE_SIZE, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
 from log import logger
 
 state: dict[str, Any] = {
@@ -138,7 +138,6 @@ def reset_rate_limit(requester: str) -> None:
 
 
 def is_queue_full() -> bool:
-    from config import MAX_QUEUE_SIZE
     return len(pendingQueueMeta) >= MAX_QUEUE_SIZE
 
 

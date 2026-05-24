@@ -37,6 +37,7 @@ I'm putting this front and center because I don't want to be disingenuous about 
 - Dynamic configuration for host, ports, CORS, and more
 - Unified server (HTTP + WebSockets) on a single port
 - **Synced & plain lyrics** from LRCLIB with download progress indicator
+- **Profanity filter** on lyrics display — prevents slurs from appearing on stream for OBS safety
 - **Local SQLite cache** — instant repeat plays, no re-fetching from the network
 - **Session-based Logging**: Individual log files for each session with configurable levels (DEBUG, INFO, etc.)
 - **Robust Sync**: Specialized protection against state-toggling loops
@@ -186,6 +187,22 @@ python server/server.py
 
 Opens on `http://localhost:8888`.
 
+### Dev Server (Recommended for Development)
+
+Use the dev tool to avoid conflicts with a production server running as a service:
+
+```bash
+pip install -r requirements-dev.txt       # Install watchfiles for auto-reload
+
+# Start dev server (auto-patches extension, restores on exit)
+python tools/dev.py
+
+# Custom port, no auto-reload
+python tools/dev.py --port 7777 --no-reload
+```
+
+The dev tool auto-detects the extension port, backs up and patches it if needed, and restores it on exit. See `python tools/dev.py --help` for full options.
+
 ### Project Structure
 
 ```
@@ -201,6 +218,7 @@ server/                # Python backend (split into modules)
   handlers.py          #   Message handlers + dispatch table
   routes.py            #   WS handler, HTTP endpoints
 tools/                 # Deployment utilities
+  dev.py               #   Dev server launcher (auto-reload, port isolation)
   install.py           #   Spicetify extension installer
   service.py           #   Windows service wrapper
 web/                   # Frontend (no build step)
@@ -214,7 +232,7 @@ streamdeck-plugin/     # Elgato Stream Deck plugin source
 python -m pytest test_server.py -v
 ```
 
-76 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, client registration, queue handlers, rate limiting, URI normalization, and HTTP queue endpoints.
+94 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, client registration, queue handlers, rate limiting, URI normalization, HTTP queue endpoints, and admin config validation.
 
 ### Linting
 
