@@ -89,7 +89,7 @@ async def handle_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) 
         state["volume"] = min(1.0, state["volume"] + volume_step)
     elif data.get("command") == "volumeDown":
         state["volume"] = max(0.0, state["volume"] - volume_step)
-    elif "volume" in data:
+    elif isinstance(data.get("volume"), (int, float)):
         state["volume"] = max(0.0, min(1.0, data["volume"]))
     await save_state_to_file_debounced()
     await broadcast_volume_update()

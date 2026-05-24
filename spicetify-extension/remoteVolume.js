@@ -60,7 +60,6 @@
         this.ws.onmessage = this.onMessage.bind(this);
         this.ws.onclose = this.onClose.bind(this);
         this.ws.onerror = this.onError.bind(this);
-        this.connectionTimestamp = Date.now();
       } catch (error) {
         console.error("[RemoteVolume] Connection error:", error);
         this.scheduleReconnect(this.connect.bind(this));
@@ -70,6 +69,7 @@
     onOpen() {
       console.log("[RemoteVolume] Connected.");
       this.reconnectAttempts = 0;
+      this.connectionTimestamp = Date.now();
       this.syncFullState();
       this.startServices();
     },

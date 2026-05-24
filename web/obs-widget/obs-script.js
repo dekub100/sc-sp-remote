@@ -192,7 +192,8 @@ function connect() {
   };
 
   ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
+    let data;
+    try { data = JSON.parse(event.data); } catch (e) { return; }
 
     if (data.type === "config") {
       if (data.upNextThresholdMs !== undefined) {

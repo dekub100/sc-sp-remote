@@ -8,6 +8,7 @@ from typing import Any
 from aiohttp import web
 from broadcast import (  # noqa: F401
     CLIENTS,
+    _compute_and_broadcast_progress,
     broadcast,
     broadcast_current_state,
     broadcast_lyrics_update,
@@ -154,7 +155,7 @@ async def main() -> None:
         save_state_to_file()
         logger.info("Server: State saved to disk.")
 
-        _close_session()
+        await _close_session()
         logger.debug("Server: HTTP session closed.")
 
         _close_connection()

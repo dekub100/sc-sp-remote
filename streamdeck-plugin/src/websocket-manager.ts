@@ -71,7 +71,7 @@ export class WebSocketManager extends EventEmitter {
                 const data = JSON.parse(event.data.toString());
                 this.emit("message", data);
             } catch (e) {
-                // Silently fail on parse error
+                console.warn("[SpicetifyRemote] Failed to parse WebSocket message:", e);
             }
         };
 

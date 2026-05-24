@@ -191,6 +191,18 @@ class TestLyricsCache:
         assert result[2] == 1
 
 
+class TestLyricsSession:
+    async def test_close_session_closes_and_clears(self) -> None:
+        mock_session = AsyncMock()
+        with patch("lyrics._session", mock_session):
+            await server._close_session()
+        mock_session.close.assert_awaited_once()
+
+    async def test_close_session_noop_when_none(self) -> None:
+        with patch("lyrics._session", None):
+            await server._close_session()
+
+
 class TestMessageHandlers:
     async def test_handle_volume_update_absolute(self, mock_ws: AsyncMock) -> None:
         server.state["volume"] = 0.3
@@ -361,6 +373,24 @@ class TestMessageHandlers:
         sent = json.loads(spicetify_ws.send_str.call_args[0][0])
         assert sent["command"] == "like"
 
+    async def test_handle_error_broadcasts_message(self, mock_ws: AsyncMock) -> None:
+        with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            with patch.object(server.logger, "warning"):
+                await server.handle_error(mock_ws, {"type": "error", "message": "Something broke"})
+        mock_broadcast.assert_called_once_with({"type": "error", "message": "Something broke"})
+
+    async def test_handle_error_defaults_message(self, mock_ws: AsyncMock) -> None:
+        with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            with patch.object(server.logger, "warning"):
+                await server.handle_error(mock_ws, {"type": "error"})
+        mock_broadcast.assert_called_once_with({"type": "error", "message": "Unknown error"})
+
+    async def test_handle_error_logs_warning(self, mock_ws: AsyncMock) -> None:
+        with patch("handlers.broadcast", new_callable=AsyncMock):
+            with patch.object(server.logger, "warning") as mock_warn:
+                await server.handle_error(mock_ws, {"type": "error", "message": "fail"})
+        mock_warn.assert_called_once_with("Extension error: fail")
+
 
 class TestHandleMessage:
     async def test_invalid_json(self, mock_ws: AsyncMock) -> None:
@@ -449,6 +479,134 @@ class TestBroadcast:
         assert ws1 not in server.CLIENTS
         assert ws2 in server.CLIENTS
 
+    async def test_broadcast_volume_update_shape(self) -> None:
+        server.state["volume"] = 0.42
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_volume_update()
+        mock_broadcast.assert_called_once_with(
+            {"type": "volumeUpdate", "volume": 0.42}, None
+        )
+
+    async def test_broadcast_playback_update_shape(self) -> None:
+        server.state["isPlaying"] = True
+        server.state["trackProgress"] = 30000
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_playback_update()
+        mock_broadcast.assert_called_once()
+        msg = mock_broadcast.call_args[0][0]
+        assert msg["type"] == "playbackUpdate"
+        assert msg["isPlaying"] is True
+        assert msg["progress"] == 30000
+        assert "timestamp" in msg
+
+    async def test_broadcast_progress_update_shape(self) -> None:
+        server.state["trackProgress"] = 45000
+        server.state["trackDuration"] = 200000
+        server.state["isPlaying"] = True
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_progress_update()
+        mock_broadcast.assert_called_once()
+        msg = mock_broadcast.call_args[0][0]
+        assert msg["type"] == "progressUpdate"
+        assert msg["progress"] == 45000
+        assert msg["duration"] == 200000
+        assert msg["isPlaying"] is True
+        assert "timestamp" in msg
+
+    async def test_broadcast_lyrics_update_shape(self) -> None:
+        server.state["lyrics"] = {
+            "available": True,
+            "instrumental": False,
+            "synced": [{"time": 1000, "text": "hello"}],
+            "plain": "hello",
+            "loading": False,
+            "trackUri": "spotify:track:test"
+        }
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_lyrics_update()
+        mock_broadcast.assert_called_once_with({
+            "type": "lyricsUpdate",
+            "available": True,
+            "instrumental": False,
+            "synced": [{"time": 1000, "text": "hello"}],
+            "plain": "hello",
+            "loading": False
+        })
+
+    async def test_broadcast_queue_update_shape(self) -> None:
+        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc", "uid": "1"}]
+        server.state["queue"]["queueRevision"] = "rev42"
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_queue_update()
+        mock_broadcast.assert_called_once_with({
+            "type": "queueUpdate",
+            "queue": [{"uri": "spotify:track:abc", "uid": "1"}],
+            "queueRevision": "rev42"
+        })
+
+    async def test_broadcast_current_state_shape(self) -> None:
+        server.state.update({
+            "volume": 0.5,
+            "isPlaying": True,
+            "currentTrack": {
+                "trackName": "Test Song",
+                "artistName": "Test Artist",
+                "albumName": "Test Album",
+                "trackUri": "spotify:track:test",
+                "albumUri": "spotify:album:test",
+                "albumArtUrl": "https://example.com/art.jpg"
+            },
+            "trackProgress": 10000,
+            "trackDuration": 200000,
+            "isShuffling": False,
+            "repeatStatus": 1,
+            "isLiked": True
+        })
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await server.broadcast_current_state()
+        mock_broadcast.assert_called_once()
+        msg = mock_broadcast.call_args[0][0]
+        assert msg["type"] == "stateUpdate"
+        assert msg["volume"] == 0.5
+        assert msg["isPlaying"] is True
+        assert msg["trackName"] == "Test Song"
+        assert msg["artistName"] == "Test Artist"
+        assert msg["albumName"] == "Test Album"
+        assert msg["trackUri"] == "spotify:track:test"
+        assert msg["albumUri"] == "spotify:album:test"
+        assert msg["albumArtUrl"] == "https://example.com/art.jpg"
+        assert msg["progress"] == 10000
+        assert msg["duration"] == 200000
+        assert msg["isShuffling"] is False
+        assert msg["repeatStatus"] == 1
+        assert msg["isLiked"] is True
+        assert "timestamp" in msg
+
+    async def test_compute_and_broadcast_progress_shape(self) -> None:
+        server.state["trackProgress"] = 5000
+        server.state["trackDuration"] = 200000
+        server.state["trackProgressStartTimestamp"] = 1000
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            with patch("broadcast.time.time", return_value=2.0):
+                await server._compute_and_broadcast_progress()
+        mock_broadcast.assert_called_once()
+        msg = mock_broadcast.call_args[0][0]
+        assert msg["type"] == "progressUpdate"
+        assert msg["progress"] == 6000
+        assert msg["duration"] == 200000
+        assert msg["isPlaying"] is True
+        assert msg["timestamp"] == 2000
+
+    async def test_compute_and_broadcast_progress_clamps(self) -> None:
+        server.state["trackProgress"] = 199000
+        server.state["trackDuration"] = 200000
+        server.state["trackProgressStartTimestamp"] = 1000
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            with patch("broadcast.time.time", return_value=5.0):
+                await server._compute_and_broadcast_progress()
+        msg = mock_broadcast.call_args[0][0]
+        assert msg["progress"] == 200000
+
 
 class TestConfigEndpoint:
     async def test_cors_with_wildcard_origin(self) -> None:
@@ -531,6 +689,26 @@ class TestParseTrackInput:
     def test_strips_whitespace(self) -> None:
         result = server.parse_track_input("  spotify:track:abc123  ")
         assert result == "spotify:track:abc123"
+
+    def test_empty_string(self) -> None:
+        result = server.parse_track_input("")
+        assert result == ""
+
+    def test_whitespace_only(self) -> None:
+        result = server.parse_track_input("   ")
+        assert result == ""
+
+    def test_playlist_url_returns_unchanged(self) -> None:
+        result = server.parse_track_input("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+        assert result == "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+
+    def test_album_url_returns_unchanged(self) -> None:
+        result = server.parse_track_input("https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh")
+        assert result == "https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh"
+
+    def test_track_id_case_insensitive(self) -> None:
+        result = server.parse_track_input("https://open.spotify.com/track/ABCDEF123456")
+        assert result == "spotify:track:ABCDEF123456"
 
 
 class TestRateLimit:
@@ -910,3 +1088,80 @@ class TestAdminConfigPut:
         resp = await client.put('/api/admin/config', json={"defaultVolume": "0.8"})
         assert resp.status == 200
         assert server.config["defaultVolume"] == 0.8
+
+
+class TestAdminLogEndpoints:
+    @pytest.fixture
+    async def client(self, tmp_path):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        app.router.add_get('/api/admin/logs', server.handle_admin_logs_list)
+        app.router.add_get('/api/admin/logs/{filename}', server.handle_admin_log_file)
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        async with TestClient(TestServer(app)) as tc:
+            with patch("routes.LOG_DIR", str(log_dir)):
+                yield tc, log_dir
+
+    async def test_logs_list_empty(self, client) -> None:
+        tc, _ = client
+        resp = await tc.get('/api/admin/logs')
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["logs"] == []
+
+    async def test_logs_list_returns_entries(self, client) -> None:
+        tc, log_dir = client
+        (log_dir / "server.log").write_text("hello")
+        (log_dir / "error.log").write_text("oops")
+        resp = await tc.get('/api/admin/logs')
+        assert resp.status == 200
+        data = await resp.json()
+        names = [f["name"] for f in data["logs"]]
+        assert "server.log" in names
+        assert "error.log" in names
+        assert all(f["size"] >= 0 for f in data["logs"])
+
+    async def test_logs_list_ignores_non_log_files(self, client) -> None:
+        tc, log_dir = client
+        (log_dir / "secret.txt").write_text("hidden")
+        (log_dir / "server.log").write_text("real")
+        resp = await tc.get('/api/admin/logs')
+        data = await resp.json()
+        assert all(f["name"].endswith(".log") for f in data["logs"])
+
+    async def test_log_file_success(self, client) -> None:
+        tc, log_dir = client
+        (log_dir / "server.log").write_text("line1\nline2")
+        resp = await tc.get('/api/admin/logs/server.log')
+        assert resp.status == 200
+        text = await resp.text()
+        assert text == "line1\nline2"
+
+    async def test_log_file_not_found(self, client) -> None:
+        tc, _ = client
+        resp = await tc.get('/api/admin/logs/nonexistent.log')
+        assert resp.status == 404
+        data = await resp.json()
+        assert "not found" in data["error"].lower()
+
+    async def test_log_file_non_log_extension(self, client) -> None:
+        tc, log_dir = client
+        (log_dir / "evil.txt").write_text("hack")
+        resp = await tc.get('/api/admin/logs/evil.txt')
+        assert resp.status == 404
+
+    async def test_log_file_path_traversal_dotdot(self, client) -> None:
+        tc, _ = client
+        resp = await tc.get('/api/admin/logs/..%2F..%2Fetc%2Fpasswd')
+        assert resp.status == 400
+        data = await resp.json()
+        assert "invalid" in data["error"].lower()
+
+    async def test_log_file_path_traversal_forward_slash_urlencoded(self, client) -> None:
+        tc, _ = client
+        resp = await tc.get('/api/admin/logs/..%2Fetc%2Fpasswd')
+        assert resp.status == 400
+        data = await resp.json()
+        assert "invalid" in data["error"].lower()

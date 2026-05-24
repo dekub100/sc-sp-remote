@@ -110,14 +110,23 @@ async def broadcast_lyrics_update() -> None:
     })
 
 
+async def _compute_and_broadcast_progress() -> None:
+    now: float = time.time() * 1000
+    elapsed: float = now - state["trackProgressStartTimestamp"]
+    interpolated: float = min(state["trackProgress"] + elapsed, state["trackDuration"])
+    await broadcast({
+        "type": "progressUpdate",
+        "progress": int(interpolated),
+        "duration": state["trackDuration"],
+        "isPlaying": True,
+        "timestamp": now
+    })
+
+
 async def start_progress_broadcasting() -> None:
     while True:
         if state["isPlaying"]:
-            now: float = time.time() * 1000
-            elapsed_time: float = now - state["trackProgressStartTimestamp"]
-            state["trackProgress"] = min(state["trackProgress"] + elapsed_time, state["trackDuration"])
-            state["trackProgressStartTimestamp"] = now
-            await broadcast_progress_update()
+            await _compute_and_broadcast_progress()
         await asyncio.sleep(PROGRESS_BROADCAST_INTERVAL)
 
 
