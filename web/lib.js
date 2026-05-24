@@ -59,10 +59,35 @@ function updateMarquee(element, text) {
 
     // Delay allows DOM to calculate widths after text update
     setTimeout(() => {
-        if (wrapper.scrollWidth > element.clientWidth) {
+        const clipEl = element.querySelector('.marquee-clip') || element;
+        if (wrapper.scrollWidth > clipEl.clientWidth) {
             const duration = Math.max(10, text.length / 2);
             element.style.setProperty('--duration', `${duration}s`);
             element.classList.add('marquee-active');
         }
     }, 100);
+}
+
+/**
+ * Interpolates the current progress from stored state.
+ * Returns { currentProgress, now } so callers can update their timestamp.
+ */
+function interpolateProgress(lastState) {
+    if (!lastState.isPlaying) return { currentProgress: lastState.progress, now: lastState.timestamp };
+    const now = Date.now();
+    const elapsed = now - lastState.timestamp;
+    const currentProgress = Math.min(lastState.progress + elapsed, lastState.duration);
+    return { currentProgress, now };
+}
+
+/**
+ * Finds the index of the active synced lyric line at a given time.
+ * Returns -1 if no synced lyrics or no line matches.
+ */
+function findLyricIndex(synced, progressMs) {
+    if (!synced || !synced.length) return -1;
+    for (let i = synced.length - 1; i >= 0; i--) {
+        if (progressMs >= synced[i].time) return i;
+    }
+    return -1;
 }

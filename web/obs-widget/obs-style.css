@@ -61,17 +61,28 @@ body {
 .song-title,
 .artist-name,
 .album-name {
+  display: flex;
+  align-items: center;
   margin: 0;
   white-space: nowrap;
   width: 100%;
 }
 
 .song-title {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
   font-size: 3.5rem;
   font-weight: 800;
-  margin: 0 0 2px 0;
-  white-space: nowrap;
   line-height: 1.25;
+  white-space: nowrap;
+}
+
+.marquee-clip {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 
 .artist-name {
@@ -94,6 +105,12 @@ body {
 .marquee-wrapper {
   display: inline-block;
   padding-right: 120px; /* Space before loop */
+}
+
+.up-next-prefix {
+  flex-shrink: 0;
+  font-weight: 600;
+  margin-right: 0.1em;
 }
 
 .marquee-active .marquee-wrapper {

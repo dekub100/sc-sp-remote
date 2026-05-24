@@ -119,14 +119,7 @@ function renderLyrics() {
 function updateLyricsHighlight(progressMs) {
     if (!lyricsState.available || !lyricsState.synced.length) return;
 
-    let newIndex = -1;
-    for (let i = lyricsState.synced.length - 1; i >= 0; i--) {
-        if (progressMs >= lyricsState.synced[i].time) {
-            newIndex = i;
-            break;
-        }
-    }
-
+    const newIndex = findLyricIndex(lyricsState.synced, progressMs);
     if (newIndex === lyricsState.currentIndex) return;
     lyricsState.currentIndex = newIndex;
 
@@ -227,10 +220,7 @@ function debounce(fn, delay) {
 // Smooth interpolation loop
 function animate() {
     if (lastState.isPlaying && !isSeeking) {
-        const now = Date.now();
-        const elapsed = now - lastState.timestamp;
-        const currentProgress = Math.min(lastState.progress + elapsed, lastState.duration);
-        
+        const { currentProgress } = interpolateProgress(lastState);
         ui.progressBar.value = currentProgress;
         ui.currentTime.textContent = formatTime(currentProgress);
         updateLyricsHighlight(currentProgress);

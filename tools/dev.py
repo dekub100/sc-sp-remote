@@ -200,18 +200,31 @@ def _start_server(port, host, dev_config_path):
 
 
 def _run_server_process(port, host, dev_config_path):
-    """Top-level target for watchfiles.run_process (must be picklable on Windows)."""
-    env = os.environ.copy()
-    env["SPICETIFY_CONFIG"] = dev_config_path
-    proc = subprocess.Popen(
-        [sys.executable, os.path.join(PROJECT_ROOT, "server", "server.py")],
-        env=env, cwd=PROJECT_ROOT,
-    )
-    try:
-        proc.wait()
-    except KeyboardInterrupt:
-        proc.terminate()
-        proc.wait()
+    """Top-level target for watchfiles.run_process.
+    Runs server directly (no subprocess) so TerminateProcess kills everything.
+    Retries on bind failure (port-release race)."""
+    import asyncio
+    import sys
+    import time
+
+    os.environ["SPICETIFY_CONFIG"] = dev_config_path
+    server_dir = os.path.join(PROJECT_ROOT, "server")
+    sys.path.insert(0, server_dir)
+    import server
+
+    for attempt in range(5):
+        try:
+            asyncio.run(server.main())
+            return
+        except KeyboardInterrupt:
+            return
+        except OSError:
+            if attempt < 4:
+                delay = 0.5 * (attempt + 1)
+                print(f"  Server: bind failed, retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                raise
 
 
 def cmd_install_ext(args):

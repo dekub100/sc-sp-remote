@@ -100,14 +100,7 @@ function handleLyricsUpdate(data) {
 function updateCurrentLyricLine(progressMs) {
   if (!lyricsState.available || !lyricsState.synced.length) return;
 
-  let newIndex = -1;
-  for (let i = lyricsState.synced.length - 1; i >= 0; i--) {
-    if (progressMs >= lyricsState.synced[i].time) {
-      newIndex = i;
-      break;
-    }
-  }
-
+  const newIndex = findLyricIndex(lyricsState.synced, progressMs);
   if (newIndex === lyricsState.currentIndex) return;
   lyricsState.currentIndex = newIndex;
   const text = newIndex >= 0 ? (lyricsState.synced[newIndex].text || "♪") : "";
@@ -134,8 +127,14 @@ function showUpNext() {
   elements.textInfo.classList.add("fade-out");
 
   setTimeout(() => {
-    elements.songTitle.querySelector(".marquee-wrapper").textContent = `Up Next: ${title}`;
-    elements.songTitle.classList.remove("marquee-active");
+    let prefix = elements.songTitle.querySelector(".up-next-prefix");
+    if (!prefix) {
+      prefix = document.createElement("span");
+      prefix.className = "up-next-prefix";
+      prefix.textContent = "Up Next: ";
+      elements.songTitle.insertBefore(prefix, elements.songTitle.querySelector(".marquee-clip"));
+    }
+    updateMarquee(elements.songTitle, title);
     updateMarquee(elements.artistName, artist);
     updateMarquee(elements.albumName, album);
 
@@ -154,18 +153,16 @@ function resetUpNext() {
   if (!upNextState.isActive) return;
   upNextState.isActive = false;
 
+  const prefix = elements.songTitle.querySelector(".up-next-prefix");
+  if (prefix) prefix.remove();
+
   elements.textInfo.classList.remove("fade-out", "fade-in");
 }
 
 // Smooth interpolation loop
 function animate() {
   if (lastState.isPlaying) {
-    const now = Date.now();
-    const elapsed = now - lastState.timestamp;
-    const currentProgress = Math.min(
-      lastState.progress + elapsed,
-      lastState.duration
-    );
+    const { currentProgress } = interpolateProgress(lastState);
 
     if (lastState.duration > 0) {
       const pct = (currentProgress / lastState.duration) * 100;
