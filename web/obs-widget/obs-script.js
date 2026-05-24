@@ -46,6 +46,30 @@ const upNextState = {
 
 let UP_NEXT_THRESHOLD_MS = 15000;
 
+// Visibility auto-hide state
+let isVisible = true;
+let hideTimeout = null;
+
+function setWidgetVisibility(visible) {
+  if (hideTimeout) {
+    clearTimeout(hideTimeout);
+    hideTimeout = null;
+  }
+  if (visible) {
+    if (!isVisible) {
+      isVisible = true;
+      elements.container.classList.remove("idle");
+    }
+  } else {
+    hideTimeout = setTimeout(() => {
+      hideTimeout = null;
+      if (!isVisible) return;
+      isVisible = false;
+      elements.container.classList.add("idle");
+    }, 1000);
+  }
+}
+
 /**
  * Applies extracted dominant color to the OBS widget background and progress bar.
  */
@@ -217,6 +241,7 @@ function connect() {
     // Handle Playback State
     if (data.isPlaying !== undefined) {
       lastState.isPlaying = data.isPlaying;
+      setWidgetVisibility(data.isPlaying);
     }
 
     // Handle Progress
