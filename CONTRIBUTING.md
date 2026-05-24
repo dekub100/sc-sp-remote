@@ -72,7 +72,8 @@ requirements.txt
 setup.bat
 server/              # everything except __pycache__/
 data/config.json     # default config only (no state.json, logs/, etc.)
-tools/               # install.py, service.py
+tools/install.py     # extension installer
+tools/service.py     # Windows service wrapper
 spicetify-extension/
 web/                 # everything
 ```
@@ -100,7 +101,7 @@ streamerbot-commands/ # setup guide only, link in release notes
 Remove-Item spicetify-remote-core-vX.X.X.zip -Force -ErrorAction SilentlyContinue
 
 # Create with proper folder structure
-7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt setup.bat server\ data\config.json tools\ spicetify-extension\ web\
+7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt setup.bat server\ data\config.json tools\install.py tools\service.py spicetify-extension\ web\
 ```
 
 Pitfalls to avoid:
