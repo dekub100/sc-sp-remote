@@ -972,6 +972,16 @@ class TestQueueHttpEndpoints:
 class TestAdminConfigPut:
     @pytest.fixture
     async def client(self):
+        from copy import deepcopy
+        import json
+        from config import CONFIG_PATH
+        saved_config = deepcopy(server.config)
+        saved_file = None
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                saved_file = f.read()
+        except FileNotFoundError:
+            pass
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
         app = web.Application()
@@ -979,6 +989,11 @@ class TestAdminConfigPut:
         app.router.add_get('/api/admin/config', server.handle_admin_config_get)
         async with TestClient(TestServer(app)) as tc:
             yield tc
+        server.config.clear()
+        server.config.update(saved_config)
+        if saved_file is not None:
+            with open(CONFIG_PATH, "w") as f:
+                f.write(saved_file)
 
     async def test_valid_port_update(self, client) -> None:
         resp = await client.put('/api/admin/config', json={"port": 9090})
