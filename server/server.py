@@ -6,58 +6,11 @@ import os
 from typing import Any
 
 from aiohttp import web
-from broadcast import (  # noqa: F401
-    CLIENTS,
-    _compute_and_broadcast_progress,
-    broadcast,
-    broadcast_current_state,
-    broadcast_lyrics_update,
-    broadcast_playback_update,
-    broadcast_progress_update,
-    broadcast_queue_update,
-    broadcast_volume_update,
-    get_spicetify_client,
-    set_spicetify_client,
-    start_progress_broadcasting,
-)
-from config import (  # noqa: F401
-    LYRICS_CACHE_DB,
-    MAX_QUEUE_SIZE,
-    PROJECT_ROOT,
-    STATE_FILE,
-    config,
-)
-from handlers import (  # noqa: F401
-    MESSAGE_HANDLERS,
-    handle_add_to_queue,
-    handle_clear_queue,
-    handle_error,
-    handle_get_initial_state,
-    handle_like_command,
-    handle_like_update,
-    handle_message,
-    handle_playback_control,
-    handle_playback_update,
-    handle_progress_update,
-    handle_queue_snapshot,
-    handle_register,
-    handle_remove_from_queue,
-    handle_repeat_update,
-    handle_shuffle_update,
-    handle_state_update,
-    handle_volume_update,
-)
+from broadcast import CLIENTS, start_progress_broadcasting
+from config import PROJECT_ROOT, STATE_FILE, config
 from log import logger
-from lyrics import (  # noqa: F401
-    _close_connection,
-    _close_session,
-    fetch_and_broadcast_lyrics,
-    get_cached_lyrics,
-    init_lyrics_cache,
-    parse_synced_lyrics,
-    set_cached_lyrics,
-)
-from routes import (  # noqa: F401
+from lyrics import _close_connection, _close_session, init_lyrics_cache
+from routes import (
     handle_admin_config_get,
     handle_admin_config_put,
     handle_admin_log_file,
@@ -70,22 +23,8 @@ from routes import (  # noqa: F401
     handle_state,
     index_handler,
     obs_handler,
-    websocket_handler,
 )
-from state import (  # noqa: F401
-    _rate_limit_store,
-    _save_timer,
-    cancel_pending_save,
-    check_rate_limit,
-    get_current_save_data,
-    parse_track_input,
-    pendingQueueMeta,
-    read_state_from_file,
-    reset_rate_limit,
-    save_state_to_file_debounced,
-    set_write_callback,
-    state,
-)
+from state import cancel_pending_save, get_current_save_data, read_state_from_file, set_write_callback
 
 
 def _write_state_to_disk(data: dict[str, Any]) -> None:
