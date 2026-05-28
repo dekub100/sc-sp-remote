@@ -82,8 +82,9 @@ function updateDynamicColors(img) {
     document.documentElement.style.setProperty('--accent-color', accent);
 
     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-    if (brightness < 40) {
-        const brightAccent = `rgb(${Math.min(255, r+100)}, ${Math.min(255, g+100)}, ${Math.min(255, b+100)})`;
+    if (brightness < 60) {
+        const scale = 60 / Math.max(brightness, 1);
+        const brightAccent = `rgb(${Math.min(255, Math.round(r * scale))}, ${Math.min(255, Math.round(g * scale))}, ${Math.min(255, Math.round(b * scale))})`;
         document.documentElement.style.setProperty('--accent-color', brightAccent);
     }
 }

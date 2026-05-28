@@ -12,9 +12,6 @@ STATE_FILE: str = os.path.join(DATA_DIR, "state.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
-
 STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
@@ -49,5 +46,26 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"Failed to read config.json, using defaults: {e}")
 
-MAX_QUEUE_SIZE: int = int(config.get("maxQueueSize", 50))
-QUEUE_RATE_LIMIT_SECONDS: float = float(config.get("queueRateLimitSeconds", 30))
+CONFIG_FIELD_TYPES: dict[str, type] = {
+    "port": int,
+    "host": str,
+    "allowedOrigins": list,
+    "defaultVolume": float,
+    "enableOBS": bool,
+    "enableWebsite": bool,
+    "volumeStep": float,
+    "logLevel": str,
+    "backupCount": int,
+    "maxQueueSize": int,
+    "queueRateLimitSeconds": float,
+    "progressBroadcastInterval": float,
+    "stateSaveDebounceSeconds": float,
+    "lyricsFetchTimeoutSeconds": float,
+    "spicetifyPollingIntervalMs": int,
+    "spicetifyQueuePollingIntervalMs": int,
+    "spicetifyReconnectBaseDelayMs": int,
+    "spicetifyReconnectMaxDelayMs": int,
+    "spicetifyProgressDeltaThresholdMs": int,
+    "spicetifyCommandFeedbackDelayMs": int,
+    "obsUpNextThresholdMs": int,
+}
