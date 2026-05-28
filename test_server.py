@@ -5,14 +5,19 @@ import tempfile
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import broadcast
+import config as cfg
+import handlers
+import lyrics
 import pytest
+import state as st
 
 import server
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    server.state.update({
+    st.state.update({
         "volume": 0.5,
         "isPlaying": False,
         "currentTrack": {
@@ -43,10 +48,10 @@ def reset_state():
         }
     })
     server.CLIENTS.clear()
-    server.set_spicetify_client(None)
-    server._save_timer = None
-    server.pendingQueueMeta.clear()
-    server._rate_limit_store.clear()
+    broadcast.set_spicetify_client(None)
+    st._save_timer = None
+    st.pendingQueueMeta.clear()
+    st._rate_limit_store.clear()
     yield
 
 
@@ -71,47 +76,47 @@ def temp_db():
 class TestParseSyncedLyrics:
     def test_basic(self) -> None:
         lrc: str = "[00:12.34]Hello world\n[00:15.00]Second line"
-        result: list[dict[str, Any]] = server.parse_synced_lyrics(lrc)
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics(lrc)
         assert len(result) == 2
         assert result[0]["time"] == 12340
         assert result[0]["text"] == "Hello world"
         assert result[1]["time"] == 15000
 
     def test_empty(self) -> None:
-        assert server.parse_synced_lyrics("") == []
-        assert server.parse_synced_lyrics("no tags here") == []
+        assert lyrics.parse_synced_lyrics("") == []
+        assert lyrics.parse_synced_lyrics("no tags here") == []
 
     def test_comma_separator(self) -> None:
-        result: list[dict[str, Any]] = server.parse_synced_lyrics("[00:01,500]Comma separated")
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics("[00:01,500]Comma separated")
         assert result[0]["time"] == 1500
 
     def test_sorts_output(self) -> None:
-        result: list[dict[str, Any]] = server.parse_synced_lyrics("[00:10.00]Later\n[00:05.00]Earlier")
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics("[00:10.00]Later\n[00:05.00]Earlier")
         assert result[0]["time"] == 5000
         assert result[1]["time"] == 10000
 
     def test_strips_text(self) -> None:
-        result: list[dict[str, Any]] = server.parse_synced_lyrics("[00:01.00]  padded text  ")
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics("[00:01.00]  padded text  ")
         assert result[0]["text"] == "padded text"
 
     def test_hundredths(self) -> None:
-        result: list[dict[str, Any]] = server.parse_synced_lyrics("[01:30.50]Two digit")
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics("[01:30.50]Two digit")
         assert result[0]["time"] == 90500
 
     def test_thousandths(self) -> None:
-        result: list[dict[str, Any]] = server.parse_synced_lyrics("[01:30.500]Three digit")
+        result: list[dict[str, Any]] = lyrics.parse_synced_lyrics("[01:30.500]Three digit")
         assert result[0]["time"] == 90500
 
 
 def test_get_current_save_data_shape() -> None:
-    server.state["volume"] = 0.75
-    server.state["isPlaying"] = True
-    server.state["currentTrack"]["trackName"] = "Test"
+    st.state["volume"] = 0.75
+    st.state["isPlaying"] = True
+    st.state["currentTrack"]["trackName"] = "Test"
     data: dict[str, Any] = server.get_current_save_data()
     assert data == {
         "volume": 0.75,
         "isPlaying": True,
-        "currentTrack": server.state["currentTrack"],
+        "currentTrack": st.state["currentTrack"],
         "isShuffling": False,
         "repeatStatus": 0,
         "isLiked": False
@@ -158,7 +163,7 @@ class TestLyricsCache:
 
     def test_cache_miss(self) -> None:
         with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
-            result: Any = server.get_cached_lyrics(self._cache_params())
+            result: Any = lyrics.get_cached_lyrics(self._cache_params())
         assert result is None
 
     def test_cache_roundtrip(self) -> None:
@@ -166,8 +171,8 @@ class TestLyricsCache:
         synced: str = "[00:01.00]Line one"
         plain: str = "Plain text"
         with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
-            server.set_cached_lyrics(params, synced, plain, False)
-            result: Any = server.get_cached_lyrics(params)
+            lyrics.set_cached_lyrics(params, synced, plain, False)
+            result: Any = lyrics.get_cached_lyrics(params)
         assert result is not None
         assert result[0] == synced
         assert result[1] == plain
@@ -176,16 +181,16 @@ class TestLyricsCache:
     def test_cache_instrumental_flag(self) -> None:
         params = self._cache_params()
         with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
-            server.set_cached_lyrics(params, None, None, True)
-            result = server.get_cached_lyrics(params)
+            lyrics.set_cached_lyrics(params, None, None, True)
+            result = lyrics.get_cached_lyrics(params)
         assert result[2] == 1
 
     def test_cache_overwrite(self) -> None:
         params = self._cache_params()
         with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
-            server.set_cached_lyrics(params, "old", "old_plain", False)
-            server.set_cached_lyrics(params, "new", "new_plain", True)
-            result = server.get_cached_lyrics(params)
+            lyrics.set_cached_lyrics(params, "old", "old_plain", False)
+            lyrics.set_cached_lyrics(params, "new", "new_plain", True)
+            result = lyrics.get_cached_lyrics(params)
         assert result[0] == "new"
         assert result[1] == "new_plain"
         assert result[2] == 1
@@ -205,82 +210,82 @@ class TestLyricsSession:
 
 class TestMessageHandlers:
     async def test_handle_volume_update_absolute(self, mock_ws: AsyncMock) -> None:
-        server.state["volume"] = 0.3
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 0.8})
-        assert server.state["volume"] == 0.8
+        st.state["volume"] = 0.3
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 0.8})
+        assert st.state["volume"] == 0.8
 
     async def test_handle_volume_update_up(self, mock_ws: AsyncMock) -> None:
-        server.state["volume"] = 0.5
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
-        assert server.state["volume"] == pytest.approx(0.55)
+        st.state["volume"] = 0.5
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
+        assert st.state["volume"] == pytest.approx(0.55)
 
     async def test_handle_volume_update_down(self, mock_ws: AsyncMock) -> None:
-        server.state["volume"] = 0.5
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
-        assert server.state["volume"] == pytest.approx(0.45)
+        st.state["volume"] = 0.5
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
+        assert st.state["volume"] == pytest.approx(0.45)
 
     async def test_handle_volume_update_clamp_max(self, mock_ws: AsyncMock) -> None:
-        server.state["volume"] = 0.98
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
-        assert server.state["volume"] == 1.0
+        st.state["volume"] = 0.98
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
+        assert st.state["volume"] == 1.0
 
     async def test_handle_volume_update_clamp_min(self, mock_ws: AsyncMock) -> None:
-        server.state["volume"] = 0.02
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
-        assert server.state["volume"] == 0.0
+        st.state["volume"] = 0.02
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
+        assert st.state["volume"] == 0.0
 
     async def test_handle_volume_update_absolute_clamp_max(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 5.0})
-        assert server.state["volume"] == 1.0
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 5.0})
+        assert st.state["volume"] == 1.0
 
     async def test_handle_volume_update_absolute_clamp_min(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": -10.0})
-        assert server.state["volume"] == 0.0
+        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_volume_update(mock_ws, {"type": "volumeUpdate", "volume": -10.0})
+        assert st.state["volume"] == 0.0
 
     async def test_handle_playback_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_playback_update", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_playback_update(mock_ws, {"type": "playbackUpdate", "isPlaying": True, "progress": 5000})
-        assert server.state["isPlaying"] is True
-        assert server.state["trackProgress"] == 5000
+        with patch.object(broadcast, "broadcast_playback_update", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_playback_update(mock_ws, {"type": "playbackUpdate", "isPlaying": True, "progress": 5000})
+        assert st.state["isPlaying"] is True
+        assert st.state["trackProgress"] == 5000
 
     async def test_handle_shuffle_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_shuffle_update(mock_ws, {"type": "shuffleUpdate", "isShuffling": True})
-        assert server.state["isShuffling"] is True
+        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_shuffle_update(mock_ws, {"type": "shuffleUpdate", "isShuffling": True})
+        assert st.state["isShuffling"] is True
 
     async def test_handle_repeat_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_repeat_update(mock_ws, {"type": "repeatUpdate", "repeatStatus": 2})
-        assert server.state["repeatStatus"] == 2
+        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_repeat_update(mock_ws, {"type": "repeatUpdate", "repeatStatus": 2})
+        assert st.state["repeatStatus"] == 2
 
     async def test_handle_like_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast", new_callable=AsyncMock):
-            with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                await server.handle_like_update(mock_ws, {"type": "likeUpdate", "isLiked": True})
-        assert server.state["isLiked"] is True
+        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
+            with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                await handlers.handle_like_update(mock_ws, {"type": "likeUpdate", "isLiked": True})
+        assert st.state["isLiked"] is True
 
     async def test_handle_state_update_new_track(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
-            with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock):
-                with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_state_update(mock_ws, {
+        with patch.object(broadcast, "broadcast_current_state", new_callable=AsyncMock):
+            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock):
+                with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                    await handlers.handle_state_update(mock_ws, {
                         "type": "trackUpdate",
                         "trackName": "New Song",
                         "artistName": "New Artist",
@@ -288,19 +293,19 @@ class TestMessageHandlers:
                         "duration": 200000,
                         "progress": 0
                     })
-        assert server.state["currentTrack"]["trackName"] == "New Song"
-        assert server.state["currentTrack"]["artistName"] == "New Artist"
-        assert server.state["currentTrack"]["trackUri"] == "spotify:track:new"
-        assert server.state["trackDuration"] == 200000
-        assert server.state["lyrics"]["loading"] is True
+        assert st.state["currentTrack"]["trackName"] == "New Song"
+        assert st.state["currentTrack"]["artistName"] == "New Artist"
+        assert st.state["currentTrack"]["trackUri"] == "spotify:track:new"
+        assert st.state["trackDuration"] == 200000
+        assert st.state["lyrics"]["loading"] is True
 
     async def test_handle_state_update_same_track_no_lyrics_fetch(self, mock_ws: AsyncMock) -> None:
-        server.state["currentTrack"]["trackUri"] = "spotify:track:existing"
-        server.state["lyrics"]["loading"] = False
-        with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
-            with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_lyrics:
-                with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_state_update(mock_ws, {
+        st.state["currentTrack"]["trackUri"] = "spotify:track:existing"
+        st.state["lyrics"]["loading"] = False
+        with patch.object(broadcast, "broadcast_current_state", new_callable=AsyncMock):
+            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_lyrics:
+                with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                    await handlers.handle_state_update(mock_ws, {
                         "type": "trackUpdate",
                         "trackName": "Updated",
                         "artistName": "Artist",
@@ -309,13 +314,13 @@ class TestMessageHandlers:
                         "progress": 10000
                     })
         mock_lyrics.assert_not_called()
-        assert server.state["lyrics"]["loading"] is False
+        assert st.state["lyrics"]["loading"] is False
 
     async def test_handle_state_update_batched_fields(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_current_state", new_callable=AsyncMock):
-            with patch.object(server, "broadcast_lyrics_update", new_callable=AsyncMock):
-                with patch.object(server, "save_state_to_file_debounced", new_callable=AsyncMock):
-                    await server.handle_state_update(mock_ws, {
+        with patch.object(broadcast, "broadcast_current_state", new_callable=AsyncMock):
+            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock):
+                with patch.object(st, "save_state_to_file_debounced", new_callable=AsyncMock):
+                    await handlers.handle_state_update(mock_ws, {
                         "type": "stateUpdate",
                         "trackUri": "spotify:track:batch",
                         "trackName": "Batch",
@@ -325,33 +330,33 @@ class TestMessageHandlers:
                         "isLiked": True,
                         "duration": 150000
                     })
-        assert server.state["volume"] == 0.9
-        assert server.state["isShuffling"] is True
-        assert server.state["repeatStatus"] == 1
-        assert server.state["isLiked"] is True
+        assert st.state["volume"] == 0.9
+        assert st.state["isShuffling"] is True
+        assert st.state["repeatStatus"] == 1
+        assert st.state["isLiked"] is True
 
     async def test_handle_progress_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_progress_update", new_callable=AsyncMock):
-            await server.handle_progress_update(mock_ws, {"type": "progressUpdate", "progress": 30000, "duration": 240000})
-        assert server.state["trackProgress"] == 30000
-        assert server.state["trackDuration"] == 240000
+        with patch.object(broadcast, "broadcast_progress_update", new_callable=AsyncMock):
+            await handlers.handle_progress_update(mock_ws, {"type": "progressUpdate", "progress": 30000, "duration": 240000})
+        assert st.state["trackProgress"] == 30000
+        assert st.state["trackDuration"] == 240000
 
     async def test_handle_register_spicetify(self, mock_ws: AsyncMock) -> None:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
-        await server.handle_register(mock_ws, {"type": "register", "client": "spicetify"})
+        await handlers.handle_register(mock_ws, {"type": "register", "client": "spicetify"})
         assert server.CLIENTS[mock_ws]["type"] == "spicetify"
-        assert server.get_spicetify_client() is mock_ws
+        assert broadcast.get_spicetify_client() is mock_ws
 
     async def test_handle_register_website(self, mock_ws: AsyncMock) -> None:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
-        await server.handle_register(mock_ws, {"type": "register", "client": "website"})
+        await handlers.handle_register(mock_ws, {"type": "register", "client": "website"})
         assert server.CLIENTS[mock_ws]["type"] == "website"
-        assert server.get_spicetify_client() is None
+        assert broadcast.get_spicetify_client() is None
 
     async def test_handle_register_unknown(self, mock_ws: AsyncMock) -> None:
         server.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_register(mock_ws, {"type": "register", "client": "foobar"})
+            await handlers.handle_register(mock_ws, {"type": "register", "client": "foobar"})
         assert server.CLIENTS[mock_ws]["type"] == "unknown"
         mock_warn.assert_called_once()
         assert "foobar" in mock_warn.call_args[0][0]
@@ -360,7 +365,7 @@ class TestMessageHandlers:
         server.CLIENTS[mock_ws] = {"type": "website", "remote_ip": "127.0.0.1"}
         spicetify_ws: AsyncMock = AsyncMock()
         server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
-        await server.handle_playback_control(mock_ws, {"type": "playbackControl", "command": "next"})
+        await handlers.handle_playback_control(mock_ws, {"type": "playbackControl", "command": "next"})
         spicetify_ws.send_str.assert_called_once()
         sent: dict[str, Any] = json.loads(spicetify_ws.send_str.call_args[0][0])
         assert sent["command"] == "next"
@@ -368,7 +373,7 @@ class TestMessageHandlers:
     async def test_handle_like_command_targets_spicetify(self, mock_ws: AsyncMock) -> None:
         spicetify_ws = AsyncMock()
         server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
-        await server.handle_like_command(mock_ws, {"type": "like"})
+        await handlers.handle_like_command(mock_ws, {"type": "like"})
         spicetify_ws.send_str.assert_called_once()
         sent = json.loads(spicetify_ws.send_str.call_args[0][0])
         assert sent["command"] == "like"
@@ -376,75 +381,75 @@ class TestMessageHandlers:
     async def test_handle_error_broadcasts_message(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch.object(server.logger, "warning"):
-                await server.handle_error(mock_ws, {"type": "error", "message": "Something broke"})
+                await handlers.handle_error(mock_ws, {"type": "error", "message": "Something broke"})
         mock_broadcast.assert_called_once_with({"type": "error", "message": "Something broke"})
 
     async def test_handle_error_defaults_message(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch.object(server.logger, "warning"):
-                await server.handle_error(mock_ws, {"type": "error"})
+                await handlers.handle_error(mock_ws, {"type": "error"})
         mock_broadcast.assert_called_once_with({"type": "error", "message": "Unknown error"})
 
     async def test_handle_error_logs_warning(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock):
             with patch.object(server.logger, "warning") as mock_warn:
-                await server.handle_error(mock_ws, {"type": "error", "message": "fail"})
+                await handlers.handle_error(mock_ws, {"type": "error", "message": "fail"})
         mock_warn.assert_called_once_with("Extension error: fail")
 
 
 class TestHandleMessage:
     async def test_invalid_json(self, mock_ws: AsyncMock) -> None:
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_message(mock_ws, "not json {{{")
+            await handlers.handle_message(mock_ws, "not json {{{")
         mock_warn.assert_called_once()
         assert "invalid JSON" in mock_warn.call_args[0][0]
 
     async def test_non_dict_json(self, mock_ws: AsyncMock) -> None:
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_message(mock_ws, json.dumps([1, 2, 3]))
+            await handlers.handle_message(mock_ws, json.dumps([1, 2, 3]))
         mock_warn.assert_called_once()
         assert "non-object" in mock_warn.call_args[0][0]
 
     async def test_missing_type_field(self, mock_ws: AsyncMock) -> None:
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_message(mock_ws, json.dumps({"volume": 0.5}))
+            await handlers.handle_message(mock_ws, json.dumps({"volume": 0.5}))
         mock_warn.assert_called_once()
         assert "invalid type field" in mock_warn.call_args[0][0]
 
     async def test_non_string_type_field(self, mock_ws: AsyncMock) -> None:
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_message(mock_ws, json.dumps({"type": 123}))
+            await handlers.handle_message(mock_ws, json.dumps({"type": 123}))
         mock_warn.assert_called_once()
         assert "invalid type field" in mock_warn.call_args[0][0]
 
     async def test_unknown_type(self, mock_ws: AsyncMock) -> None:
         with patch.object(server.logger, "warning") as mock_warn:
-            await server.handle_message(mock_ws, json.dumps({"type": "fooBar"}))
+            await handlers.handle_message(mock_ws, json.dumps({"type": "fooBar"}))
         mock_warn.assert_called_once()
         assert "fooBar" in mock_warn.call_args[0][0]
 
     async def test_valid_message_dispatches_handler(self, mock_ws: AsyncMock) -> None:
         mock_handler: AsyncMock = AsyncMock()
-        original: Any = server.MESSAGE_HANDLERS["volumeUpdate"]
-        server.MESSAGE_HANDLERS["volumeUpdate"] = mock_handler
+        original: Any = handlers.MESSAGE_HANDLERS["volumeUpdate"]
+        handlers.MESSAGE_HANDLERS["volumeUpdate"] = mock_handler
         try:
-            await server.handle_message(mock_ws, json.dumps({"type": "volumeUpdate", "volume": 0.7}))
+            await handlers.handle_message(mock_ws, json.dumps({"type": "volumeUpdate", "volume": 0.7}))
             mock_handler.assert_called_once()
         finally:
-            server.MESSAGE_HANDLERS["volumeUpdate"] = original
+            handlers.MESSAGE_HANDLERS["volumeUpdate"] = original
 
 
 class TestBroadcast:
     async def test_no_clients_noop(self) -> None:
         server.CLIENTS.clear()
-        await server.broadcast({"type": "test"})
+        await broadcast.broadcast({"type": "test"})
 
     async def test_broadcast_to_all(self) -> None:
         ws1: AsyncMock = AsyncMock()
         ws2: AsyncMock = AsyncMock()
         server.CLIENTS[ws1] = {"type": "website", "remote_ip": "127.0.0.1"}
         server.CLIENTS[ws2] = {"type": "obs", "remote_ip": "127.0.0.1"}
-        await server.broadcast({"type": "test"})
+        await broadcast.broadcast({"type": "test"})
         ws1.send_str.assert_called_once()
         ws2.send_str.assert_called_once()
 
@@ -453,7 +458,7 @@ class TestBroadcast:
         ws2 = AsyncMock()
         server.CLIENTS[ws1] = {"type": "website", "remote_ip": "127.0.0.1"}
         server.CLIENTS[ws2] = {"type": "obs", "remote_ip": "127.0.0.1"}
-        await server.broadcast({"type": "test"}, exclude_ws=ws1)
+        await broadcast.broadcast({"type": "test"}, exclude_ws=ws1)
         ws1.send_str.assert_not_called()
         ws2.send_str.assert_called_once()
 
@@ -464,7 +469,7 @@ class TestBroadcast:
         server.CLIENTS[ws1] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
         server.CLIENTS[ws2] = {"type": "website", "remote_ip": "127.0.0.1"}
         server.CLIENTS[ws3] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
-        await server.broadcast({"type": "test"}, target_type="spicetify")
+        await broadcast.broadcast({"type": "test"}, target_type="spicetify")
         assert ws1.send_str.called
         ws2.send_str.assert_not_called()
         assert ws3.send_str.called
@@ -475,23 +480,23 @@ class TestBroadcast:
         ws1.send_str = AsyncMock(side_effect=ConnectionError("dead"))
         server.CLIENTS[ws1] = {"type": "website", "remote_ip": "127.0.0.1"}
         server.CLIENTS[ws2] = {"type": "obs", "remote_ip": "127.0.0.1"}
-        await server.broadcast({"type": "test"})
+        await broadcast.broadcast({"type": "test"})
         assert ws1 not in server.CLIENTS
         assert ws2 in server.CLIENTS
 
     async def test_broadcast_volume_update_shape(self) -> None:
-        server.state["volume"] = 0.42
+        st.state["volume"] = 0.42
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_volume_update()
+            await broadcast.broadcast_volume_update()
         mock_broadcast.assert_called_once_with(
             {"type": "volumeUpdate", "volume": 0.42}, None
         )
 
     async def test_broadcast_playback_update_shape(self) -> None:
-        server.state["isPlaying"] = True
-        server.state["trackProgress"] = 30000
+        st.state["isPlaying"] = True
+        st.state["trackProgress"] = 30000
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_playback_update()
+            await broadcast.broadcast_playback_update()
         mock_broadcast.assert_called_once()
         msg = mock_broadcast.call_args[0][0]
         assert msg["type"] == "playbackUpdate"
@@ -500,11 +505,11 @@ class TestBroadcast:
         assert "timestamp" in msg
 
     async def test_broadcast_progress_update_shape(self) -> None:
-        server.state["trackProgress"] = 45000
-        server.state["trackDuration"] = 200000
-        server.state["isPlaying"] = True
+        st.state["trackProgress"] = 45000
+        st.state["trackDuration"] = 200000
+        st.state["isPlaying"] = True
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_progress_update()
+            await broadcast.broadcast_progress_update()
         mock_broadcast.assert_called_once()
         msg = mock_broadcast.call_args[0][0]
         assert msg["type"] == "progressUpdate"
@@ -514,7 +519,7 @@ class TestBroadcast:
         assert "timestamp" in msg
 
     async def test_broadcast_lyrics_update_shape(self) -> None:
-        server.state["lyrics"] = {
+        st.state["lyrics"] = {
             "available": True,
             "instrumental": False,
             "synced": [{"time": 1000, "text": "hello"}],
@@ -523,7 +528,7 @@ class TestBroadcast:
             "trackUri": "spotify:track:test"
         }
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_lyrics_update()
+            await broadcast.broadcast_lyrics_update()
         mock_broadcast.assert_called_once_with({
             "type": "lyricsUpdate",
             "available": True,
@@ -534,10 +539,10 @@ class TestBroadcast:
         })
 
     async def test_broadcast_queue_update_shape(self) -> None:
-        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc", "uid": "1"}]
-        server.state["queue"]["queueRevision"] = "rev42"
+        st.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc", "uid": "1"}]
+        st.state["queue"]["queueRevision"] = "rev42"
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_queue_update()
+            await broadcast.broadcast_queue_update()
         mock_broadcast.assert_called_once_with({
             "type": "queueUpdate",
             "queue": [{"uri": "spotify:track:abc", "uid": "1"}],
@@ -545,7 +550,7 @@ class TestBroadcast:
         })
 
     async def test_broadcast_current_state_shape(self) -> None:
-        server.state.update({
+        st.state.update({
             "volume": 0.5,
             "isPlaying": True,
             "currentTrack": {
@@ -563,7 +568,7 @@ class TestBroadcast:
             "isLiked": True
         })
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.broadcast_current_state()
+            await broadcast.broadcast_current_state()
         mock_broadcast.assert_called_once()
         msg = mock_broadcast.call_args[0][0]
         assert msg["type"] == "stateUpdate"
@@ -583,12 +588,12 @@ class TestBroadcast:
         assert "timestamp" in msg
 
     async def test_compute_and_broadcast_progress_shape(self) -> None:
-        server.state["trackProgress"] = 5000
-        server.state["trackDuration"] = 200000
-        server.state["trackProgressStartTimestamp"] = 1000
+        st.state["trackProgress"] = 5000
+        st.state["trackDuration"] = 200000
+        st.state["trackProgressStartTimestamp"] = 1000
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch("broadcast.time.time", return_value=2.0):
-                await server._compute_and_broadcast_progress()
+                await broadcast._compute_and_broadcast_progress()
         mock_broadcast.assert_called_once()
         msg = mock_broadcast.call_args[0][0]
         assert msg["type"] == "progressUpdate"
@@ -598,12 +603,12 @@ class TestBroadcast:
         assert msg["timestamp"] == 2000
 
     async def test_compute_and_broadcast_progress_clamps(self) -> None:
-        server.state["trackProgress"] = 199000
-        server.state["trackDuration"] = 200000
-        server.state["trackProgressStartTimestamp"] = 1000
+        st.state["trackProgress"] = 199000
+        st.state["trackDuration"] = 200000
+        st.state["trackProgressStartTimestamp"] = 1000
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch("broadcast.time.time", return_value=5.0):
-                await server._compute_and_broadcast_progress()
+                await broadcast._compute_and_broadcast_progress()
         msg = mock_broadcast.call_args[0][0]
         assert msg["progress"] == 200000
 
@@ -667,116 +672,116 @@ class TestConfigEndpoint:
 
 class TestParseTrackInput:
     def test_https_url(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh")
+        result = st.parse_track_input("https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh")
         assert result == "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_https_url_with_intl(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/intl-de/track/4iV5W9uYEdYUVa79Axb7Rh")
+        result = st.parse_track_input("https://open.spotify.com/intl-de/track/4iV5W9uYEdYUVa79Axb7Rh")
         assert result == "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_spotify_uri(self) -> None:
-        result = server.parse_track_input("spotify:track:4iV5W9uYEdYUVa79Axb7Rh")
+        result = st.parse_track_input("spotify:track:4iV5W9uYEdYUVa79Axb7Rh")
         assert result == "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_bare_uri(self) -> None:
-        result = server.parse_track_input("4iV5W9uYEdYUVa79Axb7Rh")
+        result = st.parse_track_input("4iV5W9uYEdYUVa79Axb7Rh")
         assert result == "4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_url_with_query_params(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh?si=abc123")
+        result = st.parse_track_input("https://open.spotify.com/track/4iV5W9uYEdYUVa79Axb7Rh?si=abc123")
         assert result == "spotify:track:4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_strips_whitespace(self) -> None:
-        result = server.parse_track_input("  spotify:track:abc123  ")
+        result = st.parse_track_input("  spotify:track:abc123  ")
         assert result == "spotify:track:abc123"
 
     def test_empty_string(self) -> None:
-        result = server.parse_track_input("")
+        result = st.parse_track_input("")
         assert result == ""
 
     def test_whitespace_only(self) -> None:
-        result = server.parse_track_input("   ")
+        result = st.parse_track_input("   ")
         assert result == ""
 
     def test_playlist_url_returns_unchanged(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
+        result = st.parse_track_input("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
         assert result == "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
 
     def test_album_url_returns_unchanged(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh")
+        result = st.parse_track_input("https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh")
         assert result == "https://open.spotify.com/album/4iV5W9uYEdYUVa79Axb7Rh"
 
     def test_track_id_case_insensitive(self) -> None:
-        result = server.parse_track_input("https://open.spotify.com/track/ABCDEF123456")
+        result = st.parse_track_input("https://open.spotify.com/track/ABCDEF123456")
         assert result == "spotify:track:ABCDEF123456"
 
 
 class TestRateLimit:
     def test_first_request_allowed(self) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            allowed, msg = server.check_rate_limit("user1")
+            allowed, msg = st.check_rate_limit("user1")
         assert allowed is True
         assert msg == ""
 
     def test_second_request_blocked(self) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            server.check_rate_limit("user2")
-            allowed, msg = server.check_rate_limit("user2")
+            st.check_rate_limit("user2")
+            allowed, msg = st.check_rate_limit("user2")
         assert allowed is False
         assert "Rate limited" in msg
 
     def test_different_users_independent(self) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            server.check_rate_limit("userA")
-            allowed, _ = server.check_rate_limit("userB")
+            st.check_rate_limit("userA")
+            allowed, _ = st.check_rate_limit("userB")
         assert allowed is True
 
     def test_reset_rate_limit(self) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            server.check_rate_limit("user3")
-            server.reset_rate_limit("user3")
-            allowed, _ = server.check_rate_limit("user3")
+            st.check_rate_limit("user3")
+            st.reset_rate_limit("user3")
+            allowed, _ = st.check_rate_limit("user3")
         assert allowed is True
 
 
 class TestQueueHandlers:
     async def test_handle_queue_snapshot_stores_state(self, mock_ws: AsyncMock) -> None:
-        with patch.object(server, "broadcast_queue_update", new_callable=AsyncMock):
-            await server.handle_queue_snapshot(mock_ws, {
+        with patch.object(broadcast, "broadcast_queue_update", new_callable=AsyncMock):
+            await handlers.handle_queue_snapshot(mock_ws, {
                 "type": "queueSnapshot",
                 "nextTracks": [{"uri": "spotify:track:abc", "uid": "1"}],
                 "queueRevision": "123"
             })
-        assert server.state["queue"]["nextTracks"][0]["uri"] == "spotify:track:abc"
-        assert server.state["queue"]["queueRevision"] == "123"
+        assert st.state["queue"]["nextTracks"][0]["uri"] == "spotify:track:abc"
+        assert st.state["queue"]["queueRevision"] == "123"
 
     async def test_handle_queue_snapshot_merges_pending_meta(self, mock_ws: AsyncMock) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
-        with patch.object(server, "broadcast_queue_update", new_callable=AsyncMock):
-            await server.handle_queue_snapshot(mock_ws, {
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        with patch.object(broadcast, "broadcast_queue_update", new_callable=AsyncMock):
+            await handlers.handle_queue_snapshot(mock_ws, {
                 "type": "queueSnapshot",
                 "nextTracks": [{"uri": "spotify:track:abc", "uid": "1"}],
                 "queueRevision": "456"
             })
-        assert server.state["queue"]["nextTracks"][0]["requestedBy"] == "alice"
-        assert len(server.pendingQueueMeta) == 0
+        assert st.state["queue"]["nextTracks"][0]["requestedBy"] == "alice"
+        assert len(st.pendingQueueMeta) == 0
 
     async def test_handle_queue_snapshot_no_match_keeps_pending(self, mock_ws: AsyncMock) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:xyz", "requestedBy": "bob"})
-        with patch.object(server, "broadcast_queue_update", new_callable=AsyncMock):
-            await server.handle_queue_snapshot(mock_ws, {
+        st.pendingQueueMeta.append({"uri": "spotify:track:xyz", "requestedBy": "bob"})
+        with patch.object(broadcast, "broadcast_queue_update", new_callable=AsyncMock):
+            await handlers.handle_queue_snapshot(mock_ws, {
                 "type": "queueSnapshot",
                 "nextTracks": [{"uri": "spotify:track:abc", "uid": "1"}],
                 "queueRevision": "789"
             })
-        assert len(server.pendingQueueMeta) == 1
-        assert "requestedBy" not in server.state["queue"]["nextTracks"][0]
+        assert len(st.pendingQueueMeta) == 1
+        assert "requestedBy" not in st.state["queue"]["nextTracks"][0]
 
     async def test_handle_add_to_queue_forwards_to_spicetify(self, mock_ws: AsyncMock) -> None:
         spicetify_ws = AsyncMock()
         server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_add_to_queue(mock_ws, {
+            await handlers.handle_add_to_queue(mock_ws, {
                 "type": "addToQueue",
                 "input": "https://open.spotify.com/track/abc123",
                 "requestedBy": "viewer1"
@@ -786,28 +791,28 @@ class TestQueueHandlers:
         assert call_args["type"] == "addToQueue"
         assert call_args["uri"] == "spotify:track:abc123"
         assert call_args["requestedBy"] == "viewer1"
-        assert len(server.pendingQueueMeta) == 1
+        assert len(st.pendingQueueMeta) == 1
 
     async def test_handle_add_to_queue_rate_limited(self, mock_ws: AsyncMock) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            server.check_rate_limit("ratelimited_user")
+            st.check_rate_limit("ratelimited_user")
             with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-                await server.handle_add_to_queue(mock_ws, {
+                await handlers.handle_add_to_queue(mock_ws, {
                     "type": "addToQueue",
                     "input": "spotify:track:abc",
                     "requestedBy": "ratelimited_user"
                 })
             mock_broadcast.assert_not_called()
-            assert len(server.pendingQueueMeta) == 0
+            assert len(st.pendingQueueMeta) == 0
             mock_ws.send_str.assert_called_once()
             sent = json.loads(mock_ws.send_str.call_args[0][0])
             assert sent["type"] == "error"
 
     async def test_handle_add_to_queue_full(self, mock_ws: AsyncMock) -> None:
-        for i in range(server.MAX_QUEUE_SIZE):
-            server.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
+        for i in range(cfg.MAX_QUEUE_SIZE):
+            st.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_add_to_queue(mock_ws, {
+            await handlers.handle_add_to_queue(mock_ws, {
                 "type": "addToQueue",
                 "input": "spotify:track:new",
                 "requestedBy": "late_user"
@@ -821,7 +826,7 @@ class TestQueueHandlers:
         spicetify_ws = AsyncMock()
         server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_remove_from_queue(mock_ws, {
+            await handlers.handle_remove_from_queue(mock_ws, {
                 "type": "removeFromQueue",
                 "uri": "spotify:track:abc",
                 "uid": "1"
@@ -832,50 +837,50 @@ class TestQueueHandlers:
         assert call_args["uri"] == "spotify:track:abc"
 
     async def test_handle_clear_queue_clears_pending(self, mock_ws: AsyncMock) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
-        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        st.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_clear_queue(mock_ws, {"type": "clearQueue"})
-        assert len(server.pendingQueueMeta) == 0
-        assert len(server.state["queue"]["nextTracks"]) == 0
-        assert server.state["queue"]["queueRevision"] == ""
+            await handlers.handle_clear_queue(mock_ws, {"type": "clearQueue"})
+        assert len(st.pendingQueueMeta) == 0
+        assert len(st.state["queue"]["nextTracks"]) == 0
+        assert st.state["queue"]["queueRevision"] == ""
         mock_broadcast.assert_called_once()
         assert mock_broadcast.call_args[0][0]["type"] == "clearQueue"
 
     async def test_handle_remove_from_queue_clears_pending(self, mock_ws: AsyncMock) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
-        server.pendingQueueMeta.append({"uri": "spotify:track:xyz", "requestedBy": "bob"})
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        st.pendingQueueMeta.append({"uri": "spotify:track:xyz", "requestedBy": "bob"})
         spicetify_ws = AsyncMock()
         server.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_remove_from_queue(mock_ws, {
+            await handlers.handle_remove_from_queue(mock_ws, {
                 "type": "removeFromQueue",
                 "uri": "spotify:track:abc",
                 "uid": "1"
             })
-        assert len(server.pendingQueueMeta) == 1
-        assert server.pendingQueueMeta[0]["uri"] == "spotify:track:xyz"
+        assert len(st.pendingQueueMeta) == 1
+        assert st.pendingQueueMeta[0]["uri"] == "spotify:track:xyz"
         mock_broadcast.assert_called_once()
 
     async def test_handle_add_to_queue_dedup(self, mock_ws: AsyncMock) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
-            await server.handle_add_to_queue(mock_ws, {
+            await handlers.handle_add_to_queue(mock_ws, {
                 "type": "addToQueue",
                 "input": "spotify:track:abc",
                 "requestedBy": "bob"
             })
         mock_broadcast.assert_not_called()
-        assert len(server.pendingQueueMeta) == 1
+        assert len(st.pendingQueueMeta) == 1
         mock_ws.send_str.assert_called_once()
         sent = json.loads(mock_ws.send_str.call_args[0][0])
         assert sent["type"] == "error"
         assert "already" in sent["message"].lower()
 
     async def test_handle_get_initial_state_includes_queue(self, mock_ws: AsyncMock) -> None:
-        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:test"}]
-        server.state["queue"]["queueRevision"] = "rev1"
-        await server.handle_get_initial_state(mock_ws, {})
+        st.state["queue"]["nextTracks"] = [{"uri": "spotify:track:test"}]
+        st.state["queue"]["queueRevision"] = "rev1"
+        await handlers.handle_get_initial_state(mock_ws, {})
         calls = mock_ws.send_str.call_args_list
         queue_msg = json.loads(calls[2][0][0])
         assert queue_msg["type"] == "queueUpdate"
@@ -897,8 +902,8 @@ class TestQueueHttpEndpoints:
             yield tc
 
     async def test_get_queue_returns_state(self, client) -> None:
-        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
-        server.state["queue"]["queueRevision"] = "rev1"
+        st.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
+        st.state["queue"]["queueRevision"] = "rev1"
         resp = await client.get('/api/queue')
         assert resp.status == 200
         data = await resp.json()
@@ -915,11 +920,11 @@ class TestQueueHttpEndpoints:
             data = await resp.json()
             assert data["status"] == "ok"
             assert data["uri"] == "spotify:track:abc123"
-            assert len(server.pendingQueueMeta) == 1
+            assert len(st.pendingQueueMeta) == 1
 
     async def test_post_add_queue_rate_limited(self, client) -> None:
         with patch("server.config", {"queueRateLimitSeconds": 30.0}):
-            server.check_rate_limit("http_rl_user")
+            st.check_rate_limit("http_rl_user")
             with patch("routes.broadcast", new_callable=AsyncMock):
                 resp = await client.post('/api/queue/add', json={
                     "trackUri": "spotify:track:abc",
@@ -930,8 +935,8 @@ class TestQueueHttpEndpoints:
             assert "error" in data
 
     async def test_post_add_queue_full(self, client) -> None:
-        for i in range(server.MAX_QUEUE_SIZE):
-            server.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
+        for i in range(cfg.MAX_QUEUE_SIZE):
+            st.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
         with patch("routes.broadcast", new_callable=AsyncMock):
             resp = await client.post('/api/queue/add', json={
                 "trackUri": "spotify:track:new",
@@ -946,7 +951,7 @@ class TestQueueHttpEndpoints:
         assert resp.status == 400
 
     async def test_post_add_queue_dedup(self, client) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
         with patch("routes.broadcast", new_callable=AsyncMock):
             resp = await client.post('/api/queue/add', json={
                 "trackUri": "spotify:track:abc",
@@ -955,25 +960,25 @@ class TestQueueHttpEndpoints:
             assert resp.status == 400
             data = await resp.json()
             assert "already" in data["error"].lower()
-            assert len(server.pendingQueueMeta) == 1
+            assert len(st.pendingQueueMeta) == 1
 
     async def test_post_clear_clears_all_state(self, client) -> None:
-        server.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
-        server.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
-        server.state["queue"]["queueRevision"] = "rev1"
+        st.pendingQueueMeta.append({"uri": "spotify:track:abc", "requestedBy": "alice"})
+        st.state["queue"]["nextTracks"] = [{"uri": "spotify:track:abc"}]
+        st.state["queue"]["queueRevision"] = "rev1"
         with patch("routes.broadcast", new_callable=AsyncMock):
             resp = await client.post('/api/queue/clear')
             assert resp.status == 200
-            assert len(server.pendingQueueMeta) == 0
-            assert len(server.state["queue"]["nextTracks"]) == 0
-            assert server.state["queue"]["queueRevision"] == ""
+            assert len(st.pendingQueueMeta) == 0
+            assert len(st.state["queue"]["nextTracks"]) == 0
+            assert st.state["queue"]["queueRevision"] == ""
 
 
 class TestAdminConfigPut:
     @pytest.fixture
     async def client(self):
         from copy import deepcopy
-        import json
+
         from config import CONFIG_PATH
         saved_config = deepcopy(server.config)
         saved_file = None
