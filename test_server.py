@@ -718,26 +718,26 @@ class TestParseTrackInput:
 
 class TestRateLimit:
     def test_first_request_allowed(self) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             allowed, msg = st.check_rate_limit("user1")
         assert allowed is True
         assert msg == ""
 
     def test_second_request_blocked(self) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             st.check_rate_limit("user2")
             allowed, msg = st.check_rate_limit("user2")
         assert allowed is False
         assert "Rate limited" in msg
 
     def test_different_users_independent(self) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             st.check_rate_limit("userA")
             allowed, _ = st.check_rate_limit("userB")
         assert allowed is True
 
     def test_reset_rate_limit(self) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             st.check_rate_limit("user3")
             st.reset_rate_limit("user3")
             allowed, _ = st.check_rate_limit("user3")
@@ -794,7 +794,7 @@ class TestQueueHandlers:
         assert len(st.pendingQueueMeta) == 1
 
     async def test_handle_add_to_queue_rate_limited(self, mock_ws: AsyncMock) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             st.check_rate_limit("ratelimited_user")
             with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
                 await handlers.handle_add_to_queue(mock_ws, {
@@ -809,7 +809,7 @@ class TestQueueHandlers:
             assert sent["type"] == "error"
 
     async def test_handle_add_to_queue_full(self, mock_ws: AsyncMock) -> None:
-        for i in range(cfg.MAX_QUEUE_SIZE):
+        for i in range(cfg.config.get("maxQueueSize", 50)):
             st.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             await handlers.handle_add_to_queue(mock_ws, {
@@ -923,7 +923,7 @@ class TestQueueHttpEndpoints:
             assert len(st.pendingQueueMeta) == 1
 
     async def test_post_add_queue_rate_limited(self, client) -> None:
-        with patch("server.config", {"queueRateLimitSeconds": 30.0}):
+        with patch.object(st, "config", {"queueRateLimitSeconds": 30.0}):
             st.check_rate_limit("http_rl_user")
             with patch("routes.broadcast", new_callable=AsyncMock):
                 resp = await client.post('/api/queue/add', json={
@@ -935,7 +935,7 @@ class TestQueueHttpEndpoints:
             assert "error" in data
 
     async def test_post_add_queue_full(self, client) -> None:
-        for i in range(cfg.MAX_QUEUE_SIZE):
+        for i in range(cfg.config.get("maxQueueSize", 50)):
             st.pendingQueueMeta.append({"uri": f"spotify:track:{i}", "requestedBy": "filler"})
         with patch("routes.broadcast", new_callable=AsyncMock):
             resp = await client.post('/api/queue/add', json={

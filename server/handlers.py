@@ -309,6 +309,10 @@ async def handle_message(ws: web.WebSocketResponse, message: str) -> None:
 
     handler: Any = MESSAGE_HANDLERS.get(msg_type)
     if handler:
-        await handler(ws, data)
+        try:
+            await handler(ws, data)
+        except Exception:
+            logger.exception(f"Server: Handler for '{msg_type}' crashed")
+            await ws.close(code=1011, message="Internal handler error")
     else:
         logger.warning(f"Server: Received unknown message type: {msg_type}")

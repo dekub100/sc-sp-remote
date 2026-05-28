@@ -6,7 +6,7 @@ from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_spicetify_client
-from config import CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
+from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import check_rate_limit, is_queue_full, parse_track_input, pendingQueueMeta, state
@@ -192,28 +192,28 @@ async def handle_admin_config_get(request: web.Request) -> web.Response:
     return web.json_response(config, headers=_cors_headers(request))
 
 
-_CONFIG_VALIDATORS: dict[str, tuple[type, str]] = {
-    "port": (int, "must be an integer between 1 and 65535"),
-    "host": (str, "must be a valid IP address or hostname"),
-    "defaultVolume": (float, "must be a number between 0.0 and 1.0"),
-    "volumeStep": (float, "must be a number between 0.001 and 1.0"),
-    "maxQueueSize": (int, "must be a positive integer"),
-    "queueRateLimitSeconds": (float, "must be a non-negative number"),
-    "backupCount": (int, "must be a non-negative integer"),
-    "progressBroadcastInterval": (float, "must be a positive number"),
-    "stateSaveDebounceSeconds": (float, "must be a positive number"),
-    "lyricsFetchTimeoutSeconds": (float, "must be a positive number"),
-    "spicetifyPollingIntervalMs": (int, "must be a positive integer"),
-    "spicetifyQueuePollingIntervalMs": (int, "must be a positive integer"),
-    "spicetifyReconnectBaseDelayMs": (int, "must be a positive integer"),
-    "spicetifyReconnectMaxDelayMs": (int, "must be a positive integer"),
-    "spicetifyProgressDeltaThresholdMs": (int, "must be a positive integer"),
-    "spicetifyCommandFeedbackDelayMs": (int, "must be a positive integer"),
-    "obsUpNextThresholdMs": (int, "must be a positive integer"),
-    "enableOBS": (bool, "must be a boolean"),
-    "enableWebsite": (bool, "must be a boolean"),
-    "logLevel": (str, "must be a string"),
-    "allowedOrigins": (list, "must be a list of strings"),
+_CONFIG_ERRORS: dict[str, str] = {
+    "port": "must be an integer between 1 and 65535",
+    "host": "must be a valid IP address or hostname",
+    "defaultVolume": "must be a number between 0.0 and 1.0",
+    "volumeStep": "must be a number between 0.001 and 1.0",
+    "maxQueueSize": "must be a positive integer",
+    "queueRateLimitSeconds": "must be a non-negative number",
+    "backupCount": "must be a non-negative integer",
+    "progressBroadcastInterval": "must be a positive number",
+    "stateSaveDebounceSeconds": "must be a positive number",
+    "lyricsFetchTimeoutSeconds": "must be a positive number",
+    "spicetifyPollingIntervalMs": "must be a positive integer",
+    "spicetifyQueuePollingIntervalMs": "must be a positive integer",
+    "spicetifyReconnectBaseDelayMs": "must be a positive integer",
+    "spicetifyReconnectMaxDelayMs": "must be a positive integer",
+    "spicetifyProgressDeltaThresholdMs": "must be a positive integer",
+    "spicetifyCommandFeedbackDelayMs": "must be a positive integer",
+    "obsUpNextThresholdMs": "must be a positive integer",
+    "enableOBS": "must be a boolean",
+    "enableWebsite": "must be a boolean",
+    "logLevel": "must be a string",
+    "allowedOrigins": "must be a list of strings",
 }
 
 
@@ -234,9 +234,10 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
     errors: list[str] = []
     updates: dict[str, Any] = {}
     for key, value in body.items():
-        if key not in _CONFIG_VALIDATORS:
+        if key not in CONFIG_FIELD_TYPES:
             continue
-        expected_type, error_msg = _CONFIG_VALIDATORS[key]
+        expected_type = CONFIG_FIELD_TYPES[key]
+        error_msg = _CONFIG_ERRORS.get(key, "invalid value")
         try:
             coerced = _coerce_type(value, expected_type)
         except (ValueError, TypeError):

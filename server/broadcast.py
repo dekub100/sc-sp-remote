@@ -32,6 +32,7 @@ async def broadcast(
     if not CLIENTS:
         return
     msg: str = json.dumps(message)
+    dead: list[web.WebSocketResponse] = []
     for ws, info in list(CLIENTS.items()):
         if ws == exclude_ws:
             continue
@@ -41,13 +42,15 @@ async def broadcast(
             await ws.send_str(msg)
         except ConnectionResetError:
             logger.debug(f"Broadcast: Client disconnected ({info.get('type', 'unknown')})")
-            CLIENTS.pop(ws, None)
+            dead.append(ws)
         except ConnectionAbortedError:
             logger.debug(f"Broadcast: Connection aborted ({info.get('type', 'unknown')})")
-            CLIENTS.pop(ws, None)
+            dead.append(ws)
         except Exception:
             logger.warning(f"Broadcast: Removing dead client ({info.get('type', 'unknown')})")
-            CLIENTS.pop(ws, None)
+            dead.append(ws)
+    for ws in dead:
+        CLIENTS.pop(ws, None)
 
 
 async def broadcast_current_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:

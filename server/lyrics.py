@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import aiohttp
 from broadcast import broadcast_lyrics_update
-from config import LYRICS_CACHE_DB
+from config import LYRICS_CACHE_DB, config
 from log import logger
 from state import state
 
@@ -106,6 +106,16 @@ def set_cached_lyrics(params: dict[str, Any], synced_lyrics: Optional[str], plai
     conn.commit()
 
 
+def _track_still_current(track_uri: str) -> bool:
+    return state["currentTrack"]["trackUri"] == track_uri
+
+
+def _discard_if_stale(track_uri: str) -> bool:
+    if not _track_still_current(track_uri):
+        return True
+    return False
+
+
 async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_name: str, album_name: str, duration_ms: int) -> None:
     duration_s: int = max(1, round(duration_ms / 1000))
     params: dict[str, Any] = {
@@ -120,7 +130,7 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
     if cached:
         synced_raw, plain, instrumental = cached
         synced: list[dict[str, Any]] = parse_synced_lyrics(synced_raw) if synced_raw else []
-        if state["currentTrack"]["trackUri"] != track_uri:
+        if _discard_if_stale(track_uri):
             return
         state["lyrics"] = {
             "trackUri": track_uri,
@@ -136,14 +146,15 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
 
     try:
         session = _get_session()
+        timeout_s = config.get("lyricsFetchTimeoutSeconds", 30)
         async with session.get(
             "https://lrclib.net/api/get",
             params=params,
-            timeout=aiohttp.ClientTimeout(total=30)
+            timeout=aiohttp.ClientTimeout(total=timeout_s)
         ) as resp:
             if resp.status == 200:
                 data: dict[str, Any] = await resp.json()
-                if state["currentTrack"]["trackUri"] != track_uri:
+                if _discard_if_stale(track_uri):
                     logger.info("Lyrics: Track changed during fetch, discarding.")
                     return
                 synced_raw = data.get("syncedLyrics") or ""
@@ -163,21 +174,21 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
                 await broadcast_lyrics_update()
             elif resp.status == 404:
                 logger.info(f"Lyrics: Not found for '{track_name}'")
-                if state["currentTrack"]["trackUri"] == track_uri:
+                if _track_still_current(track_uri):
                     state["lyrics"] = {"trackUri": track_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
                     await broadcast_lyrics_update()
             else:
                 logger.warning(f"Lyrics: LRCLIB returned status {resp.status}")
-                if state["currentTrack"]["trackUri"] == track_uri:
+                if _track_still_current(track_uri):
                     state["lyrics"]["loading"] = False
                     await broadcast_lyrics_update()
     except asyncio.TimeoutError:
-        logger.error(f"Lyrics: Timed out after 30s for '{track_name}' by '{artist_name}'")
-        if state["currentTrack"]["trackUri"] == track_uri:
+        logger.error(f"Lyrics: Timed out after {timeout_s}s for '{track_name}' by '{artist_name}'")
+        if _track_still_current(track_uri):
             state["lyrics"]["loading"] = False
             await broadcast_lyrics_update()
     except Exception as e:
         logger.error(f"Lyrics: Fetch failed for '{track_name}': {type(e).__name__}: {e}")
-        if state["currentTrack"]["trackUri"] == track_uri:
+        if _track_still_current(track_uri):
             state["lyrics"]["loading"] = False
             await broadcast_lyrics_update()
