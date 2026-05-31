@@ -11,7 +11,7 @@
 9. **Profanity filter base64** — two reasons: (a) protects streamers from accidentally displaying slurs in lyrics on stream/OBS, (b) avoids GitHub's automated content moderation flagging the repo for having a slur list in plaintext. NOT security through obscurity — trivially decoded in the browser.
 10. **`conftest.py`** adds `server/` to `sys.path` for `import server`.
 11. **`pyproject.toml`** has `asyncio_mode = "auto"` — no `@pytest.mark.asyncio` needed.
-12. **Stream Deck plugin source** in `streamdeck-plugin/` — `.streamDeckPlugin` in root is the pre-built package.
+12. **Stream Deck plugin source** in `streamdeck-plugin/` — build with `npm run build` then pack with `@elgato/cli`.
 13. **Server symbols re-exported** through `server.py` — tests use `import server; server.state` etc.
 14. **Lazy import for LYRICS_CACHE_DB** — `lyrics.py` uses a `_get_db_path()` helper to avoid circular imports.
 15. **`_write_state_to_disk` lives in `server.py`** — tests patch `server.STATE_FILE`.

@@ -12,8 +12,8 @@ import { VolumeDisplay } from "./actions/volume-display";
 import { SetVolume } from "./actions/set-volume";
 import { wsManager } from "./websocket-manager";
 
-// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
-streamDeck.logger.setLevel("trace");
+// Use "info" logging for production use. Change to "trace" for debugging.
+streamDeck.logger.setLevel("info");
 
 // Apply global port setting across all actions.
 streamDeck.settings.onDidReceiveGlobalSettings(({ settings }) => {

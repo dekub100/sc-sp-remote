@@ -232,7 +232,7 @@ streamdeck-plugin/     # Elgato Stream Deck plugin source
 python -m pytest test_server.py -v
 ```
 
-94 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, client registration, queue handlers, rate limiting, URI normalization, HTTP queue endpoints, and admin config validation.
+120 tests covering: lyrics parsing, state save, SQLite cache, message handlers, input validation, broadcasting, CORS config, client registration, queue handlers, rate limiting, URI normalization, HTTP queue endpoints, and admin config validation.
 
 ### Linting
 

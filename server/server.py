@@ -74,8 +74,6 @@ async def main() -> None:
 
     logger.info(f"Server: http://localhost:{config['port']}")
 
-    stop_event: asyncio.Event = asyncio.Event()
-
     try:
         main_site: web.TCPSite = web.TCPSite(main_runner, config.get('host', '0.0.0.0'), config['port'])
 
@@ -83,7 +81,7 @@ async def main() -> None:
 
         progress_task: asyncio.Task[None] = asyncio.create_task(start_progress_broadcasting())
 
-        await stop_event.wait()
+        await asyncio.sleep(365 * 86400)
     except (asyncio.CancelledError, KeyboardInterrupt):
         logger.info("Server: Stopping...")
     finally:
