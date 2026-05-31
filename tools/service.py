@@ -101,6 +101,9 @@ if __name__ == '__main__':
                 )
                 print("Startup type forced to: Automatic")
 
+                win32serviceutil.StartService(SpicetifyRemoteService)
+                print("Service started.")
+
             print(f"\nSUCCESS: Command '{command}' completed.")
         except SystemExit as e:
             if e.code == 0:
@@ -112,10 +115,16 @@ if __name__ == '__main__':
 
         if is_elevated_process:
             print("\n" + "="*40)
-            print("Operation complete. This window will close in 10 seconds...")
+            print("Operation complete. Press Enter or wait 10 seconds to close...")
             try:
-                time.sleep(10)
-            except KeyboardInterrupt:
+                import msvcrt
+                deadline = time.time() + 10
+                while time.time() < deadline:
+                    if msvcrt.kbhit():
+                        msvcrt.getch()
+                        break
+                    time.sleep(0.1)
+            except (ImportError, KeyboardInterrupt):
                 pass
     else:
         servicemanager.Initialize()
