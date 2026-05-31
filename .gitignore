@@ -2,12 +2,15 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Runtime data (new location)
+# Runtime data
 data/state.json
+data/state_spotify.json
+data/state_soundcloud.json
 data/logs/
 data/lyrics_cache.db
+localhost-*.log
 
-# Runtime data (legacy root location — backward compat)
+# Legacy runtime data
 state.json
 logs/
 lyrics_cache.db
@@ -21,3 +24,4 @@ venv/
 .ruff_cache/
 streamdeck-plugin/node_modules/
 *.streamDeckPlugin
+*.log

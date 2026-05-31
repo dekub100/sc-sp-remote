@@ -7,8 +7,9 @@ from typing import Any
 PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR: str = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
-CONFIG_PATH: str = os.environ.get("SPICETIFY_CONFIG", os.path.join(DATA_DIR, "config.json"))
-STATE_FILE: str = os.path.join(DATA_DIR, "state.json")
+CONFIG_PATH: str = os.environ.get("SC_REMOTE_CONFIG", os.path.join(DATA_DIR, "config.json"))
+STATE_FILE: str = os.path.join(DATA_DIR, "state_spotify.json")
+SC_STATE_FILE: str = os.path.join(DATA_DIR, "state_soundcloud.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
@@ -16,27 +17,24 @@ STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
 config: dict[str, Any] = {
-    "port": 8888,
+    "port": 8889,
     "host": "127.0.0.1",
     "allowedOrigins": ["*"],
     "defaultVolume": 0.5,
-    "enableOBS": True,
     "enableWebsite": True,
     "volumeStep": 0.05,
     "logLevel": "INFO",
     "backupCount": 3,
-    "maxQueueSize": 50,
-    "queueRateLimitSeconds": 30,
     "progressBroadcastInterval": 1.0,
     "stateSaveDebounceSeconds": 2.0,
-    "lyricsFetchTimeoutSeconds": 30,
+    "lyricsFetchTimeoutSeconds": 15,
     "spicetifyPollingIntervalMs": 500,
     "spicetifyQueuePollingIntervalMs": 2000,
     "spicetifyReconnectBaseDelayMs": 1000,
     "spicetifyReconnectMaxDelayMs": 10000,
     "spicetifyProgressDeltaThresholdMs": 2000,
     "spicetifyCommandFeedbackDelayMs": 150,
-    "obsUpNextThresholdMs": 15000,
+    "soundcloudPollingIntervalMs": 500,
 }
 
 if os.path.exists(CONFIG_PATH):
@@ -51,13 +49,10 @@ CONFIG_FIELD_TYPES: dict[str, type] = {
     "host": str,
     "allowedOrigins": list,
     "defaultVolume": float,
-    "enableOBS": bool,
     "enableWebsite": bool,
     "volumeStep": float,
     "logLevel": str,
     "backupCount": int,
-    "maxQueueSize": int,
-    "queueRateLimitSeconds": float,
     "progressBroadcastInterval": float,
     "stateSaveDebounceSeconds": float,
     "lyricsFetchTimeoutSeconds": float,
@@ -67,5 +62,5 @@ CONFIG_FIELD_TYPES: dict[str, type] = {
     "spicetifyReconnectMaxDelayMs": int,
     "spicetifyProgressDeltaThresholdMs": int,
     "spicetifyCommandFeedbackDelayMs": int,
-    "obsUpNextThresholdMs": int,
+    "soundcloudPollingIntervalMs": int,
 }

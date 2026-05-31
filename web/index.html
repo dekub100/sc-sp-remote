@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spicetify Remote</title>
+    <title>SC + Spotify Remote</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -13,64 +13,118 @@
     </div>
 
     <div class="container" id="mainContainer">
-        <div class="now-playing">
-            <img id="albumArt" src="" alt="Album Art">
-            <div class="song-info">
-                <div id="songTitle" class="song-title">
-                    <a id="songLink" href="#" target="_blank" class="marquee-wrapper">No song playing</a>
+        <!-- Source Tabs -->
+        <div class="source-tabs">
+            <button class="source-tab active" data-source="spotify">
+                <i class="fab fa-spotify"></i> Spotify
+            </button>
+            <button class="source-tab" data-source="soundcloud">
+                <i class="fab fa-soundcloud"></i> SoundCloud
+            </button>
+        </div>
+
+        <!-- Spotify Player -->
+        <div id="spotifyPanel" class="player-panel active">
+            <div class="now-playing">
+                <img id="albumArt" src="" alt="Album Art">
+                <div class="song-info">
+                    <div id="songTitle" class="song-title">
+                        <a id="songLink" href="#" target="_blank" class="marquee-wrapper">No song playing</a>
+                    </div>
+                    <div id="artistName" class="artist-name">
+                        <span class="marquee-wrapper"></span>
+                    </div>
+                    <div id="albumName" class="album-name">
+                        <a id="albumLink" href="#" target="_blank" class="marquee-wrapper"></a>
+                    </div>
                 </div>
-                <div id="artistName" class="artist-name">
-                    <span class="marquee-wrapper"></span>
+            </div>
+
+            <div class="track-progress-container">
+                <span id="currentTime">0:00</span>
+                <input type="range" id="progressBar" value="0" min="0" step="1">
+                <span id="durationTime">0:00</span>
+            </div>
+
+            <div class="playback-controls">
+                <button id="shuffleBtn" class="control-btn"><i class="fas fa-random"></i></button>
+                <button id="previousBtn" class="control-btn"><i class="fas fa-step-backward"></i></button>
+                <button id="playPauseBtn" class="control-btn main-control">
+                    <i class="fas fa-play"></i>
+                    <i class="fas fa-pause" style="display:none"></i>
+                </button>
+                <button id="nextBtn" class="control-btn"><i class="fas fa-step-forward"></i></button>
+                <button id="repeatBtn" class="control-btn">
+                    <i class="fas fa-repeat"></i>
+                    <span class="repeat-badge">1</span>
+                </button>
+            </div>
+
+            <div class="extra-controls">
+                <button id="likeBtn" class="control-btn"><i class="fas fa-heart"></i></button>
+                <div class="volume-control">
+                    <i class="fas fa-volume-up volume-icon"></i>
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01">
+                    <span id="volumeValue">50%</span>
                 </div>
-                <div id="albumName" class="album-name">
-                    <a id="albumLink" href="#" target="_blank" class="marquee-wrapper"></a>
-                </div>
+                <button id="lyricsBtn" class="control-btn" title="Toggle Lyrics">
+                    <i class="fas fa-microphone-alt"></i>
+                </button>
             </div>
         </div>
 
-        <div class="track-progress-container">
-            <span id="currentTime">0:00</span>
-            <input type="range" id="progressBar" value="0" min="0" step="1">
-            <span id="durationTime">0:00</span>
-        </div>
-
-        <div class="playback-controls">
-            <button id="shuffleBtn" class="control-btn"><i class="fas fa-random"></i></button>
-            <button id="previousBtn" class="control-btn"><i class="fas fa-step-backward"></i></button>
-            <button id="playPauseBtn" class="control-btn main-control">
-                <i class="fas fa-play"></i>
-                <i class="fas fa-pause" style="display:none"></i>
-            </button>
-            <button id="nextBtn" class="control-btn"><i class="fas fa-step-forward"></i></button>
-            <button id="repeatBtn" class="control-btn">
-                <i class="fas fa-repeat"></i>
-                <span class="repeat-badge">1</span>
-            </button>
-        </div>
-
-        <div class="extra-controls">
-            <button id="likeBtn" class="control-btn"><i class="fas fa-heart"></i></button>
-            <div class="volume-control">
-                <i class="fas fa-volume-up volume-icon"></i>
-                <input type="range" id="volumeSlider" min="0" max="1" step="0.01">
-                <span id="volumeValue">50%</span>
+        <!-- SoundCloud Player -->
+        <div id="soundcloudPanel" class="player-panel">
+            <div class="now-playing">
+                <img id="scAlbumArt" src="" alt="Track Art">
+                <div class="song-info">
+                    <div id="scSongTitle" class="song-title">
+                        <span class="marquee-wrapper">No song playing</span>
+                    </div>
+                    <div id="scArtistName" class="artist-name">
+                        <span class="marquee-wrapper"></span>
+                    </div>
+                </div>
             </div>
-            <button id="lyricsBtn" class="control-btn" title="Toggle Lyrics">
-                <i class="fas fa-microphone-alt"></i>
-            </button>
-            <button id="queueBtn" class="control-btn" title="Toggle Queue">
-                <i class="fas fa-list"></i>
-            </button>
+
+            <div class="track-progress-container">
+                <span id="scCurrentTime">0:00</span>
+                <input type="range" id="scProgressBar" value="0" min="0" step="1">
+                <span id="scDurationTime">0:00</span>
+            </div>
+
+            <div class="playback-controls">
+                <button id="scPreviousBtn" class="control-btn"><i class="fas fa-step-backward"></i></button>
+                <button id="scPlayPauseBtn" class="control-btn main-control">
+                    <i class="fas fa-play"></i>
+                    <i class="fas fa-pause" style="display:none"></i>
+                </button>
+                <button id="scNextBtn" class="control-btn"><i class="fas fa-step-forward"></i></button>
+            </div>
+
+            <div class="extra-controls">
+                <button id="scLikeBtn" class="control-btn"><i class="fas fa-heart"></i></button>
+                <div class="volume-control">
+                    <i class="fas fa-volume-up volume-icon"></i>
+                    <input type="range" id="scVolumeSlider" min="0" max="1" step="0.01">
+                    <span id="scVolumeValue">50%</span>
+                </div>
+            </div>
+
+            <div class="sc-notice">
+                <i class="fas fa-info-circle"></i>
+                Controlled via soundcloud-rpc plugin
+            </div>
         </div>
 
-        <!-- Lyrics Panel -->
+        <!-- Lyrics Panel (shared) -->
         <div id="lyricsPanel" class="lyrics-panel hidden">
             <div id="lyricsContent" class="lyrics-content">
                 <p class="lyrics-placeholder">Waiting for lyrics...</p>
             </div>
         </div>
 
-        <!-- Queue Panel -->
+        <!-- Queue Panel (Spotify only) -->
         <div id="queuePanel" class="queue-panel hidden">
             <div class="queue-header">
                 <h3>Queue <span id="queueCount" class="queue-count">0</span></h3>
@@ -80,6 +134,13 @@
                 <button id="queueAddBtn" class="queue-add-btn"><i class="fas fa-plus"></i></button>
             </div>
             <div id="queueList" class="queue-list"></div>
+        </div>
+
+        <!-- Toggle buttons -->
+        <div class="panel-toggles">
+            <button id="queueToggleBtn" class="control-btn" title="Toggle Queue">
+                <i class="fas fa-list"></i>
+            </button>
         </div>
     </div>
 

@@ -19,7 +19,7 @@ _session: aiohttp.ClientSession | None = None
 def _get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None:
-        _session = aiohttp.ClientSession(headers={"User-Agent": "SpicetifyRemote/1.0 (https://github.com/dekub/spicetify-remote)"})
+        _session = aiohttp.ClientSession(headers={"User-Agent": "SCRemote/1.0"})
     return _session
 
 
@@ -146,7 +146,7 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
 
     try:
         session = _get_session()
-        timeout_s = config.get("lyricsFetchTimeoutSeconds", 30)
+        timeout_s = config.get("lyricsFetchTimeoutSeconds", 15)
         async with session.get(
             "https://lrclib.net/api/get",
             params=params,

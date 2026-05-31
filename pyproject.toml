@@ -1,6 +1,6 @@
 [project]
-name = "spicetify-remote"
-version = "1.5.4"
+name = "sc-spotify-remote"
+version = "1.0.0"
 requires-python = ">=3.9"
 
 [tool.ruff]
@@ -10,17 +10,8 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = [
-    "E501",  # line length (handled by formatter)
+    "E501",
 ]
-
-[tool.mypy]
-python_version = "3.9"
-strict = false
-ignore_missing_imports = true
-warn_unreachable = true
-warn_redundant_casts = true
-disallow_untyped_defs = false
-warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["."]

@@ -7,9 +7,10 @@
     <link rel="stylesheet" href="/static/obs-widget/obs-style.css">
 </head>
 <body>
-    <div class="widget-container">
+    <div class="widget-container" id="widgetContainer">
+        <div class="source-badge" id="sourceBadge"></div>
         <img id="albumArt" src="" alt="Album Art" class="album-art">
-        
+
         <div class="info-container">
             <div class="text-info">
                 <div id="songTitle" class="song-title">
@@ -33,7 +34,6 @@
                 </div>
             </div>
 
-            <!-- Current lyric line -->
             <div id="lyricLine" class="lyric-line" aria-live="polite"></div>
         </div>
     </div>

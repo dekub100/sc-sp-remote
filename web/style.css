@@ -1,8 +1,8 @@
 :root {
-  --accent-color: #1db954; /* Default Spotify Green */
+  --accent-color: #1db954;
+  --sc-accent-color: #ff5500;
 }
 
-/* Simplified Main Website Style with Spotify Sliders */
 body {
   font-family:
     "Inter",
@@ -22,22 +22,73 @@ body {
 
 .container {
   background: #181818;
-  padding: 2.5rem;
+  padding: 2rem;
   border-radius: 12px;
   box-shadow: 0 4px 60px rgba(0, 0, 0, 0.5);
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
   transition: background 0.5s ease;
 }
 
+/* --- Source Tabs --- */
+.source-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.75rem;
+}
+
+.source-tab {
+  flex: 1;
+  background: #282828;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  color: #b3b3b3;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.source-tab:hover {
+  background: #333;
+  color: #fff;
+}
+
+.source-tab.active {
+  background: var(--accent-color);
+  color: #fff;
+}
+
+.source-tab[data-source="soundcloud"].active {
+  background: var(--sc-accent-color);
+}
+
+/* --- Player Panels --- */
+.player-panel {
+  display: none;
+}
+
+.player-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* --- Now Playing --- */
 .now-playing {
   text-align: center;
 }
 
-#albumArt {
+#albumArt, #scAlbumArt {
   width: 200px;
   height: 200px;
   border-radius: 8px;
@@ -45,7 +96,6 @@ body {
   margin-bottom: 1.5rem;
 }
 
-/* --- Marquee Logic --- */
 .song-title,
 .artist-name {
   overflow: hidden;
@@ -90,15 +140,11 @@ body {
 }
 
 @keyframes marquee-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
 }
 
-/* --- Spotify Styled Sliders --- */
+/* --- Sliders --- */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -107,7 +153,6 @@ input[type="range"] {
   width: 100%;
 }
 
-/* Track */
 input[type="range"]::-webkit-slider-runnable-track {
   background: #535353;
   height: 4px;
@@ -119,11 +164,10 @@ input[type="range"]::-moz-range-track {
   border-radius: 2px;
 }
 
-/* Thumb (Always visible for clarity) */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -6px; /* Center thumb */
+  margin-top: -6px;
   background-color: #fff;
   height: 12px;
   width: 12px;
@@ -150,9 +194,13 @@ input[type="range"]:hover::-moz-range-thumb {
   transform: scale(1.2);
 }
 
-/* Fill effect */
 input[type="range"] {
   accent-color: var(--accent-color);
+}
+
+/* SoundCloud slider accent */
+#soundcloudPanel input[type="range"] {
+  accent-color: var(--sc-accent-color);
 }
 
 /* --- Progress --- */
@@ -194,9 +242,13 @@ input[type="range"] {
   color: var(--accent-color);
 }
 
-/* Repeat Dot Logic */
+#soundcloudPanel .control-btn.active,
+#soundcloudPanel .control-btn.liked {
+  color: var(--sc-accent-color);
+}
+
 .control-btn.active::after {
-  content: "•";
+  content: "\2022";
   position: absolute;
   bottom: -8px;
   left: 50%;
@@ -205,7 +257,6 @@ input[type="range"] {
   line-height: 1;
 }
 
-/* Repeat One Badge ("1") */
 .repeat-badge {
   display: none;
   position: absolute;
@@ -214,8 +265,8 @@ input[type="range"] {
   transform: translate(-50%, -50%);
   font-size: 0.55rem;
   font-weight: 900;
-  color: #121212; /* Darker to show inside green icon */
-  background: var(--accent-color); /* Match active color to fill center */
+  color: #121212;
+  background: var(--accent-color);
   width: 10px;
   height: 10px;
   border-radius: 50%;
@@ -253,6 +304,37 @@ input[type="range"] {
   padding: 1rem 2rem;
   border-radius: 8px;
   font-weight: 600;
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+}
+
+/* --- SoundCloud Notice --- */
+.sc-notice {
+  text-align: center;
+  color: #666;
+  font-size: 0.75rem;
+  padding: 0.5rem;
+  border-top: 1px solid #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+/* --- Panel Toggles --- */
+.panel-toggles {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  border-top: 1px solid #333;
+  padding-top: 0.75rem;
+}
+
+.panel-toggles .control-btn {
+  font-size: 1rem;
 }
 
 /* --- Lyrics Panel --- */
@@ -269,7 +351,6 @@ input[type="range"] {
   overflow-y: auto;
   scroll-behavior: smooth;
   padding: 0.25rem 0.5rem;
-  /* Hide scrollbar visually but keep scrollable */
   scrollbar-width: thin;
   scrollbar-color: #333 transparent;
 }
@@ -307,7 +388,7 @@ input[type="range"] {
 }
 
 .lyric-line:empty::before {
-  content: "♪";
+  content: "\266A";
   color: #444;
 }
 
@@ -320,7 +401,6 @@ input[type="range"] {
   margin: 0;
 }
 
-/* Lyrics button active state */
 #lyricsBtn.active {
   color: var(--accent-color);
 }
@@ -516,9 +596,4 @@ input[type="range"] {
   font-size: 0.85rem;
   padding: 1.5rem 0;
   margin: 0;
-}
-
-/* Queue button active state */
-#queueBtn.active {
-  color: var(--accent-color);
 }

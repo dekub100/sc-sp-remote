@@ -6,11 +6,11 @@ import os
 from typing import Any
 
 from aiohttp import web
-from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_spicetify_client
+from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_soundcloud_client, set_spicetify_client
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
-from state import check_rate_limit, is_queue_full, parse_track_input, pendingQueueMeta, state
+from state import check_rate_limit, parse_track_input, pendingQueueMeta, state
 
 
 def _write_config_to_disk() -> None:
@@ -32,8 +32,10 @@ def _build_client_config(client_type: str) -> dict[str, Any]:
             "progressDeltaThresholdMs": config.get("spicetifyProgressDeltaThresholdMs", 2000),
             "commandFeedbackDelayMs": config.get("spicetifyCommandFeedbackDelayMs", 150),
         })
-    elif client_type == "obs":
-        base["upNextThresholdMs"] = config.get("obsUpNextThresholdMs", 15000)
+    elif client_type == "soundcloud":
+        base.update({
+            "pollingIntervalMs": config.get("soundcloudPollingIntervalMs", 500),
+        })
     return base
 
 
@@ -65,6 +67,8 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
 
     if client_type == "spicetify":
         set_spicetify_client(ws)
+    elif client_type == "soundcloud":
+        set_soundcloud_client(ws)
     else:
         await handle_get_initial_state(ws, {})
 
@@ -76,8 +80,11 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
                 logger.error(f'WebSocket connection closed with exception {ws.exception()}')
     finally:
         info: dict[str, Any] | None = CLIENTS.pop(ws, None)
-        if info and info.get("type") == "spicetify":
-            set_spicetify_client(None)
+        if info:
+            if info.get("type") == "spicetify":
+                set_spicetify_client(None)
+            elif info.get("type") == "soundcloud":
+                set_soundcloud_client(None)
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
 
     return ws
@@ -89,7 +96,6 @@ async def handle_config(request: web.Request) -> web.Response:
         "port": config["port"],
         "allowedOrigins": config["allowedOrigins"],
         "defaultVolume": config["defaultVolume"],
-        "enableOBS": config.get("enableOBS", True),
         "enableWebsite": config.get("enableWebsite", True)
     }, headers=headers)
 
@@ -101,20 +107,35 @@ def format_ms(ms: int) -> str:
 
 async def handle_state(request: web.Request) -> web.Response:
     return web.json_response({
-        "trackName": state["currentTrack"]["trackName"],
-        "artistName": state["currentTrack"]["artistName"],
-        "albumName": state["currentTrack"]["albumName"],
-        "trackUri": state["currentTrack"]["trackUri"],
-        "albumArtUrl": state["currentTrack"]["albumArtUrl"],
-        "volume": state["volume"],
-        "isPlaying": state["isPlaying"],
-        "isShuffling": state["isShuffling"],
-        "repeatStatus": state["repeatStatus"],
-        "isLiked": state["isLiked"],
-        "progress": state["trackProgress"],
-        "duration": state["trackDuration"],
-        "progressFmt": format_ms(state["trackProgress"]),
-        "durationFmt": format_ms(state["trackDuration"])
+        "spotify": {
+            "trackName": state["currentTrack"]["trackName"],
+            "artistName": state["currentTrack"]["artistName"],
+            "albumName": state["currentTrack"]["albumName"],
+            "trackUri": state["currentTrack"]["trackUri"],
+            "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+            "volume": state["volume"],
+            "isPlaying": state["isPlaying"],
+            "isShuffling": state["isShuffling"],
+            "repeatStatus": state["repeatStatus"],
+            "isLiked": state["isLiked"],
+            "progress": state["trackProgress"],
+            "duration": state["trackDuration"],
+            "progressFmt": format_ms(state["trackProgress"]),
+            "durationFmt": format_ms(state["trackDuration"])
+        },
+        "soundcloud": {
+            "track": state["scTrack"],
+            "artist": state["scArtist"],
+            "album": state["scAlbum"],
+            "coverUrl": state["scCoverUrl"],
+            "isPlaying": state["scIsPlaying"],
+            "progressMs": state["scProgressMs"],
+            "durationMs": state["scDurationMs"],
+            "volume": state["scVolume"],
+            "isLiked": state["scIsLiked"],
+            "progressFmt": format_ms(state["scProgressMs"]),
+            "durationFmt": format_ms(state["scDurationMs"])
+        }
     })
 
 
@@ -150,12 +171,6 @@ async def handle_queue_add(request: web.Request) -> web.Response:
     allowed, msg = check_rate_limit(requester)
     if not allowed:
         return web.json_response({"error": msg}, status=429, headers=_cors_headers(request))
-
-    if is_queue_full():
-        return web.json_response({"error": "Queue is full"}, status=400, headers=_cors_headers(request))
-
-    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
-        return web.json_response({"error": "Track already in queue"}, status=400, headers=_cors_headers(request))
 
     pendingQueueMeta.append({"uri": normalized_uri, "requestedBy": requester})
     await broadcast({
@@ -201,39 +216,6 @@ async def handle_admin_config_get(request: web.Request) -> web.Response:
     return web.json_response(config, headers=_cors_headers(request))
 
 
-_CONFIG_ERRORS: dict[str, str] = {
-    "port": "must be an integer between 1 and 65535",
-    "host": "must be a valid IP address or hostname",
-    "defaultVolume": "must be a number between 0.0 and 1.0",
-    "volumeStep": "must be a number between 0.001 and 1.0",
-    "maxQueueSize": "must be a positive integer",
-    "queueRateLimitSeconds": "must be a non-negative number",
-    "backupCount": "must be a non-negative integer",
-    "progressBroadcastInterval": "must be a positive number",
-    "stateSaveDebounceSeconds": "must be a positive number",
-    "lyricsFetchTimeoutSeconds": "must be a positive number",
-    "spicetifyPollingIntervalMs": "must be a positive integer",
-    "spicetifyQueuePollingIntervalMs": "must be a positive integer",
-    "spicetifyReconnectBaseDelayMs": "must be a positive integer",
-    "spicetifyReconnectMaxDelayMs": "must be a positive integer",
-    "spicetifyProgressDeltaThresholdMs": "must be a positive integer",
-    "spicetifyCommandFeedbackDelayMs": "must be a positive integer",
-    "obsUpNextThresholdMs": "must be a positive integer",
-    "enableOBS": "must be a boolean",
-    "enableWebsite": "must be a boolean",
-    "logLevel": "must be a string",
-    "allowedOrigins": "must be a list of strings",
-}
-
-
-def _coerce_type(value: Any, expected_type: type) -> Any:
-    if expected_type is list:
-        if not isinstance(value, list):
-            raise TypeError(f"expected list, got {type(value).__name__}")
-        return value
-    return expected_type(value)
-
-
 async def handle_admin_config_put(request: web.Request) -> web.Response:
     try:
         body: dict[str, Any] = await request.json()
@@ -246,45 +228,16 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
         if key not in CONFIG_FIELD_TYPES:
             continue
         expected_type = CONFIG_FIELD_TYPES[key]
-        error_msg = _CONFIG_ERRORS.get(key, "invalid value")
         try:
-            coerced = _coerce_type(value, expected_type)
+            if expected_type is list:
+                if not isinstance(value, list):
+                    raise TypeError(f"expected list, got {type(value).__name__}")
+                coerced = value
+            else:
+                coerced = expected_type(value)
         except (ValueError, TypeError):
-            errors.append(f"{key}: {error_msg}")
+            errors.append(f"{key}: invalid value")
             continue
-        if not isinstance(coerced, expected_type):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key == "port" and (coerced < 1 or coerced > 65535):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("defaultVolume",) and (coerced < 0.0 or coerced > 1.0):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("volumeStep",) and (coerced < 0.001 or coerced > 1.0):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("maxQueueSize", "backupCount") and coerced < 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("queueRateLimitSeconds",) and coerced < 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("progressBroadcastInterval", "stateSaveDebounceSeconds",
-                     "lyricsFetchTimeoutSeconds",
-                     "spicetifyPollingIntervalMs", "spicetifyQueuePollingIntervalMs",
-                     "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
-                     "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
-                     "obsUpNextThresholdMs") and coerced <= 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key == "logLevel" and coerced not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-            errors.append(f"{key}: must be one of DEBUG, INFO, WARNING, ERROR")
-            continue
-        if key == "allowedOrigins":
-            if not all(isinstance(o, str) for o in coerced):
-                errors.append(f"{key}: must be a list of strings")
-                continue
         updates[key] = coerced
 
     if errors:
