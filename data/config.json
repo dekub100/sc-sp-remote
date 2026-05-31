@@ -1,15 +1,12 @@
 {
-  "port": 8888,
+  "port": 8889,
   "host": "127.0.0.1",
   "allowedOrigins": ["*"],
   "defaultVolume": 0.5,
-  "enableOBS": true,
   "enableWebsite": true,
   "volumeStep": 0.05,
   "logLevel": "INFO",
   "backupCount": 3,
-  "maxQueueSize": 50,
-  "queueRateLimitSeconds": 30,
   "progressBroadcastInterval": 1,
   "stateSaveDebounceSeconds": 2,
   "lyricsFetchTimeoutSeconds": 15,
@@ -19,5 +16,5 @@
   "spicetifyReconnectMaxDelayMs": 10000,
   "spicetifyProgressDeltaThresholdMs": 2000,
   "spicetifyCommandFeedbackDelayMs": 150,
-  "obsUpNextThresholdMs": 15000
+  "soundcloudPollingIntervalMs": 500
 }

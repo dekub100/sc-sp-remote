@@ -13,6 +13,7 @@ from state import state
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
 spicetify_client: Optional[web.WebSocketResponse] = None
+soundcloud_client: Optional[web.WebSocketResponse] = None
 
 
 def set_spicetify_client(ws: Optional[web.WebSocketResponse]) -> None:
@@ -22,6 +23,15 @@ def set_spicetify_client(ws: Optional[web.WebSocketResponse]) -> None:
 
 def get_spicetify_client() -> Optional[web.WebSocketResponse]:
     return spicetify_client
+
+
+def set_soundcloud_client(ws: Optional[web.WebSocketResponse]) -> None:
+    global soundcloud_client
+    soundcloud_client = ws
+
+
+def get_soundcloud_client() -> Optional[web.WebSocketResponse]:
+    return soundcloud_client
 
 
 async def broadcast(
@@ -53,9 +63,10 @@ async def broadcast(
         CLIENTS.pop(ws, None)
 
 
-async def broadcast_current_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+async def broadcast_spotify_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
     full_state_message: dict[str, Any] = {
         "type": "stateUpdate",
+        "source": "spotify",
         "volume": state["volume"],
         "isPlaying": state["isPlaying"],
         "trackName": state["currentTrack"]["trackName"],
@@ -74,31 +85,75 @@ async def broadcast_current_state(exclude_ws: Optional[web.WebSocketResponse] = 
     await broadcast(full_state_message, exclude_ws)
 
 
+async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    sc_state_message: dict[str, Any] = {
+        "type": "scStateUpdate",
+        "source": "soundcloud",
+        "track": state["scTrack"],
+        "artist": state["scArtist"],
+        "album": state["scAlbum"],
+        "id": state["scId"],
+        "coverUrl": state["scCoverUrl"],
+        "isPlaying": state["scIsPlaying"],
+        "progressMs": state["scProgressMs"],
+        "durationMs": state["scDurationMs"],
+        "volume": state["scVolume"],
+        "isLiked": state["scIsLiked"],
+        "timestamp": time.time() * 1000
+    }
+    await broadcast(sc_state_message, exclude_ws)
+
+
 async def broadcast_volume_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    now = time.time() * 1000
     await broadcast({
         "type": "volumeUpdate",
+        "source": "spotify",
         "volume": state["volume"]
+    }, exclude_ws)
+    await broadcast({
+        "type": "scVolumeUpdate",
+        "source": "soundcloud",
+        "volume": state["scVolume"]
     }, exclude_ws)
 
 
 async def broadcast_playback_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    now = time.time() * 1000
     await broadcast({
         "type": "playbackUpdate",
+        "source": "spotify",
         "isPlaying": state["isPlaying"],
         "progress": state["trackProgress"],
-        "timestamp": time.time() * 1000
+        "timestamp": now
+    }, exclude_ws)
+    await broadcast({
+        "type": "scPlaybackUpdate",
+        "source": "soundcloud",
+        "isPlaying": state["scIsPlaying"],
+        "progressMs": state["scProgressMs"],
+        "timestamp": now
     }, exclude_ws)
 
 
 async def broadcast_progress_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
-    progress_message: dict[str, Any] = {
+    now = time.time() * 1000
+    await broadcast({
         "type": "progressUpdate",
+        "source": "spotify",
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],
         "isPlaying": state["isPlaying"],
-        "timestamp": time.time() * 1000
-    }
-    await broadcast(progress_message, exclude_ws)
+        "timestamp": now
+    }, exclude_ws)
+    await broadcast({
+        "type": "scProgressUpdate",
+        "source": "soundcloud",
+        "progressMs": state["scProgressMs"],
+        "durationMs": state["scDurationMs"],
+        "isPlaying": state["scIsPlaying"],
+        "timestamp": now
+    }, exclude_ws)
 
 
 async def broadcast_lyrics_update() -> None:
@@ -115,20 +170,31 @@ async def broadcast_lyrics_update() -> None:
 
 async def _compute_and_broadcast_progress() -> None:
     now: float = time.time() * 1000
-    elapsed: float = now - state["trackProgressStartTimestamp"]
-    interpolated: float = min(state["trackProgress"] + elapsed, state["trackDuration"])
+    spotify_elapsed: float = now - state["trackProgressStartTimestamp"]
+    spotify_interpolated: float = min(state["trackProgress"] + spotify_elapsed, state["trackDuration"])
     await broadcast({
         "type": "progressUpdate",
-        "progress": int(interpolated),
+        "source": "spotify",
+        "progress": int(spotify_interpolated),
         "duration": state["trackDuration"],
-        "isPlaying": True,
+        "isPlaying": state["isPlaying"],
+        "timestamp": now
+    })
+    sc_elapsed: float = now - state["scProgressStartTimestamp"]
+    sc_interpolated: float = min(state["scProgressMs"] + sc_elapsed, state["scDurationMs"])
+    await broadcast({
+        "type": "scProgressUpdate",
+        "source": "soundcloud",
+        "progressMs": int(sc_interpolated),
+        "durationMs": state["scDurationMs"],
+        "isPlaying": state["scIsPlaying"],
         "timestamp": now
     })
 
 
 async def start_progress_broadcasting() -> None:
     while True:
-        if state["isPlaying"]:
+        if state["isPlaying"] or state["scIsPlaying"]:
             await _compute_and_broadcast_progress()
         await asyncio.sleep(PROGRESS_BROADCAST_INTERVAL)
 

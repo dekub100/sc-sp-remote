@@ -1,11 +1,10 @@
-// Spicetify extension to sync Spotify's state with a remote server.
-// Refactored for performance, reliability, and modern Spicetify API usage.
+// Spicetify extension to sync Spotify's state with the sc-spotify-remote server.
+// Adapted from spicetify-remote's remoteVolume.js.
 
 (function remoteVolume() {
   const SpotifyRemote = {
-    // --- Configuration ---
     config: {
-      DEFAULT_PORT: 8888,
+      DEFAULT_PORT: 8889,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
       QUEUE_POLLING_INTERVAL_MS: 2000,
@@ -18,7 +17,6 @@
       VOLUME_STEP: 0.05,
     },
 
-    // --- State Management ---
     state: {
       volume: -1,
       isPlaying: false,
@@ -36,7 +34,6 @@
     pollInterval: null,
     queueInterval: null,
 
-    // --- Initialization ---
     init() {
       if (!Spicetify.Player || !Spicetify.Platform) {
         setTimeout(this.init.bind(this), 300);
@@ -47,7 +44,6 @@
       this.connect();
     },
 
-    // --- WebSocket Logic ---
     connect() {
       if (this.ws) {
         this.ws.close();
@@ -77,11 +73,9 @@
     applyClientConfig(data) {
       if (data.pollingIntervalMs !== undefined) {
         this.config.POLLING_INTERVAL_MS = data.pollingIntervalMs;
-        console.log(`[RemoteVolume] Config: pollingInterval = ${data.pollingIntervalMs}ms`);
       }
       if (data.queuePollingIntervalMs !== undefined) {
         this.config.QUEUE_POLLING_INTERVAL_MS = data.queuePollingIntervalMs;
-        console.log(`[RemoteVolume] Config: queuePollingInterval = ${data.queuePollingIntervalMs}ms`);
       }
       if (data.reconnectBaseDelayMs !== undefined) {
         this.config.RECONNECT_DELAY_BASE = data.reconnectBaseDelayMs;
@@ -115,7 +109,9 @@
           case "shuffleUpdate":
           case "repeatUpdate":
           case "likeUpdate":
-            this.applyServerState(data);
+            if (data.source === "spotify" || !data.source) {
+              this.applyServerState(data);
+            }
             break;
           case "playbackControl":
             this.handleCommand(data);
@@ -143,7 +139,6 @@
 
     onError(err) {
       console.error("[RemoteVolume] Socket error:", err);
-      // specific error handling if needed, usually 'onclose' follows
     },
 
     scheduleReconnect(callback) {
@@ -168,11 +163,6 @@
       try { return fn(); } catch { return fallback; }
     },
 
-    // --- Helpers ---
-
-    /**
-     * Converts a Spotify internal image URI to a public URL.
-     */
     getAlbumArtUrl(track) {
       const meta = track.metadata || {};
       let artUrl = "";
@@ -186,8 +176,6 @@
       }
       return artUrl;
     },
-
-    // --- Core Logic ---
 
     startServices() {
       this.setupEventListeners();
@@ -231,15 +219,12 @@
       Spicetify.Player.addEventListener("onplaypause", this._onPlayPause);
     },
 
-    /**
-     * Checks state that requires polling (Volume, Shuffle, Repeat, Heart)
-     */
     checkPolledState() {
       this.checkVolume();
       this.checkShuffle();
       this.checkRepeat();
       this.checkLikeStatus();
-      this.checkProgressChange(); 
+      this.checkProgressChange();
     },
 
     syncFullState() {
@@ -252,6 +237,7 @@
 
       const snapshot = {
         type: "stateUpdate",
+        source: "spotify",
         volume: this._safeGet(() => Spicetify.Player.getVolume(), 0.5),
         isPlaying: this._safeGet(() => Spicetify.Player.isPlaying(), false),
         isShuffling: this._safeGet(() => Spicetify.Player.getShuffle(), false),
@@ -272,13 +258,11 @@
       this.checkQueue();
     },
 
-    // --- Individual Checkers (The Deltas) ---
-
     checkVolume(force = false) {
       const vol = this._safeGet(() => Spicetify.Player.getVolume(), this.state.volume);
       if (force || Math.abs(vol - this.state.volume) > 0.001) {
         this.state.volume = vol;
-        this.send({ type: "volumeUpdate", volume: vol });
+        this.send({ type: "volumeUpdate", source: "spotify", volume: vol });
       }
     },
 
@@ -286,7 +270,7 @@
       const isPlaying = this._safeGet(() => Spicetify.Player.isPlaying(), this.state.isPlaying);
       if (force || isPlaying !== this.state.isPlaying) {
         this.state.isPlaying = isPlaying;
-        this.send({ type: "playbackUpdate", isPlaying: isPlaying, progress: this._safeGet(() => Spicetify.Player.getProgress(), 0) });
+        this.send({ type: "playbackUpdate", source: "spotify", isPlaying: isPlaying, progress: this._safeGet(() => Spicetify.Player.getProgress(), 0) });
       }
     },
 
@@ -294,7 +278,7 @@
       const isShuffling = this._safeGet(() => Spicetify.Player.getShuffle(), this.state.isShuffling);
       if (force || isShuffling !== this.state.isShuffling) {
         this.state.isShuffling = isShuffling;
-        this.send({ type: "shuffleUpdate", isShuffling: isShuffling });
+        this.send({ type: "shuffleUpdate", source: "spotify", isShuffling: isShuffling });
       }
     },
 
@@ -302,7 +286,7 @@
       const repeat = this._safeGet(() => Spicetify.Player.getRepeat(), this.state.repeatStatus);
       if (force || repeat !== this.state.repeatStatus) {
         this.state.repeatStatus = repeat;
-        this.send({ type: "repeatUpdate", repeatStatus: repeat });
+        this.send({ type: "repeatUpdate", source: "spotify", repeatStatus: repeat });
       }
     },
 
@@ -310,7 +294,7 @@
       const isLiked = this._safeGet(() => Spicetify.Player.getHeart(), this.state.isLiked);
       if (force || isLiked !== this.state.isLiked) {
         this.state.isLiked = isLiked;
-        this.send({ type: "likeUpdate", isLiked: isLiked });
+        this.send({ type: "likeUpdate", source: "spotify", isLiked: isLiked });
       }
     },
 
@@ -326,6 +310,7 @@
 
         const metadata = {
           type: "trackUpdate",
+          source: "spotify",
           trackName: track.name || meta.title || "Unknown Track",
           artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
           albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
@@ -347,13 +332,12 @@
         this.state.progress = progress;
         this.send({
           type: "progressUpdate",
+          source: "spotify",
           progress: progress,
           duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
         });
       }
     },
-
-    // --- Server -> Client Command Handling ---
 
     applyServerState(serverState) {
       const isStaleWindow = (Date.now() - this.connectionTimestamp) < this.config.STALE_CONNECTION_WINDOW_MS;
@@ -502,9 +486,6 @@
         const uri = data.uri;
         const uid = data.uid;
         if (!uri) return;
-        if (!uid) {
-          console.warn("[RemoteVolume] removeFromQueue: no uid provided, may remove duplicates");
-        }
         const track = { uri };
         if (uid) track.uid = uid;
         await Spicetify.removeFromQueue([track]);

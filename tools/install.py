@@ -1,99 +1,92 @@
+"""Install tools for sc-spotify-remote."""
+from __future__ import annotations
+
 import json
 import os
-import platform
 import re
-import subprocess
+import shutil
 import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.json")
 
 
-def run_command(command):
-    print(f"Running: {' '.join(command)}")
-    try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
-        print(result.stdout)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e.stderr}")
-        return False
-    except FileNotFoundError:
-        print(f"Error: Command '{command[0]}' not found. Is Spicetify installed and in your PATH?")
-        return False
-
-def install_dependencies():
-    print("Checking for required Python packages...")
-    req_path = os.path.join(PROJECT_ROOT, "requirements.txt")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing dependencies: {e}")
-        return False
-    except FileNotFoundError:
-        print(f"Error: Python executable not found: {sys.executable}")
-        return False
-
-def setup_extension():
-    if not install_dependencies():
-        print("\nWarning: Could not install Python dependencies automatically.")
-        print("Please run: pip install aiohttp pywin32\n")
-
-    system = platform.system()
-    if system == "Windows":
-        base_path = os.path.join(os.getenv('APPDATA'), 'spicetify')
-    elif system == "Linux":
-        base_path = os.path.expanduser('~/.config/spicetify')
-    elif system == "Darwin":
-        base_path = os.path.expanduser('~/Library/Application Support/spicetify')
-    else:
-        print(f"Error: Unsupported operating system: {system}")
+def install_spicetify_extension() -> None:
+    """Copy the Spicetify extension to the Spicetify Extensions directory."""
+    spicetify_dir = os.path.join(os.environ.get("APPDATA", ""), "spicetify", "Extensions")
+    if not os.path.exists(spicetify_dir):
+        print(f"Spicetify extensions directory not found: {spicetify_dir}")
+        print("Make sure Spicetify is installed.")
         return
 
-    extensions_path = os.path.join(base_path, 'Extensions')
+    src = os.path.join(PROJECT_ROOT, "spicetify-extension", "remoteVolume.js")
+    dst = os.path.join(spicetify_dir, "remoteVolume.js")
 
-    if not os.path.exists(extensions_path):
-        os.makedirs(extensions_path, exist_ok=True)
+    if os.path.exists(dst):
+        print(f"Extension already exists at {dst}")
+        overwrite = input("Overwrite? (y/n): ").strip().lower()
+        if overwrite != "y":
+            print("Skipped.")
+            return
 
-    source_file = os.path.join(PROJECT_ROOT, "spicetify-extension", "remoteVolume.js")
-    if not os.path.exists(source_file):
-        print(f"Error: remoteVolume.js not found at {source_file}")
+    shutil.copy2(src, dst)
+    print(f"Installed Spicetify extension to: {dst}")
+
+    # Auto-patch port
+    config_path = os.path.join(PROJECT_ROOT, "data", "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        port = config.get("port", 8889)
+
+        with open(dst, "r") as f:
+            content = f.read()
+        content = re.sub(r"DEFAULT_PORT:\s*\d+", f"DEFAULT_PORT: {port}", content)
+        with open(dst, "w") as f:
+            f.write(content)
+        print(f"Patched extension port to {port}")
+
+
+def install_soundcloud_plugin() -> None:
+    """Copy the SoundCloud plugin to the soundcloud-rpc plugins directory."""
+    sc_dir = os.path.join(os.environ.get("APPDATA", ""), "soundcloud-rpc", "plugins")
+    if not os.path.exists(sc_dir):
+        print(f"soundcloud-rpc plugins directory not found: {sc_dir}")
+        print("Make sure soundcloud-rpc is installed.")
         return
 
-    port = 8888
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r") as f:
-                cfg = json.load(f)
-            port = int(cfg.get("port", 8888))
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"Warning: Could not read config.json port, using default 8888: {e}")
+    src = os.path.join(PROJECT_ROOT, "soundcloud-plugin", "soundcloud-remote-bridge.js")
+    dst = os.path.join(sc_dir, "soundcloud-remote-bridge.js")
 
-    with open(source_file, "r", encoding="utf-8") as f:
-        content = f.read()
+    if os.path.exists(dst):
+        print(f"Plugin already exists at {dst}")
+        overwrite = input("Overwrite? (y/n): ").strip().lower()
+        if overwrite != "y":
+            print("Skipped.")
+            return
 
-    patched_content = re.sub(r'(DEFAULT_PORT:\s*)\d+', rf'\g<1>{port}', content)
-    if patched_content == content:
-        print("Warning: Could not patch DEFAULT_PORT in remoteVolume.js")
+    shutil.copy2(src, dst)
+    print(f"Installed SoundCloud plugin to: {dst}")
+    print("Restart soundcloud-rpc to load the plugin.")
 
-    dest_path = os.path.join(extensions_path, "remoteVolume.js")
-    with open(dest_path, "w", encoding="utf-8") as f:
-        f.write(patched_content)
 
-    print(f"Extension patched to use port {port}")
-
-    print("Registering extension with Spicetify...")
-    if run_command(["spicetify", "config", "extensions", "remoteVolume.js"]):
-        print("Applying Spicetify changes...")
-        if run_command(["spicetify", "apply"]):
-            print("\nSuccess! Spicetify extension installed and applied.")
-            print("Make sure your server (python server/server.py) is running!")
+def main() -> None:
+    if len(sys.argv) > 1:
+        target = sys.argv[1].lower()
+        if target == "spicetify":
+            install_spicetify_extension()
+        elif target == "soundcloud":
+            install_soundcloud_plugin()
         else:
-            print("\nFailed to apply changes. Try running 'spicetify apply' manually.")
+            print(f"Unknown target: {target}")
+            print("Usage: python tools/install.py [spicetify|soundcloud]")
     else:
-        print("\nFailed to register extension.")
+        print("Installing both extensions...")
+        install_spicetify_extension()
+        print()
+        install_soundcloud_plugin()
+        print()
+        print("Done! Start the server with: python server/server.py")
+
 
 if __name__ == "__main__":
-    print(f"--- Spicetify Remote Setup ({platform.system()}) ---")
-    setup_extension()
+    main()

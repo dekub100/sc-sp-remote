@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from typing import Any, Optional
 
@@ -9,12 +10,14 @@ from aiohttp import web
 from broadcast import (
     CLIENTS,
     broadcast,
-    broadcast_current_state,
     broadcast_lyrics_update,
     broadcast_playback_update,
     broadcast_progress_update,
     broadcast_queue_update,
+    broadcast_soundcloud_state,
+    broadcast_spotify_state,
     broadcast_volume_update,
+    set_soundcloud_client,
     set_spicetify_client,
 )
 from config import config
@@ -22,14 +25,14 @@ from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
     check_rate_limit,
-    is_queue_full,
     parse_track_input,
     pendingQueueMeta,
-    save_state_to_file_debounced,
+    save_sc_state_debounced,
+    save_spotify_state_debounced,
     state,
 )
 
-KNOWN_CLIENT_TYPES: frozenset[str] = frozenset({"spicetify", "website", "obs"})
+KNOWN_CLIENT_TYPES: frozenset[str] = frozenset({"spicetify", "soundcloud", "website", "obs"})
 PROTOCOL_VERSION: int = 1
 
 
@@ -43,6 +46,8 @@ async def handle_register(ws: web.WebSocketResponse, data: dict[str, Any]) -> No
     CLIENTS[ws]["protocolVersion"] = client_version
     if client_type == "spicetify":
         set_spicetify_client(ws)
+    elif client_type == "soundcloud":
+        set_soundcloud_client(ws)
     logger.info(f"Client registered as: {client_type} (protocol v{client_version})")
     await ws.send_str(json.dumps({"type": "registered", "protocolVersion": PROTOCOL_VERSION}))
 
@@ -50,6 +55,7 @@ async def handle_register(ws: web.WebSocketResponse, data: dict[str, Any]) -> No
 async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     initial_state: dict[str, Any] = {
         "type": "stateUpdate",
+        "source": "spotify",
         "volume": state["volume"],
         "isPlaying": state["isPlaying"],
         "trackName": state["currentTrack"]["trackName"],
@@ -66,6 +72,24 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "timestamp": time.time() * 1000
     }
     await ws.send_str(json.dumps(initial_state))
+
+    sc_state: dict[str, Any] = {
+        "type": "scStateUpdate",
+        "source": "soundcloud",
+        "track": state["scTrack"],
+        "artist": state["scArtist"],
+        "album": state["scAlbum"],
+        "id": state["scId"],
+        "coverUrl": state["scCoverUrl"],
+        "isPlaying": state["scIsPlaying"],
+        "progressMs": state["scProgressMs"],
+        "durationMs": state["scDurationMs"],
+        "volume": state["scVolume"],
+        "isLiked": state["scIsLiked"],
+        "timestamp": time.time() * 1000
+    }
+    await ws.send_str(json.dumps(sc_state))
+
     lyrics: dict[str, Any] = state["lyrics"]
     lyrics_msg: str = json.dumps({
         "type": "lyricsUpdate",
@@ -83,46 +107,9 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
     await ws.send_str(queue_msg)
 
 
-async def handle_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    volume_step: float = config.get("volumeStep", 0.05)
-    if data.get("command") == "volumeUp":
-        state["volume"] = min(1.0, state["volume"] + volume_step)
-    elif data.get("command") == "volumeDown":
-        state["volume"] = max(0.0, state["volume"] - volume_step)
-    elif isinstance(data.get("volume"), (int, float)):
-        state["volume"] = max(0.0, min(1.0, data["volume"]))
-    await save_state_to_file_debounced()
-    await broadcast_volume_update()
+# --- Spotify handlers ---
 
-
-async def handle_playback_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    if "isPlaying" in data:
-        state["isPlaying"] = data["isPlaying"]
-    state["trackProgress"] = data.get("progress", state["trackProgress"])
-    state["trackProgressStartTimestamp"] = time.time() * 1000
-    await save_state_to_file_debounced()
-    await broadcast_playback_update(exclude_ws=ws)
-
-
-async def handle_shuffle_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["isShuffling"] = data.get("isShuffling", False)
-    await save_state_to_file_debounced()
-    await broadcast({"type": "shuffleUpdate", "isShuffling": state["isShuffling"]}, exclude_ws=ws)
-
-
-async def handle_repeat_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["repeatStatus"] = data.get("repeatStatus", 0)
-    await save_state_to_file_debounced()
-    await broadcast({"type": "repeatUpdate", "repeatStatus": state["repeatStatus"]}, exclude_ws=ws)
-
-
-async def handle_like_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["isLiked"] = data.get("isLiked", False)
-    await save_state_to_file_debounced()
-    await broadcast({"type": "likeUpdate", "isLiked": state["isLiked"]}, exclude_ws=ws)
-
-
-async def handle_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     if "volume" in data:
         state["volume"] = data["volume"]
     if "isPlaying" in data:
@@ -161,8 +148,8 @@ async def handle_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -
         ))
         task.add_done_callback(_lyrics_task_done)
 
-    await save_state_to_file_debounced()
-    await broadcast_current_state(exclude_ws=ws)
+    await save_spotify_state_debounced()
+    await broadcast_spotify_state(exclude_ws=ws)
 
 
 def _lyrics_task_done(task: asyncio.Task[None]) -> None:
@@ -174,20 +161,118 @@ def _lyrics_task_done(task: asyncio.Task[None]) -> None:
         pass
 
 
-async def handle_progress_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+async def handle_spotify_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    volume_step: float = config.get("volumeStep", 0.05)
+    if data.get("command") == "volumeUp":
+        state["volume"] = min(1.0, state["volume"] + volume_step)
+    elif data.get("command") == "volumeDown":
+        state["volume"] = max(0.0, state["volume"] - volume_step)
+    elif isinstance(data.get("volume"), (int, float)):
+        state["volume"] = max(0.0, min(1.0, data["volume"]))
+    await save_spotify_state_debounced()
+    await broadcast_volume_update()
+
+
+async def handle_spotify_playback_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    if "isPlaying" in data:
+        state["isPlaying"] = data["isPlaying"]
+    state["trackProgress"] = data.get("progress", state["trackProgress"])
+    state["trackProgressStartTimestamp"] = time.time() * 1000
+    await save_spotify_state_debounced()
+    await broadcast_playback_update(exclude_ws=ws)
+
+
+async def handle_spotify_shuffle_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    state["isShuffling"] = data.get("isShuffling", False)
+    await save_spotify_state_debounced()
+    await broadcast({"type": "shuffleUpdate", "source": "spotify", "isShuffling": state["isShuffling"]}, exclude_ws=ws)
+
+
+async def handle_spotify_repeat_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    state["repeatStatus"] = data.get("repeatStatus", 0)
+    await save_spotify_state_debounced()
+    await broadcast({"type": "repeatUpdate", "source": "spotify", "repeatStatus": state["repeatStatus"]}, exclude_ws=ws)
+
+
+async def handle_spotify_like_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    state["isLiked"] = data.get("isLiked", False)
+    await save_spotify_state_debounced()
+    await broadcast({"type": "likeUpdate", "source": "spotify", "isLiked": state["isLiked"]}, exclude_ws=ws)
+
+
+async def handle_spotify_progress_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     state["trackProgress"] = data.get("progress", 0)
     state["trackDuration"] = data.get("duration", 0)
     state["trackProgressStartTimestamp"] = time.time() * 1000
     await broadcast_progress_update(exclude_ws=ws)
 
 
+# --- SoundCloud handlers ---
+
+async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    if "track" in data:
+        state["scTrack"] = data["track"]
+    if "artist" in data:
+        state["scArtist"] = data["artist"]
+    if "album" in data:
+        state["scAlbum"] = data["album"]
+    if "id" in data:
+        state["scId"] = data["id"]
+    if "coverUrl" in data:
+        state["scCoverUrl"] = re.sub(r'-t\d+x\d+', '-t500x500', data["coverUrl"])
+    if "isPlaying" in data:
+        state["scIsPlaying"] = data["isPlaying"]
+    if "progressMs" in data:
+        state["scProgressMs"] = data["progressMs"]
+    if "durationMs" in data:
+        state["scDurationMs"] = data["durationMs"]
+    if "volume" in data:
+        state["scVolume"] = max(0.0, min(1.0, data["volume"]))
+    if "isLiked" in data:
+        state["scIsLiked"] = data["isLiked"]
+    if "progressMs" in data or "isPlaying" in data:
+        state["scProgressStartTimestamp"] = time.time() * 1000
+
+    await save_sc_state_debounced()
+    await broadcast_soundcloud_state(exclude_ws=ws)
+
+
+async def handle_sc_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    volume_step: float = config.get("volumeStep", 0.05)
+    if data.get("command") == "volumeUp":
+        state["scVolume"] = min(1.0, state["scVolume"] + volume_step)
+    elif data.get("command") == "volumeDown":
+        state["scVolume"] = max(0.0, state["scVolume"] - volume_step)
+    elif isinstance(data.get("volume"), (int, float)):
+        state["scVolume"] = max(0.0, min(1.0, data["volume"]))
+    await save_sc_state_debounced()
+    await broadcast({
+        "type": "scVolumeUpdate",
+        "source": "soundcloud",
+        "volume": state["scVolume"]
+    }, exclude_ws=ws)
+    logger.info(f"SC volume updated to {state['scVolume']:.3f}")
+
+
+# --- Cross-source control ---
+
 async def handle_playback_control(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     await broadcast(data, target_type="spicetify", exclude_ws=ws)
 
 
-async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify", exclude_ws=ws)
+async def handle_sc_playback_control(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    await broadcast(data, target_type="soundcloud", exclude_ws=ws)
 
+
+async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    source = data.get("source", "spotify")
+    if source == "soundcloud":
+        await broadcast({"type": "scPlaybackControl", "command": "like"}, target_type="soundcloud", exclude_ws=ws)
+    else:
+        await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify", exclude_ws=ws)
+
+
+# --- Queue handlers ---
 
 async def handle_queue_snapshot(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     next_tracks = data.get("nextTracks", [])
@@ -221,14 +306,6 @@ async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -
     allowed, msg = check_rate_limit(requester)
     if not allowed:
         await ws.send_str(json.dumps({"type": "error", "message": msg}))
-        return
-
-    if is_queue_full():
-        await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
-        return
-
-    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
-        await ws.send_str(json.dumps({"type": "error", "message": "Track already in queue"}))
         return
 
     meta_entry = {"uri": normalized_uri, "requestedBy": requester}
@@ -270,24 +347,47 @@ async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     await broadcast({"type": "error", "message": message})
 
 
+async def handle_client_log(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    level = data.get("level", "info")
+    message = data.get("message", "")
+    client_type = CLIENTS.get(ws, {}).get("type", "unknown")
+    log_msg = f"[{client_type}] {message}"
+    if level == "error":
+        logger.error(log_msg)
+    elif level == "warning":
+        logger.warning(log_msg)
+    elif level == "debug":
+        logger.debug(log_msg)
+    else:
+        logger.info(log_msg)
+
+
 MESSAGE_HANDLERS: dict[str, Any] = {
     "register": handle_register,
     "getInitialState": handle_get_initial_state,
-    "stateUpdate": handle_state_update,
-    "volumeUpdate": handle_volume_update,
-    "playbackUpdate": handle_playback_update,
-    "shuffleUpdate": handle_shuffle_update,
-    "repeatUpdate": handle_repeat_update,
-    "likeUpdate": handle_like_update,
-    "trackUpdate": handle_state_update,
-    "progressUpdate": handle_progress_update,
+    # Spotify messages
+    "stateUpdate": handle_spotify_state_update,
+    "trackUpdate": handle_spotify_state_update,
+    "volumeUpdate": handle_spotify_volume_update,
+    "playbackUpdate": handle_spotify_playback_update,
+    "shuffleUpdate": handle_spotify_shuffle_update,
+    "repeatUpdate": handle_spotify_repeat_update,
+    "likeUpdate": handle_spotify_like_update,
+    "progressUpdate": handle_spotify_progress_update,
     "playbackControl": handle_playback_control,
     "like": handle_like_command,
     "queueSnapshot": handle_queue_snapshot,
     "addToQueue": handle_add_to_queue,
     "removeFromQueue": handle_remove_from_queue,
     "clearQueue": handle_clear_queue,
-    "error": handle_error
+    # SoundCloud messages
+    "scStateUpdate": handle_sc_state_update,
+    "scVolumeUpdate": handle_sc_volume_update,
+    "scPlaybackControl": handle_sc_playback_control,
+    # Error
+    "error": handle_error,
+    # Logging
+    "clientLog": handle_client_log
 }
 
 
