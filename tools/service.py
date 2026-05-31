@@ -101,7 +101,7 @@ if __name__ == '__main__':
                 )
                 print("Startup type forced to: Automatic")
 
-                win32serviceutil.StartService(SpicetifyRemoteService)
+                win32serviceutil.StartService(SpicetifyRemoteService._svc_name_)
                 print("Service started.")
 
             print(f"\nSUCCESS: Command '{command}' completed.")
