@@ -8,6 +8,7 @@ export class WebSocketManager extends EventEmitter {
     private _port: number = 8888;
     private refCount: number = 0;
     private isConnecting: boolean = false;
+    private reconnectAttempts: number = 0;
 
     public get port(): number {
         return this._port;
@@ -63,6 +64,7 @@ export class WebSocketManager extends EventEmitter {
 
         this.websocket.onopen = () => {
             this.isConnecting = false;
+            this.reconnectAttempts = 0;
             this.emit("open");
         };
 
@@ -80,7 +82,9 @@ export class WebSocketManager extends EventEmitter {
             this.emit("close");
             this.websocket = null;
             if (this.refCount > 0) {
-                this.reconnectTimeout = setTimeout(() => this.doConnect(), 5000);
+                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+                this.reconnectAttempts++;
+                this.reconnectTimeout = setTimeout(() => this.doConnect(), delay);
             }
         };
 

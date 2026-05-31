@@ -32,8 +32,7 @@
 ├── spicetify-extension/
 │   └── remoteVolume.js       # Runs inside Spotify
 ├── streamdeck-plugin/        # TypeScript + Rollup + Elgato SDK
-├── streamerbot-commands/     # Streamer.bot integration
-└── com.dekub.spicetify-remote.streamDeckPlugin  # Pre-built plugin
+└── streamerbot-commands/     # Streamer.bot integration
 ```
 
 **Ignored:** `logs/`, `state.json`, `lyrics_cache.db`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `streamdeck-plugin/node_modules/`

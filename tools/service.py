@@ -49,16 +49,22 @@ class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
             python_exe = os.path.join(os.path.dirname(python_exe), "python.exe")
 
         self.process = subprocess.Popen([python_exe, script_path], cwd=project_root)
+        crash_count = 0
 
         while True:
             rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)
             if rc == win32event.WAIT_OBJECT_0:
                 break
             if self.process.poll() is not None:
+                crash_count += 1
+                backoff = min(5 * (2 ** (crash_count - 1)), 60)
                 servicemanager.LogMsg(servicemanager.EVENTLOG_ERROR_TYPE,
                                       0xF000,
-                                      ("Server process died unexpectedly. Restarting...", ''))
+                                      (f"Server process died (attempt {crash_count}). Restarting in {backoff}s...", ''))
+                time.sleep(backoff)
                 self.process = subprocess.Popen([python_exe, script_path], cwd=project_root)
+            else:
+                crash_count = 0
 
         if self.process:
             self.process.terminate()

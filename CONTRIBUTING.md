@@ -46,7 +46,7 @@ npm run build
 cd ..
 npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
 ```
-The `.streamDeckPlugin` file is output to the project root.
+The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — only included in GitHub releases.
 
 ---
 

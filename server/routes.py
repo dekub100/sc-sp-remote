@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from typing import Any
@@ -10,6 +11,11 @@ from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, confi
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import check_rate_limit, is_queue_full, parse_track_input, pendingQueueMeta, state
+
+
+def _write_config_to_disk() -> None:
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
 
 
 def _build_client_config(client_type: str) -> dict[str, Any]:
@@ -46,7 +52,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     await ws.prepare(request)
 
     client_type: str = request.query.get("client", "unknown")
-    client_version: int = int(request.query.get("protocolVersion", 0))
+    try:
+        client_version: int = int(request.query.get("protocolVersion", 0))
+    except ValueError:
+        client_version = 0
     CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote, "protocolVersion": client_version}
 
     logger.info(f"New connection: {client_type} (protocol v{client_version}, {request.remote})")
@@ -283,8 +292,8 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
 
     config.update(updates)
     try:
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(config, f, indent=2)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _write_config_to_disk)
     except Exception as e:
         return web.json_response({"error": f"Failed to save config: {str(e)}"}, status=500, headers=_cors_headers(request))
 

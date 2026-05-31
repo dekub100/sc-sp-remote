@@ -117,6 +117,10 @@ async function saveConfig(e) {
 async function loadLogs() {
   try {
     const res = await fetch(`${API}/api/admin/logs`);
+    if (!res.ok) {
+      ui.logList.innerHTML = '<p class="error">Error loading logs: HTTP ' + res.status + '</p>';
+      return;
+    }
     const data = await res.json();
     renderLogList(data.logs || []);
   } catch (e) {
