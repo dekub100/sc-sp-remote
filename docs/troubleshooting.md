@@ -29,6 +29,4 @@ If the server binds to `127.0.0.1`, only localhost can reach it. Change to `"0.0
 
 ## Port conflicts
 
-If port 8888 is in use, change it in `data/config.json` and:
-- Re-run `python tools/install.py` to patch the extension.
-- Update your OBS Browser Source URL and Stream Deck Property Inspector port.
+If port 8888 is in use, change it in `data/config.json`. Then open Spotify, click your profile → **Remote Config** and update the port there too. Update your OBS Browser Source URL and Stream Deck Property Inspector port as needed.
