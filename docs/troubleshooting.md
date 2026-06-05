@@ -13,7 +13,7 @@ If the server binds to `127.0.0.1`, only localhost can reach it. Change to `"0.0
 ## Extension not connecting
 
 1. Verify the server is running: `http://localhost:8888/` should load the web UI.
-2. Ensure the port in `data/config.json` matches what the extension uses. Re-run `python tools/install.py` to patch the extension with the current port.
+2. Open Spotify, click your profile → **Remote Config**, and verify the host/port match your server.
 3. Check Spicetify is installed and the extension is applied: `spicetify config extensions remoteVolume.js` then `spicetify apply`.
 
 ## OBS widget not displaying

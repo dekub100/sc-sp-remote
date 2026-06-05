@@ -31,7 +31,7 @@
 29. **SQLite connection reuse**: module-level persistent connection via `_get_conn()`, auto-reconnects if path changes.
 30. **Admin config PUT validates types** — returns specific error messages, not silently storing garbage.
 31. **`host` config field**: server bind address configurable via `config.json` (`"host": "127.0.0.1"` default). Previously hardcoded to `0.0.0.0`.
-32. **`tools/install.py` auto-patches port** — reads `config.json` and regex-replaces `DEFAULT_PORT`.
+32. **Extension reads host/port from localStorage** — users configure via Spotify's profile menu (Remote Config). No more file-patching needed.
 33. **Stream Deck PI registration** uses `uuid: inUUID` (not `context: uuid`).
 34. **Stream Deck global port** via `setGlobalSettings` — shared across action instances.
 35. **`SPICETIFY_CONFIG` env var** overrides config path. Used by `tools/dev.py`.
