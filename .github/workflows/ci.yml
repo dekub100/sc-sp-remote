@@ -44,6 +44,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
@@ -52,6 +56,14 @@ jobs:
 
       - name: Test
         run: python -m pytest test_server.py -v
+
+      - name: Build Stream Deck plugin
+        run: |
+          cd streamdeck-plugin
+          npm install
+          npm run build
+          cd ..
+          npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
 
       - name: Ensure default config.json
         run: |
@@ -75,5 +87,7 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_NAME }}
+            com.dekub.spicetify-remote.streamDeckPlugin
           generate_release_notes: true
