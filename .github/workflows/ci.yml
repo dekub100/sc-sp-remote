@@ -57,9 +57,7 @@ jobs:
         run: |
           if [ ! -f data/config.json ]; then
             mkdir -p data
-            cat > data/config.json <<'EOF'
-{"port":8888,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"volumeStep":0.05,"logLevel":"INFO","backupCount":3,"maxQueueSize":50,"queueRateLimitSeconds":30}
-EOF
+            printf '{"port":8888,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"volumeStep":0.05,"logLevel":"INFO","backupCount":3,"maxQueueSize":50,"queueRateLimitSeconds":30}\n' > data/config.json
           fi
 
       - name: Build release zip
