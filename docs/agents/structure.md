@@ -6,7 +6,10 @@
 ├── requirements-dev.txt     # Python dev (pytest, ruff, pytest-asyncio)
 ├── pyproject.toml            # ruff + pytest config
 ├── conftest.py               # pytest: adds server/ to sys.path
-├── test_server.py            # 76+ tests for server logic
+├── .github/
+│   └── workflows/
+│       └── ci.yml             # GitHub Actions (lint + test + CD on tag)
+├── test_server.py            # 120+ tests for server logic
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow

@@ -12,7 +12,7 @@ python tools/dev.py --port 7777            # Custom port
 python tools/dev.py --no-reload            # No file watcher
 ```
 
-Dev tool auto-patches extension, auto-restores on exit, writes isolated `config.dev.json`.
+Dev tool uses isolated `config.dev.json` so it doesn't interfere with a production server running as a service. The extension reads host/port from localStorage via the in-app Remote Config menu — no file patching needed.
 
 ## Adding Features
 
