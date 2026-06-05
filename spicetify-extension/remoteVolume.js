@@ -5,6 +5,7 @@
   const SpotifyRemote = {
     // --- Configuration ---
     config: {
+      SERVER_HOST: "localhost",
       DEFAULT_PORT: 8888,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
@@ -36,6 +37,105 @@
     pollInterval: null,
     queueInterval: null,
 
+    // --- Settings (localStorage) ---
+    _loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem("spicetify-remote:config") || "{}");
+        if (saved.host) this.config.SERVER_HOST = saved.host;
+        if (saved.port) this.config.DEFAULT_PORT = parseInt(saved.port, 10) || 8888;
+      } catch {
+        // ignore corrupt settings
+      }
+    },
+
+    _saveSettings() {
+      try {
+        localStorage.setItem("spicetify-remote:config", JSON.stringify({
+          host: this.config.SERVER_HOST,
+          port: this.config.DEFAULT_PORT,
+        }));
+      } catch {
+        // storage full or unavailable
+      }
+    },
+
+    _registerMenu(attempt = 0) {
+      try {
+        new Spicetify.Menu.Item("Remote Config", false, this.showSettingsModal.bind(this)).register();
+        console.log("[RemoteVolume] Menu item registered");
+      } catch {
+        if (attempt < 15) {
+          setTimeout(() => this._registerMenu(attempt + 1), 1000 * (attempt + 1));
+        }
+      }
+    },
+
+    showSettingsModal() {
+      const react = Spicetify.React;
+      const { useState, useCallback } = react;
+
+      const styling = `.spr-settings-row::after { content: ""; display: table; clear: both; }
+        .spr-settings-row .col { padding: 16px 0 4px; align-items: center; }
+        .spr-settings-row .col.description { float: left; padding-right: 15px; cursor: default; }
+        .spr-settings-row .col.action { float: right; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+        .spr-settings-row .col.action input {
+          width: 180px; margin-top: 10px; padding: 0 5px; height: 32px;
+          border: 0; color: var(--spice-text); background-color: initial;
+          border-bottom: 1px solid var(--spice-text);
+        }
+        .spr-reconnect-btn {
+          -webkit-tap-highlight-color: transparent; font-weight: 700;
+          font-family: var(--font-family,CircularSp,CircularSp-Arab,CircularSp-Hebr,CircularSp-Cyrl,CircularSp-Grek,CircularSp-Deva,var(--fallback-fonts,sans-serif));
+          background-color: transparent; border-radius: 500px; transition-duration: 33ms;
+          transition-property: background-color, border-color, color, box-shadow, filter, transform;
+          padding-inline: 15px; border: 1px solid #727272;
+          color: var(--spice-text); min-block-size: 32px; cursor: pointer;
+        }
+        .spr-reconnect-btn:hover { transform: scale(1.04); border-color: var(--spice-text); }`;
+
+      const InputField = ({ name, defaultValue, onChange }) => {
+        const [val, setVal] = useState(defaultValue);
+        const cb = useCallback((e) => { setVal(e.target.value); onChange(e.target.value); }, [val]);
+        return react.createElement("div", { className: "spr-settings-row" },
+          react.createElement("label", { className: "col description" }, name),
+          react.createElement("div", { className: "col action" },
+            react.createElement("input", { type: "text", value: val, onChange: cb })
+          )
+        );
+      };
+
+      const self = this;
+      const content = react.createElement("div", { id: "spr-config-container" },
+        react.createElement("style", { dangerouslySetInnerHTML: { __html: styling } }),
+        react.createElement(InputField, {
+          name: "Server Host", defaultValue: self.config.SERVER_HOST,
+          onChange: (v) => { self.config.SERVER_HOST = v; self._saveSettings(); }
+        }),
+        react.createElement(InputField, {
+          name: "Server Port", defaultValue: String(self.config.DEFAULT_PORT),
+          onChange: (v) => { self.config.DEFAULT_PORT = parseInt(v, 10) || 8888; self._saveSettings(); }
+        }),
+        react.createElement("div", { className: "spr-settings-row" },
+          react.createElement("div", { className: "col action" },
+            react.createElement("button", {
+              className: "spr-reconnect-btn",
+              onClick: () => {
+                self.config.SERVER_URL = `ws://${self.config.SERVER_HOST}:${self.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${self.config.PROTOCOL_VERSION}`;
+                self.connect();
+                Spicetify.PopupModal.hide();
+              }
+            }, "Save & Reconnect")
+          )
+        )
+      );
+
+      Spicetify.PopupModal.display({
+        title: "Remote Config",
+        content: content,
+        isLarge: true,
+      });
+    },
+
     // --- Initialization ---
     init() {
       if (!Spicetify.Player || !Spicetify.Platform) {
@@ -43,7 +143,9 @@
         return;
       }
       console.log("[RemoteVolume] Spicetify ready. Initializing...");
-      this.config.SERVER_URL = `ws://localhost:${this.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${this.config.PROTOCOL_VERSION}`;
+      this._loadSettings();
+      this.config.SERVER_URL = `ws://${this.config.SERVER_HOST}:${this.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${this.config.PROTOCOL_VERSION}`;
+      this._registerMenu();
       this.connect();
     },
 
