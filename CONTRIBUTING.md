@@ -50,69 +50,55 @@ The `.streamDeckPlugin` file is output to the project root. It is not committed 
 
 ---
 
+## CI / CD
+
+Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13. Pushing a tag matching `v*` (e.g., `v1.5.5`) also builds the release zip and creates a GitHub release automatically.
+
+The workflow is at `.github/workflows/ci.yml`.
+
 ## Release Workflow
 
-### 1. Bump Version
+Releases are automated via CI/CD — just push a tag:
+
+```bash
+git tag v1.5.5
+git push origin v1.5.5
+```
+
+GitHub Actions will:
+1. Run lint + tests
+2. Build `spicetify-remote-core-v1.5.5.zip`
+3. Create a GitHub release with the zip attached
+
+### Manual fallback (if CI fails)
+
+#### 1. Bump Version
 
 Update version in these files:
 - `README.md` — badge URL (`version-X.X.X-blue`)
 - `AGENTS.md` — `**Version:** X.X.X`
 - `pyproject.toml` — `version = "X.X.X"`
 
-Do NOT bump the StreamDeck plugin manifest version (`streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin/manifest.json`) unless the plugin source actually changed.
+Do NOT bump the StreamDeck plugin manifest version unless the plugin source actually changed.
 
-### 2. Create the Release Zip
+#### 2. Create the Release Zip
 
-Only runtime files — no dev artifacts:
+Only runtime files — no dev artifacts. `Compress-Archive` flattens paths — use `7z`:
 
-**Include:**
-```
-README.md
-requirements.txt
-setup.bat
-server/              # everything except __pycache__/
-data/config.json     # default config only (no state.json, logs/, etc.)
-tools/install.py     # extension installer
-tools/service.py     # Windows service wrapper
-spicetify-extension/
-web/                 # everything
-```
-
-**Exclude:**
-```
-test_server.py       # tests — not needed by users
-conftest.py          # pytest config — not needed
-pyproject.toml       # ruff/pytest config — not needed
-.gitignore
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-*.pyc
-data/state.json      # runtime state
-data/logs/           # runtime logs
-data/lyrics_cache.db # runtime cache
-*.streamDeckPlugin   # shipped separately, not in core zip
-streamerbot-commands/ # setup guide only, link in release notes
-```
-
-**The `Compress-Archive` cmdlet strips folder structure** — files end up flat. Always use `7z` instead to preserve directories:
 ```powershell
-# Delete any old zip first
 Remove-Item spicetify-remote-core-vX.X.X.zip -Force -ErrorAction SilentlyContinue
-
-# Create with proper folder structure
-7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip README.md requirements.txt setup.bat server\ data\config.json tools\install.py tools\service.py spicetify-extension\ web\
+7z a -xr'!__pycache__' spicetify-remote-core-vX.X.X.zip `
+  README.md requirements.txt setup.bat `
+  server\ data\config.json tools\install.py tools\service.py `
+  spicetify-extension\ web\
 ```
 
-Pitfalls to avoid:
+Pitfalls:
 - `Compress-Archive` flattens paths — never use it for release zips
-- `__pycache__` gets picked up unless explicitly excluded with `-xr'!__pycache__'`
-- If a previous upload locked the zip, rename it first (`Move-Item`) then delete
-- **Do not `git add` the zip** — release zips are for GitHub releases only, not the repo itself
+- `__pycache__` gets picked up unless explicitly excluded
+- **Do not `git add` the zip**
 
-### 3. Commit
-
-Stage everything, commit with a structured message:
+#### 3. Commit & Push
 
 ```powershell
 git add -A
@@ -132,35 +118,16 @@ git commit -m "vX.X.X - Short Title
 git push
 ```
 
-### 4. Create GitHub Release
+#### 4. Create GitHub Release
 
 ```powershell
 gh release create vX.X.X `
   spicetify-remote-core-vX.X.X.zip `
   com.dekub.spicetify-remote.streamDeckPlugin `
   --title "vX.X.X - Short Title" `
-  --notes "### New Features
-* ...
-
-### Improvements
-* ...
-
-### Bug Fixes
-* ...
-
-### How to Update
-1. Download the latest spicetify-remote-core-vX.X.X.zip below.
-2. Extract it over your existing installation.
-3. Restart the server.
-
----
-
-### Download Assets
-* **Core Package:** spicetify-remote-core-vX.X.X.zip (Server + Web + Extension)
-* **Stream Deck Plugin:** com.dekub.spicetify-remote.streamDeckPlugin (Optional)
-* **Streamer.bot Commands:** See [setup guide](https://github.com/dekub100/spicetify-remote/blob/main/streamerbot-commands/README.md)"
+  --notes "..."
 ```
 
 Pitfalls:
-- `--files` flag doesn't exist on `gh release create` — pass filenames as positional args after the tag
-- If re-uploading a fixed asset, use `gh release delete-asset vX.X.X <filename> --yes` then `gh release upload vX.X.X <filename> --clobber`
+- Pass filenames as positional args (not `--files`)
+- Re-upload: `gh release delete-asset vX.X.X <filename> --yes && gh release upload vX.X.X <filename> --clobber`
