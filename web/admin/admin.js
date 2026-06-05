@@ -45,6 +45,7 @@ async function loadConfig() {
 
     document.getElementById('cfg-progress-broadcast').value = cfg.progressBroadcastInterval;
     document.getElementById('cfg-save-debounce').value = cfg.stateSaveDebounceSeconds;
+    document.getElementById('cfg-lyrics').checked = !!cfg.enableLyrics;
     document.getElementById('cfg-lyrics-timeout').value = cfg.lyricsFetchTimeoutSeconds;
 
     document.getElementById('cfg-polling').value = cfg.spicetifyPollingIntervalMs;
@@ -80,6 +81,7 @@ async function saveConfig(e) {
     queueRateLimitSeconds: parseInt(document.getElementById('cfg-rate-limit').value),
     enableOBS: document.getElementById('cfg-obs').checked,
     enableWebsite: document.getElementById('cfg-website').checked,
+    enableLyrics: document.getElementById('cfg-lyrics').checked,
     logLevel: document.getElementById('cfg-log-level').value,
     backupCount: parseInt(document.getElementById('cfg-backup').value),
     progressBroadcastInterval: parseFloat(document.getElementById('cfg-progress-broadcast').value),

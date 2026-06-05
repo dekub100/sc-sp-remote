@@ -150,16 +150,20 @@ async def handle_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -
     state["trackProgressStartTimestamp"] = time.time() * 1000
 
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
-        state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
-        await broadcast_lyrics_update()
-        task: asyncio.Task[None] = asyncio.create_task(fetch_and_broadcast_lyrics(
-            new_uri,
-            state["currentTrack"]["trackName"],
-            state["currentTrack"]["artistName"],
-            state["currentTrack"]["albumName"],
-            state["trackDuration"]
-        ))
-        task.add_done_callback(_lyrics_task_done)
+        if config["enableLyrics"]:
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
+            await broadcast_lyrics_update()
+            task: asyncio.Task[None] = asyncio.create_task(fetch_and_broadcast_lyrics(
+                new_uri,
+                state["currentTrack"]["trackName"],
+                state["currentTrack"]["artistName"],
+                state["currentTrack"]["albumName"],
+                state["trackDuration"]
+            ))
+            task.add_done_callback(_lyrics_task_done)
+        else:
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
+            await broadcast_lyrics_update()
 
     await save_state_to_file_debounced()
     await broadcast_current_state(exclude_ws=ws)

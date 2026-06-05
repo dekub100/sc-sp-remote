@@ -221,6 +221,7 @@ _CONFIG_ERRORS: dict[str, str] = {
     "obsUpNextThresholdMs": "must be a positive integer",
     "enableOBS": "must be a boolean",
     "enableWebsite": "must be a boolean",
+    "enableLyrics": "must be a boolean",
     "logLevel": "must be a string",
     "allowedOrigins": "must be a list of strings",
 }
