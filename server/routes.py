@@ -150,7 +150,7 @@ async def index_handler(request: web.Request) -> web.StreamResponse:
 
 async def obs_handler(request: web.Request) -> web.StreamResponse:
     if not request.path.endswith('/'):
-        return web.HTTPFound(request.path + '/')
+        return web.HTTPFound(request.rel_url.with_path(request.path + '/'))
     return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'obs-widget', 'obs-widget.html'))
 
 

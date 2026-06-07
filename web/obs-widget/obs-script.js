@@ -1,3 +1,5 @@
+const DISABLE_LYRICS = new URLSearchParams(window.location.search).get("disableLyrics") === "true";
+
 let ws;
 let currentSource = null;
 
@@ -120,6 +122,7 @@ function setLyricLineText(text) {
 }
 
 function handleLyricsUpdate(data) {
+  if (DISABLE_LYRICS) return;
   lyricsState.available = data.available;
   lyricsState.instrumental = data.instrumental;
   lyricsState.synced = data.synced || [];
@@ -139,6 +142,7 @@ function handleLyricsUpdate(data) {
 }
 
 function updateCurrentLyricLine(progressMs) {
+  if (DISABLE_LYRICS) return;
   if (!lyricsState.available || !lyricsState.synced.length) return;
   const newIndex = findLyricIndex(lyricsState.synced, progressMs);
   if (newIndex === lyricsState.currentIndex) return;
@@ -385,6 +389,9 @@ function connect() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  if (DISABLE_LYRICS) {
+    document.getElementById('lyricLine')?.classList.add('hidden');
+  }
   connect();
   requestAnimationFrame(animate);
 });
