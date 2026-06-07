@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main, soundcloud-integration]
+    tags: [v*]
+  pull_request:
+    branches: [main, soundcloud-integration]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check server/ test_server.py
+
+      - name: Test
+        run: python -m pytest test_server.py -v
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check server/ test_server.py
+
+      - name: Test
+        run: python -m pytest test_server.py -v
+
+      - name: Build Stream Deck plugin
+        if: hashFiles('streamdeck-plugin/**')
+        run: |
+          cd streamdeck-plugin
+          npm install
+          npm run build
+          cd ..
+          npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
+
+      - name: Ensure default config.json
+        run: |
+          if [ ! -f data/config.json ]; then
+            mkdir -p data
+            printf '{"port":8889,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"volumeStep":0.05,"logLevel":"INFO","backupCount":3,"maxQueueSize":50,"queueRateLimitSeconds":30,"soundcloudPlugin":true}\n' > data/config.json
+          fi
+
+      - name: Build release zip
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          ZIP_NAME="sc-spotify-remote-core-v${VERSION}.zip"
+          zip -r "$ZIP_NAME" \
+            README.md requirements.txt setup.bat \
+            server/ data/config.json \
+            tools/install.py tools/service.py \
+            spicetify-extension/ soundcloud-plugin/ web/ \
+            -x "server/__pycache__/*" "*/__pycache__/*"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ZIP_NAME }}
+          generate_release_notes: true

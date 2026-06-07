@@ -4,12 +4,14 @@
 (function remoteVolume() {
   const SpotifyRemote = {
     config: {
+      SERVER_HOST: "localhost",
       DEFAULT_PORT: 8889,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
       QUEUE_POLLING_INTERVAL_MS: 2000,
       RECONNECT_DELAY_BASE: 1000,
       MAX_RECONNECT_DELAY: 10000,
+      MAX_RECONNECT_ATTEMPTS: 10,
       PROGRESS_DELTA_THRESHOLD_MS: 2000,
       COMMAND_FEEDBACK_DELAY_MS: 150,
       PROTOCOL_VERSION: 1,
@@ -31,20 +33,130 @@
 
     ws: null,
     reconnectAttempts: 0,
+    _initialized: false,
+    _connecting: false,
     pollInterval: null,
     queueInterval: null,
 
+    _loadSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem("sc-spotify-remote:config") || "{}");
+        if (saved.host) this.config.SERVER_HOST = saved.host;
+        if (saved.port) this.config.DEFAULT_PORT = parseInt(saved.port, 10) || 8889;
+      } catch {
+      }
+    },
+
+    _saveSettings() {
+      try {
+        localStorage.setItem("sc-spotify-remote:config", JSON.stringify({
+          host: this.config.SERVER_HOST,
+          port: this.config.DEFAULT_PORT,
+        }));
+      } catch {
+      }
+    },
+
+    _registerMenu(attempt = 0) {
+      try {
+        new Spicetify.Menu.Item("Remote Config", false, this.showSettingsModal.bind(this)).register();
+        console.log("[RemoteVolume] Menu item registered");
+      } catch {
+        if (attempt < 15) {
+          setTimeout(() => this._registerMenu(attempt + 1), 1000 * (attempt + 1));
+        }
+      }
+    },
+
+    showSettingsModal() {
+      const react = Spicetify.React;
+      const { useState, useCallback } = react;
+
+      const styling = `.spr-settings-row::after { content: ""; display: table; clear: both; }
+        .spr-settings-row .col { padding: 16px 0 4px; align-items: center; }
+        .spr-settings-row .col.description { float: left; padding-right: 15px; cursor: default; }
+        .spr-settings-row .col.action { float: right; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+        .spr-settings-row .col.action input {
+          width: 180px; margin-top: 10px; padding: 0 5px; height: 32px;
+          border: 0; color: var(--spice-text); background-color: initial;
+          border-bottom: 1px solid var(--spice-text);
+        }
+        .spr-reconnect-btn {
+          -webkit-tap-highlight-color: transparent; font-weight: 700;
+          font-family: var(--font-family,CircularSp,CircularSp-Arab,CircularSp-Hebr,CircularSp-Cyrl,CircularSp-Grek,CircularSp-Deva,var(--fallback-fonts,sans-serif));
+          background-color: transparent; border-radius: 500px; transition-duration: 33ms;
+          transition-property: background-color, border-color, color, box-shadow, filter, transform;
+          padding-inline: 15px; border: 1px solid #727272;
+          color: var(--spice-text); min-block-size: 32px; cursor: pointer;
+        }
+        .spr-reconnect-btn:hover { transform: scale(1.04); border-color: var(--spice-text); }`;
+
+      const InputField = ({ name, defaultValue, onChange }) => {
+        const [val, setVal] = useState(defaultValue);
+        const cb = useCallback((e) => { setVal(e.target.value); onChange(e.target.value); }, [val]);
+        return react.createElement("div", { className: "spr-settings-row" },
+          react.createElement("label", { className: "col description" }, name),
+          react.createElement("div", { className: "col action" },
+            react.createElement("input", { type: "text", value: val, onChange: cb })
+          )
+        );
+      };
+
+      const self = this;
+      const content = react.createElement("div", { id: "spr-config-container" },
+        react.createElement("style", { dangerouslySetInnerHTML: { __html: styling } }),
+        react.createElement(InputField, {
+          name: "Server Host", defaultValue: self.config.SERVER_HOST,
+          onChange: (v) => { self.config.SERVER_HOST = v; self._saveSettings(); }
+        }),
+        react.createElement(InputField, {
+          name: "Server Port", defaultValue: String(self.config.DEFAULT_PORT),
+          onChange: (v) => { self.config.DEFAULT_PORT = parseInt(v, 10) || 8889; self._saveSettings(); }
+        }),
+        react.createElement("div", { className: "spr-settings-row" },
+          react.createElement("div", { className: "col action" },
+            react.createElement("button", {
+              className: "spr-reconnect-btn",
+              onClick: () => {
+                self.config.SERVER_URL = `ws://${self.config.SERVER_HOST}:${self.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${self.config.PROTOCOL_VERSION}`;
+                self.connect();
+                Spicetify.PopupModal.hide();
+              }
+            }, "Save & Reconnect")
+          )
+        )
+      );
+
+      Spicetify.PopupModal.display({
+        title: "Remote Config",
+        content: content,
+        isLarge: true,
+      });
+    },
+
     init() {
+      if (this._initialized) {
+        console.warn("[RemoteVolume] init already called, skipping");
+        return;
+      }
       if (!Spicetify.Player || !Spicetify.Platform) {
         setTimeout(this.init.bind(this), 300);
         return;
       }
+      this._initialized = true;
       console.log("[RemoteVolume] Spicetify ready. Initializing...");
-      this.config.SERVER_URL = `ws://localhost:${this.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${this.config.PROTOCOL_VERSION}`;
+      this._loadSettings();
+      this.config.SERVER_URL = `ws://${this.config.SERVER_HOST}:${this.config.DEFAULT_PORT}/?client=spicetify&protocolVersion=${this.config.PROTOCOL_VERSION}`;
+      this._registerMenu();
       this.connect();
     },
 
     connect() {
+      if (this._connecting) {
+        console.warn("[RemoteVolume] Already connecting, skipping duplicate connect");
+        return;
+      }
+      this._connecting = true;
       if (this.ws) {
         this.ws.close();
       }
@@ -57,6 +169,7 @@
         this.ws.onclose = this.onClose.bind(this);
         this.ws.onerror = this.onError.bind(this);
       } catch (error) {
+        this._connecting = false;
         console.error("[RemoteVolume] Connection error:", error);
         this.scheduleReconnect(this.connect.bind(this));
       }
@@ -64,6 +177,7 @@
 
     onOpen() {
       console.log("[RemoteVolume] Connected.");
+      this._connecting = false;
       this.reconnectAttempts = 0;
       this.connectionTimestamp = Date.now();
       this.syncFullState();
@@ -73,9 +187,11 @@
     applyClientConfig(data) {
       if (data.pollingIntervalMs !== undefined) {
         this.config.POLLING_INTERVAL_MS = data.pollingIntervalMs;
+        console.log(`[RemoteVolume] Config: pollingInterval = ${data.pollingIntervalMs}ms`);
       }
       if (data.queuePollingIntervalMs !== undefined) {
         this.config.QUEUE_POLLING_INTERVAL_MS = data.queuePollingIntervalMs;
+        console.log(`[RemoteVolume] Config: queuePollingInterval = ${data.queuePollingIntervalMs}ms`);
       }
       if (data.reconnectBaseDelayMs !== undefined) {
         this.config.RECONNECT_DELAY_BASE = data.reconnectBaseDelayMs;
@@ -131,9 +247,24 @@
       }
     },
 
-    onClose() {
-      console.warn("[RemoteVolume] Socket closed.");
+    onClose(event) {
+      const code = event?.code ?? "unknown";
+      const reason = event?.reason ?? "";
+      console.warn(`[RemoteVolume] Socket closed. code=${code} reason="${reason}"`);
+      this._connecting = false;
       this.stopServices();
+      if (code === 1000) {
+        console.log("[RemoteVolume] Normal closure, not reconnecting");
+        return;
+      }
+      if (code === 1011) {
+        console.error("[RemoteVolume] Server closed with internal error, will not auto-reconnect");
+        return;
+      }
+      if (this.reconnectAttempts >= this.config.MAX_RECONNECT_ATTEMPTS) {
+        console.error(`[RemoteVolume] Max reconnection attempts (${this.config.MAX_RECONNECT_ATTEMPTS}) reached, giving up`);
+        return;
+      }
       this.scheduleReconnect(this.connect.bind(this));
     },
 
@@ -486,6 +617,9 @@
         const uri = data.uri;
         const uid = data.uid;
         if (!uri) return;
+        if (!uid) {
+          console.warn("[RemoteVolume] removeFromQueue: no uid provided, may remove duplicates");
+        }
         const track = { uri };
         if (uid) track.uid = uid;
         await Spicetify.removeFromQueue([track]);
