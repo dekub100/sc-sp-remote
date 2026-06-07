@@ -52,7 +52,8 @@ read_spotify_state_from_file()
 read_sc_state_from_file()
 
 # Load cached lyrics for the current track
-from state import state
+from state import state  # noqa: E402
+
 track_uri = state["currentTrack"]["trackUri"]
 track_duration = state["trackDuration"]
 if track_uri and track_duration > 0:
@@ -95,6 +96,13 @@ async def main() -> None:
     main_app.router.add_get('/api/admin/logs', handle_admin_logs_list)
     main_app.router.add_get('/api/admin/logs/{filename}', handle_admin_log_file)
 
+    async def admin_redirect(request: web.Request) -> web.Response:
+        return web.HTTPFound('/static/admin/admin.html')
+
+    main_app.router.add_get('/admin', admin_redirect)
+    main_app.router.add_get('/admin/', admin_redirect)
+
+    main_app.router.add_static('/obs/', os.path.join(PROJECT_ROOT, 'web', 'obs-widget'))
     main_app.router.add_static('/static/', os.path.join(PROJECT_ROOT, 'web'))
 
     main_runner: web.AppRunner = web.AppRunner(main_app)

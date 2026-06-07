@@ -25,6 +25,7 @@ from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
     check_rate_limit,
+    is_queue_full,
     parse_track_input,
     pendingQueueMeta,
     save_sc_state_debounced,
@@ -137,16 +138,20 @@ async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str,
     state["trackProgressStartTimestamp"] = time.time() * 1000
 
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
-        state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
-        await broadcast_lyrics_update()
-        task: asyncio.Task[None] = asyncio.create_task(fetch_and_broadcast_lyrics(
-            new_uri,
-            state["currentTrack"]["trackName"],
-            state["currentTrack"]["artistName"],
-            state["currentTrack"]["albumName"],
-            state["trackDuration"]
-        ))
-        task.add_done_callback(_lyrics_task_done)
+        if config["enableLyrics"]:
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
+            await broadcast_lyrics_update()
+            task: asyncio.Task[None] = asyncio.create_task(fetch_and_broadcast_lyrics(
+                new_uri,
+                state["currentTrack"]["trackName"],
+                state["currentTrack"]["artistName"],
+                state["currentTrack"]["albumName"],
+                state["trackDuration"]
+            ))
+            task.add_done_callback(_lyrics_task_done)
+        else:
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
+            await broadcast_lyrics_update()
 
     await save_spotify_state_debounced()
     await broadcast_spotify_state(exclude_ws=ws)
@@ -308,6 +313,14 @@ async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -
         await ws.send_str(json.dumps({"type": "error", "message": msg}))
         return
 
+    if is_queue_full():
+        await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
+        return
+
+    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
+        await ws.send_str(json.dumps({"type": "error", "message": "Track already in queue"}))
+        return
+
     meta_entry = {"uri": normalized_uri, "requestedBy": requester}
     pendingQueueMeta.append(meta_entry)
 
@@ -413,6 +426,5 @@ async def handle_message(ws: web.WebSocketResponse, message: str) -> None:
             await handler(ws, data)
         except Exception:
             logger.exception(f"Server: Handler for '{msg_type}' crashed")
-            await ws.close(code=1011, message="Internal handler error")
     else:
         logger.warning(f"Server: Received unknown message type: {msg_type}")

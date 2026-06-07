@@ -191,7 +191,7 @@ def check_rate_limit(requester: str) -> tuple[bool, str]:
     now = time.time()
     last_request = _rate_limit_store.get(requester, 0)
     elapsed = now - last_request
-    limit = 30.0
+    limit = float(config.get("queueRateLimitSeconds", 30))
     if elapsed < limit:
         remaining = int(limit - elapsed)
         return False, f"Rate limited. Try again in {remaining}s"
@@ -201,3 +201,7 @@ def check_rate_limit(requester: str) -> tuple[bool, str]:
 
 def reset_rate_limit(requester: str) -> None:
     _rate_limit_store.pop(requester, None)
+
+
+def is_queue_full() -> bool:
+    return len(pendingQueueMeta) >= config.get("maxQueueSize", 50)

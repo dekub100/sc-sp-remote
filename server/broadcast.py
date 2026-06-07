@@ -105,7 +105,6 @@ async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse]
 
 
 async def broadcast_volume_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
-    now = time.time() * 1000
     await broadcast({
         "type": "volumeUpdate",
         "source": "spotify",
