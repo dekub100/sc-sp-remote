@@ -12,7 +12,7 @@ This project was written entirely by AI (OpenCode). I describe what I want, revi
 
 - Python 3.9+
 - [spicetify-cli](https://spicetify.app/docs/getting-started)
-- [soundcloud-rpc](https://github.com/soundcloud-rpc/soundcloud-rpc) (for SoundCloud support)
+- [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) (for SoundCloud support)
 
 ## Quick Start
 
