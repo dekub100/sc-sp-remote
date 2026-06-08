@@ -35,7 +35,6 @@ async function loadConfig() {
     document.getElementById('cfg-port').value = cfg.port;
     document.getElementById('cfg-origins').value = (cfg.allowedOrigins || []).join(', ');
     document.getElementById('cfg-volume').value = cfg.defaultVolume;
-    document.getElementById('cfg-volume-step').value = cfg.volumeStep;
     document.getElementById('cfg-max-queue').value = cfg.maxQueueSize;
     document.getElementById('cfg-rate-limit').value = cfg.queueRateLimitSeconds;
     document.getElementById('cfg-obs').checked = !!cfg.enableOBS;
@@ -76,7 +75,6 @@ async function saveConfig(e) {
     port: parseInt(document.getElementById('cfg-port').value),
     allowedOrigins: document.getElementById('cfg-origins').value.split(',').map(s => s.trim()).filter(Boolean),
     defaultVolume: parseFloat(document.getElementById('cfg-volume').value),
-    volumeStep: parseFloat(document.getElementById('cfg-volume-step').value),
     maxQueueSize: parseInt(document.getElementById('cfg-max-queue').value),
     queueRateLimitSeconds: parseInt(document.getElementById('cfg-rate-limit').value),
     enableOBS: document.getElementById('cfg-obs').checked,

@@ -21,7 +21,6 @@ def _write_config_to_disk() -> None:
 def _build_client_config(client_type: str) -> dict[str, Any]:
     base: dict[str, Any] = {
         "type": "config",
-        "volumeStep": config.get("volumeStep", 0.05),
     }
     if client_type == "spicetify":
         base.update({
@@ -229,7 +228,6 @@ _CONFIG_ERRORS: dict[str, str] = {
     "port": "must be an integer between 1 and 65535",
     "host": "must be a valid IP address or hostname",
     "defaultVolume": "must be a number between 0.0 and 1.0",
-    "volumeStep": "must be a number between 0.001 and 1.0",
     "maxQueueSize": "must be a positive integer",
     "queueRateLimitSeconds": "must be a non-negative number",
     "backupCount": "must be a non-negative integer",
@@ -285,9 +283,6 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
             errors.append(f"{key}: {error_msg}")
             continue
         if key in ("defaultVolume",) and (coerced < 0.0 or coerced > 1.0):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("volumeStep",) and (coerced < 0.001 or coerced > 1.0):
             errors.append(f"{key}: {error_msg}")
             continue
         if key in ("maxQueueSize", "backupCount") and coerced < 0:

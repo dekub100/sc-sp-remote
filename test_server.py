@@ -990,12 +990,6 @@ class TestAdminConfigPut:
         assert resp.status == 400
         assert cfg.config["defaultVolume"] == orig
 
-    async def test_volume_step_out_of_range(self, client) -> None:
-        orig = cfg.config.get("volumeStep", 0.05)
-        resp = await client.put('/api/admin/config', json={"volumeStep": 0.0001})
-        assert resp.status == 400
-        assert cfg.config.get("volumeStep", orig) == orig
-
     async def test_max_queue_size_negative(self, client) -> None:
         orig = cfg.config.get("maxQueueSize", 50)
         resp = await client.put('/api/admin/config', json={"maxQueueSize": -1})

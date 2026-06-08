@@ -119,7 +119,6 @@ Key fields:
 - `port`: 8889
 - `spicetifyPollingIntervalMs`: 500
 - `soundcloudPollingIntervalMs`: 500
-- `volumeStep`: 0.05
 - `lyricsFetchTimeoutSeconds`: 15
 
 ## Conventions

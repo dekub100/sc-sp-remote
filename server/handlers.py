@@ -167,7 +167,7 @@ def _lyrics_task_done(task: asyncio.Task[None]) -> None:
 
 
 async def handle_spotify_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    volume_step: float = config.get("volumeStep", 0.05)
+    volume_step: float = data.get("step", 0.05)
     if data.get("command") == "volumeUp":
         state["volume"] = min(1.0, state["volume"] + volume_step)
     elif data.get("command") == "volumeDown":
@@ -243,7 +243,7 @@ async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]
 
 
 async def handle_sc_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    volume_step: float = config.get("volumeStep", 0.05)
+    volume_step: float = data.get("step", 0.05)
     if data.get("command") == "volumeUp":
         state["scVolume"] = min(1.0, state["scVolume"] + volume_step)
     elif data.get("command") == "volumeDown":

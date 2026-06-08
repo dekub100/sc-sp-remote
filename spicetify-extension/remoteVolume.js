@@ -16,7 +16,6 @@
       COMMAND_FEEDBACK_DELAY_MS: 150,
       PROTOCOL_VERSION: 1,
       STALE_CONNECTION_WINDOW_MS: 2000,
-      VOLUME_STEP: 0.05,
     },
 
     state: {
@@ -204,9 +203,6 @@
       }
       if (data.commandFeedbackDelayMs !== undefined) {
         this.config.COMMAND_FEEDBACK_DELAY_MS = data.commandFeedbackDelayMs;
-      }
-      if (data.volumeStep !== undefined) {
-        this.config.VOLUME_STEP = data.volumeStep;
       }
       this.stopServices();
       this.startServices();
@@ -540,6 +536,18 @@
         case "seek":
           if (data.position !== undefined) Spicetify.Player.seek(data.position);
           break;
+        case "seekForward":
+          if (data.offset !== undefined) {
+            const pos = Spicetify.Player.getProgress();
+            Spicetify.Player.seek(Math.min(pos + data.offset, Spicetify.Player.getDuration()));
+          }
+          break;
+        case "seekBack":
+          if (data.offset !== undefined) {
+            const pos = Spicetify.Player.getProgress();
+            Spicetify.Player.seek(Math.max(pos - data.offset, 0));
+          }
+          break;
         case "toggleShuffle":
           Spicetify.Player.toggleShuffle();
           break;
@@ -564,6 +572,7 @@
         else if (data.command === "toggleRepeat") this.checkRepeat();
         else if (data.command === "like") this.checkLikeStatus();
         else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
+        else if (["seekForward", "seekBack"].includes(data.command)) this.checkProgressChange(true);
       }, this.config.COMMAND_FEEDBACK_DELAY_MS);
     },
 
