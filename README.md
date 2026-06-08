@@ -4,6 +4,10 @@
 
 A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via soundcloud-rpc) using WebSockets.
 
+## 🤖 AI-Generated
+
+This project was written entirely by AI (OpenCode). I describe what I want, review the output, and run the tests — the AI does the coding. Full transparency.
+
 ## Requirements
 
 - Python 3.9+
