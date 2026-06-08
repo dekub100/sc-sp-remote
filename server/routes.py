@@ -6,11 +6,11 @@ import os
 from typing import Any
 
 from aiohttp import web
-from broadcast import CLIENTS, broadcast, broadcast_queue_update, set_soundcloud_client, set_spicetify_client
+from broadcast import CLIENTS, set_soundcloud_client, set_spicetify_client
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
-from state import check_rate_limit, is_queue_full, parse_track_input, pendingQueueMeta, state
+from state import state
 
 
 def _write_config_to_disk() -> None:
@@ -25,7 +25,6 @@ def _build_client_config(client_type: str) -> dict[str, Any]:
     if client_type == "spicetify":
         base.update({
             "pollingIntervalMs": config.get("spicetifyPollingIntervalMs", 500),
-            "queuePollingIntervalMs": config.get("spicetifyQueuePollingIntervalMs", 2000),
             "reconnectBaseDelayMs": config.get("spicetifyReconnectBaseDelayMs", 1000),
             "reconnectMaxDelayMs": config.get("spicetifyReconnectMaxDelayMs", 10000),
             "progressDeltaThresholdMs": config.get("spicetifyProgressDeltaThresholdMs", 2000),
@@ -153,73 +152,6 @@ async def obs_handler(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(os.path.join(PROJECT_ROOT, 'web', 'obs-widget', 'obs-widget.html'))
 
 
-async def handle_queue_get(request: web.Request) -> web.Response:
-    return web.json_response({
-        "nextTracks": state["queue"]["nextTracks"],
-        "queueRevision": state["queue"]["queueRevision"]
-    }, headers=_cors_headers(request))
-
-
-async def handle_queue_add(request: web.Request) -> web.Response:
-    try:
-        body: dict[str, Any] = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400, headers=_cors_headers(request))
-
-    raw_input = body.get("trackUri", "")
-    normalized_uri = parse_track_input(raw_input)
-    requester = body.get("requestedBy", "http")
-
-    allowed, msg = check_rate_limit(requester)
-    if not allowed:
-        return web.json_response({"error": msg}, status=429, headers=_cors_headers(request))
-
-    if is_queue_full():
-        return web.json_response({"error": "Queue is full"}, status=400, headers=_cors_headers(request))
-
-    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
-        return web.json_response({"error": "Track already in queue"}, status=400, headers=_cors_headers(request))
-
-    pendingQueueMeta.append({"uri": normalized_uri, "requestedBy": requester})
-    await broadcast({
-        "type": "addToQueue",
-        "uri": normalized_uri,
-        "requestedBy": requester
-    }, target_type="spicetify")
-
-    logger.info(f"Queue (HTTP): Added {normalized_uri} (requested by {requester})")
-    return web.json_response({"status": "ok", "uri": normalized_uri}, headers=_cors_headers(request))
-
-
-async def handle_queue_remove(request: web.Request) -> web.Response:
-    try:
-        body: dict[str, Any] = await request.json()
-    except json.JSONDecodeError:
-        return web.json_response({"error": "Invalid JSON"}, status=400, headers=_cors_headers(request))
-
-    uri = body.get("uri", "")
-    uid = body.get("uid", "")
-    pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
-    await broadcast({
-        "type": "removeFromQueue",
-        "uri": uri,
-        "uid": uid
-    }, target_type="spicetify")
-
-    logger.info(f"Queue (HTTP): Removed {uri}")
-    return web.json_response({"status": "ok"}, headers=_cors_headers(request))
-
-
-async def handle_queue_clear(request: web.Request) -> web.Response:
-    pendingQueueMeta.clear()
-    state["queue"]["nextTracks"] = []
-    state["queue"]["queueRevision"] = ""
-    await broadcast({"type": "clearQueue"}, target_type="spicetify")
-    await broadcast_queue_update()
-    logger.info("Queue (HTTP): Cleared")
-    return web.json_response({"status": "ok"}, headers=_cors_headers(request))
-
-
 async def handle_admin_config_get(request: web.Request) -> web.Response:
     return web.json_response(config, headers=_cors_headers(request))
 
@@ -228,14 +160,11 @@ _CONFIG_ERRORS: dict[str, str] = {
     "port": "must be an integer between 1 and 65535",
     "host": "must be a valid IP address or hostname",
     "defaultVolume": "must be a number between 0.0 and 1.0",
-    "maxQueueSize": "must be a positive integer",
-    "queueRateLimitSeconds": "must be a non-negative number",
     "backupCount": "must be a non-negative integer",
     "progressBroadcastInterval": "must be a positive number",
     "stateSaveDebounceSeconds": "must be a positive number",
     "lyricsFetchTimeoutSeconds": "must be a positive number",
     "spicetifyPollingIntervalMs": "must be a positive integer",
-    "spicetifyQueuePollingIntervalMs": "must be a positive integer",
     "spicetifyReconnectBaseDelayMs": "must be a positive integer",
     "spicetifyReconnectMaxDelayMs": "must be a positive integer",
     "spicetifyProgressDeltaThresholdMs": "must be a positive integer",
@@ -285,15 +214,12 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
         if key in ("defaultVolume",) and (coerced < 0.0 or coerced > 1.0):
             errors.append(f"{key}: {error_msg}")
             continue
-        if key in ("maxQueueSize", "backupCount") and coerced < 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("queueRateLimitSeconds",) and coerced < 0:
+        if key in ("backupCount",) and coerced < 0:
             errors.append(f"{key}: {error_msg}")
             continue
         if key in ("progressBroadcastInterval", "stateSaveDebounceSeconds",
                      "lyricsFetchTimeoutSeconds",
-                     "spicetifyPollingIntervalMs", "spicetifyQueuePollingIntervalMs",
+                     "spicetifyPollingIntervalMs",
                      "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
                      "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
                      "soundcloudPollingIntervalMs",

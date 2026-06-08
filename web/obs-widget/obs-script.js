@@ -67,15 +67,6 @@ const lyricsState = {
   currentIndex: -1,
 };
 
-const queueState = {
-  items: [],
-};
-
-const upNextState = {
-  isActive: false,
-  lastTrackUri: '',
-};
-
 let UP_NEXT_THRESHOLD_MS = 15000;
 let isVisible = true;
 let hideTimeout = null;
@@ -151,55 +142,6 @@ function updateCurrentLyricLine(progressMs) {
   setLyricLineText(text);
 }
 
-function handleQueueUpdate(data) {
-  queueState.items = data.queue || [];
-}
-
-function showUpNext() {
-  if (upNextState.isActive) return;
-  const nextTrack = queueState.items.find(i => i.requestedBy) || queueState.items[0];
-  if (!nextTrack) return;
-
-  const meta = nextTrack.metadata || {};
-  const title = meta.title || 'Unknown Track';
-  const artist = meta.artist_name || 'Unknown Artist';
-  const album = meta.album_name || '';
-  const imgUrl = meta.image_url || '';
-
-  upNextState.isActive = true;
-  elements.textInfo.classList.add('fade-out');
-
-  setTimeout(() => {
-    let prefix = elements.songTitle.querySelector('.up-next-prefix');
-    if (!prefix) {
-      prefix = document.createElement('span');
-      prefix.className = 'up-next-prefix';
-      prefix.textContent = 'Up Next: ';
-      elements.songTitle.insertBefore(prefix, elements.songTitle.querySelector('.marquee-clip'));
-    }
-    updateMarquee(elements.songTitle, title);
-    updateMarquee(elements.artistName, artist);
-    updateMarquee(elements.albumName, album);
-
-    if (imgUrl && elements.albumArt.src !== imgUrl) {
-      elements.albumArt.crossOrigin = 'Anonymous';
-      elements.albumArt.onload = () => updateDynamicColors(elements.albumArt);
-      elements.albumArt.src = imgUrl;
-    }
-
-    elements.textInfo.classList.remove('fade-out');
-    elements.textInfo.classList.add('fade-in');
-  }, 400);
-}
-
-function resetUpNext() {
-  if (!upNextState.isActive) return;
-  upNextState.isActive = false;
-  const prefix = elements.songTitle.querySelector('.up-next-prefix');
-  if (prefix) prefix.remove();
-  elements.textInfo.classList.remove('fade-out', 'fade-in');
-}
-
 function updateProgressDisplay() {
   const state = getDisplaySource() === 'spotify' ? spotifyState : soundcloudState;
   const progress = getDisplaySource() === 'spotify' ? state.progress : state.progressMs;
@@ -264,15 +206,6 @@ function animate() {
 
     if (getDisplaySource() === 'spotify') {
       updateCurrentLyricLine(currentProgress);
-
-      const remaining = duration - currentProgress;
-      if (remaining <= UP_NEXT_THRESHOLD_MS && remaining > 0) {
-        showUpNext();
-      } else if (upNextState.isActive) {
-        resetUpNext();
-      }
-    } else if (upNextState.isActive) {
-      resetUpNext();
     }
   }
 
@@ -288,8 +221,7 @@ function handleMessage(data) {
   }
 
   if (data.type === 'stateUpdate' || (data.type === 'trackUpdate' && data.source === 'spotify')) {
-    resetUpNext();
-    if (data.trackUri) upNextState.lastTrackUri = data.trackUri;
+    if (data.trackUri) spotifyState.trackUri = data.trackUri;
     if (data.trackName !== undefined) spotifyState.trackName = data.trackName;
     if (data.artistName !== undefined) spotifyState.artistName = data.artistName;
     if (data.albumName !== undefined) spotifyState.albumName = data.albumName;
@@ -310,7 +242,6 @@ function handleMessage(data) {
   }
 
   if (data.type === 'scStateUpdate') {
-    resetUpNext();
     if (data.track !== undefined) soundcloudState.track = data.track;
     if (data.artist !== undefined) soundcloudState.artist = data.artist;
     if (data.album !== undefined) soundcloudState.album = data.album;
@@ -353,11 +284,6 @@ function handleMessage(data) {
 
   if (data.type === 'lyricsUpdate') {
     handleLyricsUpdate(data);
-    return;
-  }
-
-  if (data.type === 'queueUpdate') {
-    handleQueueUpdate(data);
     return;
   }
 

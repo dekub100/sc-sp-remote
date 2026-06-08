@@ -13,7 +13,6 @@ from broadcast import (
     broadcast_lyrics_update,
     broadcast_playback_update,
     broadcast_progress_update,
-    broadcast_queue_update,
     broadcast_soundcloud_state,
     broadcast_spotify_state,
     broadcast_volume_update,
@@ -24,10 +23,6 @@ from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
-    check_rate_limit,
-    is_queue_full,
-    parse_track_input,
-    pendingQueueMeta,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
@@ -100,12 +95,6 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "plain": lyrics["plain"]
     })
     await ws.send_str(lyrics_msg)
-    queue_msg: str = json.dumps({
-        "type": "queueUpdate",
-        "queue": state["queue"]["nextTracks"],
-        "queueRevision": state["queue"]["queueRevision"]
-    })
-    await ws.send_str(queue_msg)
 
 
 # --- Spotify handlers ---
@@ -277,83 +266,6 @@ async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -
         await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify", exclude_ws=ws)
 
 
-# --- Queue handlers ---
-
-async def handle_queue_snapshot(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    next_tracks = data.get("nextTracks", [])
-    queue_revision = str(data.get("queueRevision", ""))
-    state["queue"]["nextTracks"] = next_tracks
-    state["queue"]["queueRevision"] = queue_revision
-
-    if next_tracks and pendingQueueMeta:
-        uri_to_meta: dict[str, dict[str, str]] = {}
-        for meta in pendingQueueMeta:
-            uri_to_meta[meta["uri"]] = meta
-
-        matched_uris: list[str] = []
-        for track in next_tracks:
-            track_uri = track.get("uri", "")
-            if track_uri in uri_to_meta:
-                track["requestedBy"] = uri_to_meta[track_uri]["requestedBy"]
-                matched_uris.append(track_uri)
-
-        for uri in matched_uris:
-            pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
-
-    await broadcast_queue_update()
-
-
-async def handle_add_to_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    raw_input = data.get("input", data.get("trackUri", ""))
-    normalized_uri = parse_track_input(raw_input)
-    requester = data.get("requestedBy", "anonymous")
-
-    allowed, msg = check_rate_limit(requester)
-    if not allowed:
-        await ws.send_str(json.dumps({"type": "error", "message": msg}))
-        return
-
-    if is_queue_full():
-        await ws.send_str(json.dumps({"type": "error", "message": "Queue is full"}))
-        return
-
-    if any(m["uri"] == normalized_uri for m in pendingQueueMeta):
-        await ws.send_str(json.dumps({"type": "error", "message": "Track already in queue"}))
-        return
-
-    meta_entry = {"uri": normalized_uri, "requestedBy": requester}
-    pendingQueueMeta.append(meta_entry)
-
-    await broadcast({
-        "type": "addToQueue",
-        "uri": normalized_uri,
-        "requestedBy": requester
-    }, target_type="spicetify")
-
-    logger.info(f"Queue: Added {normalized_uri} (requested by {requester})")
-
-
-async def handle_remove_from_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    uri = data.get("uri", "")
-    uid = data.get("uid", "")
-    pendingQueueMeta[:] = [m for m in pendingQueueMeta if m["uri"] != uri]
-    await broadcast({
-        "type": "removeFromQueue",
-        "uri": uri,
-        "uid": uid
-    }, target_type="spicetify")
-    logger.info(f"Queue: Removed {uri}")
-
-
-async def handle_clear_queue(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    pendingQueueMeta.clear()
-    state["queue"]["nextTracks"] = []
-    state["queue"]["queueRevision"] = ""
-    await broadcast({"type": "clearQueue"}, target_type="spicetify")
-    await broadcast_queue_update()
-    logger.info("Queue: Cleared")
-
-
 async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     message = data.get("message", "Unknown error")
     logger.warning(f"Extension error: {message}")
@@ -389,10 +301,6 @@ MESSAGE_HANDLERS: dict[str, Any] = {
     "progressUpdate": handle_spotify_progress_update,
     "playbackControl": handle_playback_control,
     "like": handle_like_command,
-    "queueSnapshot": handle_queue_snapshot,
-    "addToQueue": handle_add_to_queue,
-    "removeFromQueue": handle_remove_from_queue,
-    "clearQueue": handle_clear_queue,
     # SoundCloud messages
     "scStateUpdate": handle_sc_state_update,
     "scVolumeUpdate": handle_sc_volume_update,

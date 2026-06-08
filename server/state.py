@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
-import time
 from typing import Any, Callable, Optional
 
 from config import SC_STATE_FILE, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
@@ -36,10 +34,6 @@ state: dict[str, Any] = {
         "instrumental": False,
         "loading": False
     },
-    "queue": {
-        "nextTracks": [],
-        "queueRevision": ""
-    },
     # SoundCloud state (from soundcloud-rpc plugin)
     "scTrack": "No song playing",
     "scArtist": "",
@@ -52,12 +46,7 @@ state: dict[str, Any] = {
     "scProgressStartTimestamp": 0,
     "scVolume": 0.5,
     "scIsLiked": False,
-    "scQueue": [],
 }
-
-pendingQueueMeta: list[dict[str, str]] = []
-
-_rate_limit_store: dict[str, float] = {}
 
 _spotify_save_timer: Optional[asyncio.Task[None]] = None
 _sc_save_timer: Optional[asyncio.Task[None]] = None
@@ -176,32 +165,4 @@ def cancel_pending_save() -> None:
     logger.debug("Server: Pending save timers cancelled.")
 
 
-def parse_track_input(text: str) -> str:
-    text = text.strip()
-    match = re.search(r'open\.spotify\.com/(?:intl-[a-z]{2}/)?track/([a-zA-Z0-9]+)', text)
-    if match:
-        return f"spotify:track:{match.group(1)}"
-    match = re.search(r'spotify:track:([a-zA-Z0-9]+)', text)
-    if match:
-        return f"spotify:track:{match.group(1)}"
-    return text
 
-
-def check_rate_limit(requester: str) -> tuple[bool, str]:
-    now = time.time()
-    last_request = _rate_limit_store.get(requester, 0)
-    elapsed = now - last_request
-    limit = float(config.get("queueRateLimitSeconds", 30))
-    if elapsed < limit:
-        remaining = int(limit - elapsed)
-        return False, f"Rate limited. Try again in {remaining}s"
-    _rate_limit_store[requester] = now
-    return True, ""
-
-
-def reset_rate_limit(requester: str) -> None:
-    _rate_limit_store.pop(requester, None)
-
-
-def is_queue_full() -> bool:
-    return len(pendingQueueMeta) >= config.get("maxQueueSize", 50)
