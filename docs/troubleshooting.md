@@ -5,7 +5,7 @@
 Check that the port in `data/config.json` isn't already in use. Change the port if needed:
 
 ```json
-{ "port": 8889 }
+{ "port": 8888 }
 ```
 
 If the server binds to `127.0.0.1`, only localhost can reach it. Change to `"0.0.0.0"` for LAN access.

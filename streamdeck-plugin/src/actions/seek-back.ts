@@ -6,7 +6,7 @@ type SeekBackSettings = {
   seconds?: number;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.seekback" })
+@action({ UUID: "com.dekub.sc-sp-remote.seekback" })
 export class SeekBack extends SingletonAction<SeekBackSettings> {
   override onWillAppear(ev: WillAppearEvent<SeekBackSettings>): void | Promise<void> {
     wsManager.connect();

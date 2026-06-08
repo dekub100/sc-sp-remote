@@ -14,7 +14,7 @@
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow
 ├── data/
-│   ├── config.json           # Default server config (port 8889)
+│   ├── config.json           # Default server config (port 8888)
 │   ├── state_spotify.json    # Spotify state (runtime, gitignored)
 │   ├── state_soundcloud.json # SoundCloud state (runtime, gitignored)
 │   └── (logs/, lyrics_cache.db — runtime, gitignored)
@@ -35,7 +35,7 @@
 │   ├── index.html / style.css / script.js / lib.js / filter.js
 │   └── obs-widget/           # OBS browser source widget
 ├── spicetify-extension/
-│   └── remoteVolume.js       # Runs inside Spotify (port 8889)
+│   └── remoteVolume.js       # Runs inside Spotify (port 8888)
 ├── soundcloud-plugin/
 │   └── soundcloud-remote-bridge.js  # Runs inside SoundCloud (soundcloud-rpc)
 ├── streamdeck-plugin/        # TypeScript + Rollup + Elgato SDK (future)

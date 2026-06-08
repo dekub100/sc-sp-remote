@@ -1,11 +1,11 @@
 {
-	"Name": "spicetify-remote",
+	"Name": "sc-sp-remote",
 	"Version": "1.0.0.0",
 	"Author": "dekub",
 	"Actions": [
 		{
 			"Name": "Play/Pause",
-			"UUID": "com.dekub.spicetify-remote.playpause",
+			"UUID": "com.dekub.sc-sp-remote.playpause",
 			"Icon": "imgs/actions/playback/playback-play",
 			"Tooltip": "Toggles play/pause for the configured source.",
 			"PropertyInspectorPath": "ui/source-pi.html",
@@ -25,7 +25,7 @@
 		},
 		{
 			"Name": "Next Track",
-			"UUID": "com.dekub.spicetify-remote.nexttrack",
+			"UUID": "com.dekub.sc-sp-remote.nexttrack",
 			"Icon": "imgs/actions/playback/playback-next",
 			"Tooltip": "Plays the next track for the configured source.",
 			"PropertyInspectorPath": "ui/source-pi.html",
@@ -41,7 +41,7 @@
 		},
 		{
 			"Name": "Previous Track",
-			"UUID": "com.dekub.spicetify-remote.previoustrack",
+			"UUID": "com.dekub.sc-sp-remote.previoustrack",
 			"Icon": "imgs/actions/playback/playback-previous",
 			"Tooltip": "Plays the previous track for the configured source.",
 			"PropertyInspectorPath": "ui/source-pi.html",
@@ -57,7 +57,7 @@
 		},
 		{
 			"Name": "Seek Forward",
-			"UUID": "com.dekub.spicetify-remote.seekforward",
+			"UUID": "com.dekub.sc-sp-remote.seekforward",
 			"Icon": "imgs/actions/playback/playback-next",
 			"Tooltip": "Seeks forward by a configured number of seconds.",
 			"PropertyInspectorPath": "ui/seek-pi.html",
@@ -73,7 +73,7 @@
 		},
 		{
 			"Name": "Seek Back",
-			"UUID": "com.dekub.spicetify-remote.seekback",
+			"UUID": "com.dekub.sc-sp-remote.seekback",
 			"Icon": "imgs/actions/playback/playback-previous",
 			"Tooltip": "Seeks backward by a configured number of seconds.",
 			"PropertyInspectorPath": "ui/seek-pi.html",
@@ -89,7 +89,7 @@
 		},
 		{
 			"Name": "Volume Up",
-			"UUID": "com.dekub.spicetify-remote.volumeup",
+			"UUID": "com.dekub.sc-sp-remote.volumeup",
 			"Icon": "imgs/actions/volume/volume-up",
 			"Tooltip": "Increases volume for the configured source.",
 			"PropertyInspectorPath": "ui/volume-step-pi.html",
@@ -105,7 +105,7 @@
 		},
 		{
 			"Name": "Volume Down",
-			"UUID": "com.dekub.spicetify-remote.volumedown",
+			"UUID": "com.dekub.sc-sp-remote.volumedown",
 			"Icon": "imgs/actions/volume/volume-down",
 			"Tooltip": "Decreases volume for the configured source.",
 			"PropertyInspectorPath": "ui/volume-step-pi.html",
@@ -121,7 +121,7 @@
 		},
 		{
 			"Name": "Volume Display",
-			"UUID": "com.dekub.spicetify-remote.volumedisplay",
+			"UUID": "com.dekub.sc-sp-remote.volumedisplay",
 			"Icon": "imgs/actions/volume/volume-display",
 			"Tooltip": "Displays the current volume for the configured source.",
 			"PropertyInspectorPath": "ui/source-pi.html",
@@ -138,7 +138,7 @@
 		},
 		{
 			"Name": "Toggle Shuffle",
-			"UUID": "com.dekub.spicetify-remote.toggleshuffle",
+			"UUID": "com.dekub.sc-sp-remote.toggleshuffle",
 			"Icon": "imgs/actions/shuffle/shuffle-on",
 			"Tooltip": "Toggles shuffle mode (Spotify only).",
 			"PropertyInspectorPath": "ui/spotify-only-pi.html",
@@ -158,7 +158,7 @@
 		},
 		{
 			"Name": "Toggle Repeat",
-			"UUID": "com.dekub.spicetify-remote.togglerepeat",
+			"UUID": "com.dekub.sc-sp-remote.togglerepeat",
 			"Icon": "imgs/actions/repeat/repeat-context",
 			"Tooltip": "Cycles through repeat modes (Spotify only).",
 			"PropertyInspectorPath": "ui/spotify-only-pi.html",
@@ -182,7 +182,7 @@
 		},
 		{
 			"Name": "Toggle Like",
-			"UUID": "com.dekub.spicetify-remote.togglelike",
+			"UUID": "com.dekub.sc-sp-remote.togglelike",
 			"Icon": "imgs/actions/like/like-outline",
 			"Tooltip": "Toggles like status for the current track.",
 			"PropertyInspectorPath": "ui/source-pi.html",
@@ -202,7 +202,7 @@
 		},
 		{
 			"Name": "Set Volume",
-			"UUID": "com.dekub.spicetify-remote.setvolume",
+			"UUID": "com.dekub.sc-sp-remote.setvolume",
 			"Icon": "imgs/actions/volume/volume-display",
 			"Tooltip": "Sets volume to a specific level for the configured source.",
 			"PropertyInspectorPath": "ui/set-volume-pi.html",
@@ -219,10 +219,10 @@
 			]
 		}
 	],
-	"Category": "spicetify-remote",
+	"Category": "sc-sp-remote",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "Remote control for Spotify and SoundCloud via spicetify-remote server.",
+	"Description": "Remote control for Spotify and SoundCloud.",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,
 	"Software": {
@@ -242,5 +242,5 @@
 		"Version": "20",
 		"Debug": "enabled"
 	},
-	"UUID": "com.dekub.spicetify-remote"
+	"UUID": "com.dekub.sc-sp-remote"
 }

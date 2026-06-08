@@ -1,6 +1,6 @@
 /**
  * @name soundcloud-remote-bridge
- * @description Bridges soundcloud-rpc to the sc-spotify-remote Python server via WebSocket
+ * @description Bridges soundcloud-rpc to the sc-sp-remote Python server via WebSocket
  * @version 2.0.0
  * @license MIT
  *
@@ -25,7 +25,7 @@ module.exports = {
                 window.__scRemoteLoaded = true;
 
                 var VERSION = '2.0.0';
-                var SERVER_PORT = 8889;
+                var SERVER_PORT = 8888;
                 var SERVER_URL = 'ws://localhost:' + SERVER_PORT + '/?client=soundcloud&protocolVersion=1';
                 var ws = null;
                 var reconnectDelay = 1000;
@@ -114,7 +114,7 @@ module.exports = {
                 /* ─── Logging ──────────────────────────────────────────────────── */
 
                 function log(level, msg) {
-                    var full = '[sc-remote v' + VERSION + '] ' + msg;
+                    var full = '[sc-sp-remote v' + VERSION + '] ' + msg;
                     if (level === 'error') console.error(full);
                     else if (level === 'warning') console.warn(full);
                     if (ws && ws.readyState === 1) {

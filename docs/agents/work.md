@@ -7,7 +7,7 @@ When asked to commit, push, create a PR, or update release artifacts, first read
 ## Dev Server
 
 ```
-python tools/dev.py                        # Port 8889 with auto-reload
+python tools/dev.py                        # Port 8888 with auto-reload
 python tools/dev.py --port 7777            # Custom port
 python tools/dev.py --no-reload            # No file watcher
 ```

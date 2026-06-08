@@ -31,12 +31,12 @@
 29. **SQLite connection reuse**: module-level persistent connection via `_get_conn()`, auto-reconnects if path changes.
 30. **Admin config PUT validates types** — returns specific error messages, not silently storing garbage.
 31. **`host` config field**: server bind address configurable via `config.json` (`"host": "127.0.0.1"` default). Previously hardcoded to `0.0.0.0`.
-32. **Extension reads host/port from localStorage** — users configure via Spotify's profile menu (Remote Config). SC branch key: `sc-spotify-remote:config`. Main branch key: `spicetify-remote:config`.
+32. **Extension reads host/port from localStorage** — users configure via Spotify's profile menu (Remote Config). Key: `sc-sp-remote:config`.
 33. **Stream Deck PI registration** uses `uuid: inUUID` (not `context: uuid`).
 34. **Stream Deck global port** via `setGlobalSettings` — shared across action instances.
-35. **`SC_REMOTE_CONFIG` env var** overrides config path (was `SPICETIFY_CONFIG` in main). Used by `tools/dev.py`.
+35. **`SC_SP_REMOTE_CONFIG` env var** overrides config path.
 36. **Dual-file state** — SC uses `state_spotify.json` + `state_soundcloud.json` instead of main's single `state.json`. Each has its own save callback and debounced timer.
-37. **Port 8889** — SC uses 8889 (main uses 8888). Both can run side-by-side.
+37. **Port 8888** — single port for HTTP + WebSocket.
 38. **`source: "spotify"`** in extension messages — allows server to route dual-source traffic. Added to all Spotify-origin messages.
 39. **`handle_message` crash handler does NOT close WS** — avoids infinite reconnect loop. Extension has `_connecting` guard + `MAX_RECONNECT_ATTEMPTS` (10) + 1011 close-code special case.
 40. **SoundCloud state fields prefixed with `sc*`** — `scTrack`, `scArtist`, `scAlbum`, `scId`, `scCoverUrl`, `scIsPlaying`, `scProgressMs`, `scDurationMs`, `scVolume`, `scIsLiked`, `scQueue`.

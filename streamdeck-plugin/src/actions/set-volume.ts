@@ -7,7 +7,7 @@ interface SetVolumeSettings {
   [key: string]: any;
 }
 
-@action({ UUID: "com.dekub.spicetify-remote.setvolume" })
+@action({ UUID: "com.dekub.sc-sp-remote.setvolume" })
 export class SetVolume extends SingletonAction<SetVolumeSettings> {
     override async onWillAppear(ev: WillAppearEvent<SetVolumeSettings>): Promise<void> {
       wsManager.connect();

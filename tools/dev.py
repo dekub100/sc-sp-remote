@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Development server for spicetify-remote.
+Development server for sc-sp-remote.
 
 Runs the server on an isolated port so it doesn't conflict with
 a production server running as a service.
@@ -28,7 +28,7 @@ import subprocess
 import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_DEV_PORT = 8889
+DEFAULT_DEV_PORT = 8888
 
 DEV_CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.dev.json")
 PROD_CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.json")
@@ -175,11 +175,11 @@ def _run(port, host, no_reload=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="spicetify-remote development server",
+        description="sc-sp-remote development server",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python tools/dev.py                        Start dev server on port 8889
+  python tools/dev.py                        Start dev server on port 8888
   python tools/dev.py --no-reload            Start without auto-reload
   python tools/dev.py --port 7777            Use port 7777
         """,

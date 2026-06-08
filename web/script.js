@@ -1,4 +1,4 @@
-// Main website script for sc-spotify-remote (dual-source)
+// Main website script for sc-sp-remote (dual-source)
 let ws;
 let isSeeking = false;
 let activeSource = "spotify";

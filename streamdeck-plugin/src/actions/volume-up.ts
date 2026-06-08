@@ -6,7 +6,7 @@ type VolumeUpSettings = {
   step?: number;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.volumeup" })
+@action({ UUID: "com.dekub.sc-sp-remote.volumeup" })
 export class VolumeUp extends SingletonAction<VolumeUpSettings> {
   override onWillAppear(ev: WillAppearEvent<VolumeUpSettings>): void | Promise<void> {
     wsManager.connect();

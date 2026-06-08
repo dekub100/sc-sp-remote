@@ -1,11 +1,10 @@
-// Spicetify extension to sync Spotify's state with the sc-spotify-remote server.
-// Adapted from spicetify-remote's remoteVolume.js.
+// Spicetify extension to sync Spotify's state with the sc-sp-remote server.
 
 (function remoteVolume() {
   const SpotifyRemote = {
     config: {
       SERVER_HOST: "localhost",
-      DEFAULT_PORT: 8889,
+      DEFAULT_PORT: 8888,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
       RECONNECT_DELAY_BASE: 1000,
@@ -36,16 +35,16 @@
 
     _loadSettings() {
       try {
-        const saved = JSON.parse(localStorage.getItem("sc-spotify-remote:config") || "{}");
+        const saved = JSON.parse(localStorage.getItem("sc-sp-remote:config") || "{}");
         if (saved.host) this.config.SERVER_HOST = saved.host;
-        if (saved.port) this.config.DEFAULT_PORT = parseInt(saved.port, 10) || 8889;
+        if (saved.port) this.config.DEFAULT_PORT = parseInt(saved.port, 10) || 8888;
       } catch {
       }
     },
 
     _saveSettings() {
       try {
-        localStorage.setItem("sc-spotify-remote:config", JSON.stringify({
+        localStorage.setItem("sc-sp-remote:config", JSON.stringify({
           host: this.config.SERVER_HOST,
           port: this.config.DEFAULT_PORT,
         }));
@@ -107,7 +106,7 @@
         }),
         react.createElement(InputField, {
           name: "Server Port", defaultValue: String(self.config.DEFAULT_PORT),
-          onChange: (v) => { self.config.DEFAULT_PORT = parseInt(v, 10) || 8889; self._saveSettings(); }
+          onChange: (v) => { self.config.DEFAULT_PORT = parseInt(v, 10) || 8888; self._saveSettings(); }
         }),
         react.createElement("div", { className: "spr-settings-row" },
           react.createElement("div", { className: "col action" },

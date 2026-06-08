@@ -14,7 +14,7 @@ type PlayPauseSettings = {
   source?: string;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.playpause" })
+@action({ UUID: "com.dekub.sc-sp-remote.playpause" })
 export class PlayPause extends SingletonAction<PlayPauseSettings> {
   private actionInstances: Map<string, KeyAction<PlayPauseSettings>> = new Map();
   private actionSources: Map<string, string> = new Map();
