@@ -52,7 +52,7 @@ The `.streamDeckPlugin` file is output to the project root. It is not committed 
 
 ## CI / CD
 
-Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13. Pushing a tag matching `v*` (e.g., `v1.5.5`) also builds the release zip and creates a GitHub release automatically.
+Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13. Pushing a tag matching `v*` (e.g., `v2.0.0`) also builds the release zip and creates a GitHub release automatically.
 
 The workflow is at `.github/workflows/ci.yml`.
 
@@ -61,13 +61,13 @@ The workflow is at `.github/workflows/ci.yml`.
 Releases are automated via CI/CD — just push a tag:
 
 ```bash
-git tag v1.5.5
-git push origin v1.5.5
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
 GitHub Actions will:
 1. Run lint + tests
-2. Build `sc-sp-remote-core-v1.5.5.zip`
+2. Build `sc-sp-remote-core-v2.0.0.zip`
 3. Create a GitHub release with the zip attached
 
 ### Manual fallback (if CI fails)
