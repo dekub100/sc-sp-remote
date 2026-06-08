@@ -34,9 +34,13 @@ Configure the Spotify extension from the profile menu → **Remote Config** (set
 
 ## Configuration
 
-Edit `data/config.json`. Key settings: `port`, `host`, `enableOBS`, `enableWebsite`.
+Edit `data/config.json` or use the admin panel at `http://localhost:8888/admin`.
 
-Full reference: [`docs/troubleshooting.md`](docs/troubleshooting.md)
+Full reference: [`docs/troubleshooting.md`](docs/troubleshooting.md#config-reference)
+
+## SoundCloud
+
+SoundCloud support works by scraping the SoundCloud DOM via [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc). This is inherently fragile — SoundCloud UI changes can break detection at any time. See [`docs/troubleshooting.md`](docs/troubleshooting.md#soundcloud-integration-is-fragile).
 
 ## Lyrics
 
