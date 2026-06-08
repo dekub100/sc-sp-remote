@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Spotify-only Property Inspector</title>
+    <link rel="stylesheet" href="../css/sdpi.css" />
+    <style>
+      .sdpi-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sdpi-item-label {
+        color: rgb(150, 150, 150);
+        flex-shrink: 0;
+      }
+      .sdpi-item-value {
+        flex-grow: 1;
+      }
+      .sdpi-item-value input[type="number"] {
+        background-color: rgb(60, 60, 60);
+        color: #fff;
+        border: 1px solid #555;
+        padding: 5px;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .notice {
+        margin-top: 12px;
+        padding: 8px;
+        background: rgba(255, 152, 0, 0.15);
+        border-left: 3px solid #ff9800;
+        color: rgb(200, 200, 200);
+        font-size: 12px;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sdpi-wrapper">
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Server Port:</div>
+        <div class="sdpi-item-value">
+          <input
+            type="number"
+            min="1"
+            max="65535"
+            value="8888"
+            class="sdpi-item-value"
+            id="portInput"
+          />
+        </div>
+      </div>
+      <div id="connectionStatus" style="margin-top: 12px; display: flex; align-items: center; gap: 6px; color: rgb(150, 150, 150); font-size: 12px;">
+        <span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #888; display: inline-block;"></span>
+        <span id="statusText">Checking...</span>
+      </div>
+      <div class="notice">
+        <strong>Spotify only.</strong> SoundCloud does not support shuffle or repeat.
+      </div>
+    </div>
+    <script src="spotify-only-pi.js"></script>
+  </body>
+</html>

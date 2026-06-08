@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Seek Property Inspector</title>
+    <link rel="stylesheet" href="../css/sdpi.css" />
+    <style>
+      .sdpi-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sdpi-item-label {
+        color: rgb(150, 150, 150);
+        flex-shrink: 0;
+      }
+      .sdpi-item-value {
+        flex-grow: 1;
+      }
+      .sdpi-item-value select,
+      .sdpi-item-value input[type="number"] {
+        background-color: rgb(60, 60, 60);
+        color: #fff;
+        border: 1px solid #555;
+        padding: 5px;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sdpi-wrapper">
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Source:</div>
+        <div class="sdpi-item-value">
+          <select id="sourceInput">
+            <option value="spotify">Spotify</option>
+            <option value="soundcloud">SoundCloud</option>
+            <option value="auto">Auto</option>
+          </select>
+        </div>
+      </div>
+      <div class="sdpi-item" style="margin-top: 12px;">
+        <div class="sdpi-item-label">Skip (sec):</div>
+        <div class="sdpi-item-value">
+          <input
+            type="number"
+            min="1"
+            max="300"
+            value="10"
+            class="sdpi-item-value"
+            id="secondsInput"
+          />
+        </div>
+      </div>
+      <div class="sdpi-item" style="margin-top: 12px;">
+        <div class="sdpi-item-label">Server Port:</div>
+        <div class="sdpi-item-value">
+          <input
+            type="number"
+            min="1"
+            max="65535"
+            value="8888"
+            class="sdpi-item-value"
+            id="portInput"
+          />
+        </div>
+      </div>
+      <div id="connectionStatus" style="margin-top: 12px; display: flex; align-items: center; gap: 6px; color: rgb(150, 150, 150); font-size: 12px;">
+        <span id="statusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #888; display: inline-block;"></span>
+        <span id="statusText">Checking...</span>
+      </div>
+      <details style="margin-top: 8px; color: rgb(150, 150, 150); font-size: 12px;">
+        <summary style="cursor: pointer; font-weight: 600; margin-bottom: 6px;">Troubleshooting</summary>
+        <p style="margin: 4px 0;">Make sure the Stream Deck plugin and the server use the same port (default: 8888).</p>
+        <p style="margin: 4px 0;">Server must be running before actions will respond.</p>
+      </details>
+    </div>
+    <script src="seek-pi.js"></script>
+  </body>
+</html>

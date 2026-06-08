@@ -44,7 +44,7 @@ if not exist "data\config.json" (
         echo   "defaultVolume": 0.5,
         echo   "enableOBS": true,
         echo   "enableWebsite": true,
-        echo   "volumeStep": 0.05,
+
         echo   "logLevel": "INFO",
         echo   "backupCount": 3,
         echo   "maxQueueSize": 50,

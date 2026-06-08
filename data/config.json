@@ -5,7 +5,6 @@
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,
-  "volumeStep": 0.05,
   "logLevel": "INFO",
   "backupCount": 3,
   "maxQueueSize": 50,
