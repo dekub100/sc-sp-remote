@@ -5,6 +5,8 @@
 - **Play/Pause** — Toggle play/pause (configurable source: Spotify or SoundCloud).
 - **Next Track** — Skip to next track (configurable source).
 - **Previous Track** — Go to previous track (configurable source).
+- **Seek Forward** — Seek forward by a configurable number of seconds (configurable source).
+- **Seek Back** — Seek backward by a configurable number of seconds (configurable source).
 - **Volume Up/Down** — Adjust volume (configurable source).
 - **Set Volume** — Set exact percentage (configurable source).
 - **Volume Display** — Shows current volume dynamically on the button (configurable source).

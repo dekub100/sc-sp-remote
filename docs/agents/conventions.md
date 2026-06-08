@@ -18,5 +18,5 @@
 - **Messages carry `source`** — all extension messages have `source: "spotify"` for dual-source routing
 
 ## Shared
-- **`filter.js`** in `web/` — website: relative `filter.js`, OBS: absolute `/filter.js`
+- **`filter.js`** in `web/` — loaded via `src="/static/filter.js"` in both website and OBS widget
 - **Art URL conversion** — `spotify:image:` → `https://i.scdn.co/image/` (in `remoteVolume.js`)

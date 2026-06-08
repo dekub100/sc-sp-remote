@@ -38,7 +38,6 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Debounced state saves** (2s inactivity)
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
-- **OBS Up Next transition** — shows next queued track when ≤15s remaining
 - **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
 
 
@@ -73,13 +72,11 @@ state = {
 | `playbackUpdate` | Spicetify→Server | Spotify play/pause/progress |
 | `shuffleUpdate`/`repeatUpdate`/`likeUpdate` | Spicetify→Server | Spotify state |
 | `progressUpdate` | Spicetify→Server | Spotify progress sync |
-| `queueSnapshot` | Spicetify→Server | Queue state polling |
+| `clientLog` | Any→Server | Client-side log messages (useful for SC which can't access DevTools) |
 | **SoundCloud** | | |
 | `scStateUpdate` | SC Plugin→Server | SC track/artist/progress |
 | `scVolumeUpdate` | SC Plugin→Server | SC volume |
 | `scPlaybackControl` | Server→SC Plugin | Play/pause/next/prev |
-| **Cross-source** | | |
-| `activeSourceUpdate` | Server→All | Active player changed |
 | **Commands** | | |
 | `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
 | `like` | Web→Server | Like current track (source-aware) |

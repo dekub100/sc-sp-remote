@@ -13,6 +13,7 @@
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow
+├── cliff.toml                 # git-cliff config for conventional-commit release notes
 ├── data/
 │   ├── config.json           # Default server config (port 8888)
 │   ├── state_spotify.json    # Spotify state (runtime, gitignored)
@@ -33,6 +34,7 @@
 │   └── install.py            # Extension installer
 ├── web/
 │   ├── index.html / style.css / script.js / lib.js / filter.js
+│   ├── admin/                 # Admin panel (config editor + log viewer)
 │   └── obs-widget/           # OBS browser source widget
 ├── spicetify-extension/
 │   └── remoteVolume.js       # Runs inside Spotify (port 8888)
