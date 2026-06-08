@@ -56,6 +56,41 @@ Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13. Pushing a
 
 The workflow is at `.github/workflows/ci.yml`.
 
+## Commit Messages
+
+Follow the [Conventional Commits](https://www.conventionalcommits.org/) spec:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+| Type        | Usage                          |
+|-------------|--------------------------------|
+| `feat`      | A new feature                  |
+| `fix`       | A bug fix                      |
+| `build`     | Build system / dependencies    |
+| `chore`     | Routine tasks, maintenance     |
+| `ci`        | CI configuration               |
+| `docs`      | Documentation only             |
+| `perf`      | Performance improvement        |
+| `refactor`  | Code change with no behaviour change |
+| `style`     | Formatting, missing semicolons, etc. |
+| `test`      | Adding or fixing tests         |
+
+Use `!` after the type/scope or a `BREAKING CHANGE` footer for breaking changes. Append body and footers after a blank line.
+
+```powershell
+git commit -m "feat: add lyrics panel
+
+implement synced lyrics display with real-time highlighting
+
+Closes #42"
+```
+
 ## Release Workflow
 
 Releases are automated via CI/CD — just push a tag:
@@ -67,8 +102,9 @@ git push origin v2.0.0
 
 GitHub Actions will:
 1. Run lint + tests
-2. Build `sc-sp-remote-core-v2.0.0.zip`
-3. Create a GitHub release with the zip attached
+2. Build `sc-sp-remote-core-v2.0.0.zip` and the `.streamDeckPlugin`
+3. Generate release notes from conventional commits via [git-cliff](https://git-cliff.org)
+4. Create a GitHub release with both assets and the notes attached
 
 ### Manual fallback (if CI fails)
 
@@ -81,53 +117,27 @@ Update version in these files:
 
 Do NOT bump the StreamDeck plugin manifest version unless the plugin source actually changed.
 
-#### 2. Create the Release Zip
+#### 2. Commit & Push
 
-Only runtime files — no dev artifacts. `Compress-Archive` flattens paths — use `7z`:
-
-```powershell
-Remove-Item sc-sp-remote-core-vX.X.X.zip -Force -ErrorAction SilentlyContinue
-7z a -xr'!__pycache__' sc-sp-remote-core-vX.X.X.zip `
-  README.md requirements.txt setup.bat `
-  server\ data\config.json tools\install.py tools\service.py `
-  spicetify-extension\ web\
-```
-
-Pitfalls:
-- `Compress-Archive` flattens paths — never use it for release zips
-- `__pycache__` gets picked up unless explicitly excluded
-- **Do not `git add` the zip**
-
-#### 3. Commit & Push
+Use the conventional-commit format described above.
 
 ```powershell
 git add -A
-git commit -m "vX.X.X - Short Title
-
-### New Features
-* ...
-
-### Improvements
-* ...
-
-### Bug Fixes
-* ...
-
-### Documentation
-* ..."
+git commit -m "Bump version to X.X.X"
 git push
 ```
 
-#### 4. Create GitHub Release
+#### 3. Create GitHub Release
+
+The CI workflow builds both assets and generates release notes automatically — assets are not committed. If CI failed, push a tag and let CI retry.
+
+For a manual release (CI unavailable), push the tag first so it resolves, generate notes with git-cliff, then create:
 
 ```powershell
-gh release create vX.X.X `
-  sc-sp-remote-core-vX.X.X.zip `
-  com.dekub.sc-sp-remote.streamDeckPlugin `
-  --title "vX.X.X - Short Title" `
-  --notes "..."
+git-cliff --current --tag vX.X.X -o RELEASE_NOTES.md
+gh release create vX.X.X -F RELEASE_NOTES.md
 ```
 
 Pitfalls:
-- Pass filenames as positional args (not `--files`)
 - Re-upload: `gh release delete-asset vX.X.X <filename> --yes && gh release upload vX.X.X <filename> --clobber`
+- git-cliff config lives in `cliff.toml` at the project root
