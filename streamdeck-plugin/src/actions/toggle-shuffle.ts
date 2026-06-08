@@ -12,7 +12,7 @@ type ToggleShuffleSettings = {
   state?: number;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.toggleshuffle" })
+@action({ UUID: "com.dekub.sc-sp-remote.toggleshuffle" })
 export class ToggleShuffle extends SingletonAction<ToggleShuffleSettings> {
   private actionContext: KeyAction<ToggleShuffleSettings> | null = null;
 

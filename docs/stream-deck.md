@@ -20,7 +20,7 @@ The Source setting is stored per action instance, so you can have separate butto
 
 ## Installing
 
-Download `com.dekub.spicetify-remote.streamDeckPlugin` from the [releases page](https://github.com/dekub100/spicetify-remote/releases) and double-click to install.
+Download `com.dekub.sc-sp-remote.streamDeckPlugin` from the [releases page](https://github.com/dekub100/sc-sp-remote/releases) and double-click to install.
 
 ## Building from Source
 
@@ -29,10 +29,10 @@ cd streamdeck-plugin
 npm install
 npm run build
 cd ..
-npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
+npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.sc-sp-remote.sdPlugin --output . --force
 ```
 
-The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — CI auto-builds it and includes it in GitHub releases. Double-click the downloaded `.streamDeckPlugin` to install, or use `npx @elgato/cli install com.dekub.spicetify-remote`.
+The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — CI auto-builds it and includes it in GitHub releases. Double-click the downloaded `.streamDeckPlugin` to install, or use `npx @elgato/cli install com.dekub.sc-sp-remote`.
 
 ## Server Communication
 

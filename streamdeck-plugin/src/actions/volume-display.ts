@@ -5,7 +5,7 @@ type VolumeDisplaySettings = {
   source?: string;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.volumedisplay" })
+@action({ UUID: "com.dekub.sc-sp-remote.volumedisplay" })
 export class VolumeDisplay extends SingletonAction<VolumeDisplaySettings> {
   private _volume: number = -1;
   private _isMuted: boolean = false;

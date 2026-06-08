@@ -12,7 +12,7 @@ type ToggleRepeatSettings = {
   state?: number;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.togglerepeat" })
+@action({ UUID: "com.dekub.sc-sp-remote.togglerepeat" })
 export class ToggleRepeat extends SingletonAction<ToggleRepeatSettings> {
   private actionContext: KeyAction<ToggleRepeatSettings> | null = null;
 

@@ -16,10 +16,10 @@ def is_admin():
     except Exception:
         return False
 
-class SpicetifyRemoteService(win32serviceutil.ServiceFramework):
-    _svc_name_ = "SpicetifyRemotePython"
-    _svc_display_name_ = "Spicetify Remote Server (Python)"
-    _svc_description_ = "Relay server for Spicetify remote control and OBS widget"
+class ScSpRemoteService(win32serviceutil.ServiceFramework):
+    _svc_name_ = "ScSpRemotePython"
+    _svc_display_name_ = "sc-sp-remote Server (Python)"
+    _svc_description_ = "Relay server for sc-sp-remote"
     # Setting the default startup type to Automatic
     _svc_startup_type_ = win32service.SERVICE_AUTO_START
 
@@ -84,16 +84,16 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 1:
         command = sys.argv[1].lower()
-        print("--- Spicetify Remote Service Tool ---")
+        print("--- sc-sp-remote Service Tool ---")
         print(f"Executing: {command}...")
 
         try:
-            win32serviceutil.HandleCommandLine(SpicetifyRemoteService)
+            win32serviceutil.HandleCommandLine(ScSpRemoteService)
 
             # Manual override for Automatic startup
             if command == 'install':
                 hscm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_ALL_ACCESS)
-                hs = win32service.OpenService(hscm, SpicetifyRemoteService._svc_name_, win32service.SERVICE_CHANGE_CONFIG)
+                hs = win32service.OpenService(hscm, ScSpRemoteService._svc_name_, win32service.SERVICE_CHANGE_CONFIG)
                 win32service.ChangeServiceConfig(
                     hs, win32service.SERVICE_NO_CHANGE,
                     win32service.SERVICE_AUTO_START,
@@ -101,7 +101,7 @@ if __name__ == '__main__':
                 )
                 print("Startup type forced to: Automatic")
 
-                win32serviceutil.StartService(SpicetifyRemoteService._svc_name_)
+                win32serviceutil.StartService(ScSpRemoteService._svc_name_)
                 print("Service started.")
 
             print(f"\nSUCCESS: Command '{command}' completed.")
@@ -128,5 +128,5 @@ if __name__ == '__main__':
                 pass
     else:
         servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(SpicetifyRemoteService)
+        servicemanager.PrepareToHostSingle(ScSpRemoteService)
         servicemanager.StartServiceCtrlDispatcher()

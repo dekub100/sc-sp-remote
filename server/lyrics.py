@@ -19,7 +19,7 @@ _session: aiohttp.ClientSession | None = None
 def _get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None:
-        _session = aiohttp.ClientSession(headers={"User-Agent": "SCRemote/1.0"})
+        _session = aiohttp.ClientSession(headers={"User-Agent": "ScSpRemote/1.0"})
     return _session
 
 

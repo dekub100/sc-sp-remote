@@ -5,7 +5,7 @@ type NextTrackSettings = {
   source?: string;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.nexttrack" })
+@action({ UUID: "com.dekub.sc-sp-remote.nexttrack" })
 export class NextTrack extends SingletonAction<NextTrackSettings> {
   override onWillAppear(ev: WillAppearEvent<NextTrackSettings>): void | Promise<void> {
     wsManager.connect();

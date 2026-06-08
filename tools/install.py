@@ -1,4 +1,4 @@
-"""Install tools for sc-spotify-remote."""
+"""Install tools for sc-sp-remote."""
 from __future__ import annotations
 
 import os

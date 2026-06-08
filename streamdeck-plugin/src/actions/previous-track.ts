@@ -5,7 +5,7 @@ type PreviousTrackSettings = {
   source?: string;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.previoustrack" })
+@action({ UUID: "com.dekub.sc-sp-remote.previoustrack" })
 export class PreviousTrack extends SingletonAction<PreviousTrackSettings> {
   override onWillAppear(ev: WillAppearEvent<PreviousTrackSettings>): void | Promise<void> {
     wsManager.connect();

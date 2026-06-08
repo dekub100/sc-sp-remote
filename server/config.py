@@ -7,7 +7,7 @@ from typing import Any
 PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR: str = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
-CONFIG_PATH: str = os.environ.get("SC_REMOTE_CONFIG", os.path.join(DATA_DIR, "config.json"))
+CONFIG_PATH: str = os.environ.get("SC_SP_REMOTE_CONFIG", os.path.join(DATA_DIR, "config.json"))
 STATE_FILE: str = os.path.join(DATA_DIR, "state_spotify.json")
 SC_STATE_FILE: str = os.path.join(DATA_DIR, "state_soundcloud.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
@@ -17,7 +17,7 @@ STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
 PROGRESS_BROADCAST_INTERVAL: float = 1.0
 
 config: dict[str, Any] = {
-    "port": 8889,
+    "port": 8888,
     "host": "127.0.0.1",
     "allowedOrigins": ["*"],
     "defaultVolume": 0.5,

@@ -6,7 +6,7 @@
 Spotify → Spicetify Extension (remoteVolume.js) ──┐
                                                     │
 SoundCloud → SC Plugin (soundcloud-remote-bridge.js) ─┤
-                                                    │ WS (localhost:8889)
+                                                    │ WS (localhost:8888)
 Website (script.js) ──────────────────────────────────┤
                                                     │
 OBS Widget (obs-script.js) ──────────────────────────┘
@@ -16,10 +16,7 @@ OBS Widget (obs-script.js) ─────────────────�
                                          │  (aiohttp, single)  │
                                          ├─────────────────────┤
                                          │  GET  /api/state    │
-                                         │  GET  /api/queue    │
-                                         │  POST /api/queue/add│
-                                         │  DEL  /api/queue/remove│
-                                         │  POST /api/queue/clear│
+
                                          └─────────────────────┘
                                                     │
                                          ┌──────────┴──────────┐
@@ -30,7 +27,7 @@ OBS Widget (obs-script.js) ─────────────────�
 
 ## Key Design Decisions
 
-- **Single port** (8889) for HTTP + WebSocket — avoids collision with main branch (8888)
+- **Single port** (8888) for HTTP + WebSocket
 - **Server split into modules** — `server.py` is a thin coordinator
 - **No discovery** — clients connect directly to main port
 - **Delta-based sync** — only changed fields sent
@@ -43,9 +40,7 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
 - **OBS Up Next transition** — shows next queued track when ≤15s remaining
 - **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
-- **Queue URI normalization** — `parse_track_input()` converts URLs to `spotify:track:xxx`
-- **Queue rate limiting** — per-requester 30s cooldown, configurable via `queueRateLimitSeconds`
-- **Queue polling** — extension polls `Spicetify.Queue` every 2s, sends `queueSnapshot`
+
 
 ## State Shape (state.py)
 
@@ -58,12 +53,11 @@ state = {
     "trackProgress": int (ms), "trackDuration": int (ms), "trackProgressStartTimestamp": float,
     "isShuffling": bool, "repeatStatus": 0|1|2, "isLiked": bool,
     "lyrics": {trackUri, synced, plain, available, instrumental, loading},
-    "queue": {nextTracks: [], queueRevision: ""},
     # SoundCloud (sc* prefix)
     "scTrack", "scArtist", "scAlbum", "scId", "scCoverUrl",
     "scIsPlaying": bool, "scProgressMs": 0, "scDurationMs": 0,
     "scProgressStartTimestamp": float,
-    "scVolume": 0.5, "scIsLiked": bool, "scQueue": [],
+    "scVolume": 0.5, "scIsLiked": bool,
 }
 
 ```
@@ -89,12 +83,8 @@ state = {
 | **Commands** | | |
 | `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
 | `like` | Web→Server | Like current track (source-aware) |
-| `addToQueue`/`removeFromQueue`/`clearQueue` | Web→Server→Spicetify | Queue management |
 | **Server→All** | | |
 | `lyricsUpdate` | Server→All | Lyrics data |
-| `queueUpdate` | Server→All | Queue state broadcast |
 | `error` | Any | Error relay |
 
-## Queue System
 
-Viewers request songs via web UI → server checks rate limit + queue-full + dedup → forwards to extension → extension calls `Spicetify.addToQueue()` → extension polls `Spicetify.Queue.nextTracks` → mirrors to server → server broadcasts to clients. Queue-full check uses `pendingQueueMeta.length`. `requestedBy` is matched via URI against `pendingQueueMeta` FIFO.

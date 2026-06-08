@@ -24,7 +24,7 @@ session_timestamp: str = time.strftime("%Y%m%d-%H%M%S")
 log_file: str = os.path.join(LOG_DIR, f"server_{session_timestamp}.log")
 
 log_level: int = getattr(logging, config["logLevel"].upper(), logging.INFO)
-logger: logging.Logger = logging.getLogger("SCRemote")
+logger: logging.Logger = logging.getLogger("ScSpRemote")
 logger.setLevel(log_level)
 
 formatter: logging.Formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')

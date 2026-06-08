@@ -14,7 +14,7 @@ type ToggleLikeSettings = {
   source?: string;
 };
 
-@action({ UUID: "com.dekub.spicetify-remote.togglelike" })
+@action({ UUID: "com.dekub.sc-sp-remote.togglelike" })
 export class ToggleLike extends SingletonAction<ToggleLikeSettings> {
   private actionContext: KeyAction<ToggleLikeSettings> | null = null;
   private currentSource: string = "spotify";

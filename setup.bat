@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo   Spicetify Remote - Setup
+echo   sc-sp-remote — Setup
 echo ============================================
 echo.
 
@@ -47,8 +47,7 @@ if not exist "data\config.json" (
 
         echo   "logLevel": "INFO",
         echo   "backupCount": 3,
-        echo   "maxQueueSize": 50,
-        echo   "queueRateLimitSeconds": 30
+
         echo }
     ) > data\config.json
     echo [OK] Default config created at data\config.json
@@ -73,10 +72,9 @@ set /p INSTALL_SERVICE="Install service? (y/N): "
 
 if /i "%INSTALL_SERVICE%"=="y" (
     echo.
-    echo Installing Windows service...
+    echo Installing and starting Windows service...
     python tools\service.py install
     if %errorlevel% equ 0 (
-        python tools\service.py start
         echo [OK] Service installed and started.
     ) else (
         echo [WARN] Service install failed. You can still run the server manually.
@@ -93,7 +91,7 @@ echo ============================================
 echo.
 echo Config:  data\config.json
 echo Logs:    data\logs\
-echo State:   data\state.json
+echo State:   data\state_spotify.json / data\state_soundcloud.json
 echo.
 echo To start the server manually:
 echo   python server\server.py
