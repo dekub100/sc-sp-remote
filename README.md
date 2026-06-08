@@ -1,6 +1,6 @@
 # sc-sp-remote
 
-![Version](https://img.shields.io/badge/version-1.5.5-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 
 A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via soundcloud-rpc) using WebSockets.
 
