@@ -2,10 +2,21 @@
 
 ## Available Actions
 
-- **Set Volume** — Configurable to an exact percentage.
-- **Playback Control** — Play/Pause, Next, Previous.
-- **Toggles** — Shuffle, Repeat, Like.
-- **Volume Display** — Shows current volume dynamically on the button.
+- **Play/Pause** — Toggle play/pause (configurable source: Spotify or SoundCloud).
+- **Next Track** — Skip to next track (configurable source).
+- **Previous Track** — Go to previous track (configurable source).
+- **Volume Up/Down** — Adjust volume (configurable source).
+- **Set Volume** — Set exact percentage (configurable source).
+- **Volume Display** — Shows current volume dynamically on the button (configurable source).
+- **Toggle Shuffle** — Toggle shuffle mode (Spotify only).
+- **Toggle Repeat** — Cycle repeat: off → context → track (Spotify only).
+- **Toggle Like** — Like/unlike current track (configurable source).
+
+## Source Configuration
+
+Each action (except Shuffle and Repeat) has a **Source** setting in its Property Inspector. Choose `Spotify` or `SoundCloud` to control which source the button operates on. Default is `Spotify`.
+
+The Source setting is stored per action instance, so you can have separate buttons for each source on your Stream Deck.
 
 ## Installing
 
@@ -21,7 +32,7 @@ cd ..
 npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.spicetify-remote.sdPlugin --output . --force
 ```
 
-The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — only included in GitHub releases. Double-click to install, or use `npx @elgato/cli install com.dekub.spicetify-remote`.
+The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — CI auto-builds it and includes it in GitHub releases. Double-click the downloaded `.streamDeckPlugin` to install, or use `npx @elgato/cli install com.dekub.spicetify-remote`.
 
 ## Server Communication
 
