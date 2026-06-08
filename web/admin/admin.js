@@ -35,8 +35,6 @@ async function loadConfig() {
     document.getElementById('cfg-port').value = cfg.port;
     document.getElementById('cfg-origins').value = (cfg.allowedOrigins || []).join(', ');
     document.getElementById('cfg-volume').value = cfg.defaultVolume;
-    document.getElementById('cfg-max-queue').value = cfg.maxQueueSize;
-    document.getElementById('cfg-rate-limit').value = cfg.queueRateLimitSeconds;
     document.getElementById('cfg-obs').checked = !!cfg.enableOBS;
     document.getElementById('cfg-website').checked = !!cfg.enableWebsite;
     document.getElementById('cfg-log-level').value = cfg.logLevel;
@@ -48,7 +46,6 @@ async function loadConfig() {
     document.getElementById('cfg-lyrics-timeout').value = cfg.lyricsFetchTimeoutSeconds;
 
     document.getElementById('cfg-polling').value = cfg.spicetifyPollingIntervalMs;
-    document.getElementById('cfg-queue-polling').value = cfg.spicetifyQueuePollingIntervalMs;
     document.getElementById('cfg-reconnect-base').value = cfg.spicetifyReconnectBaseDelayMs;
     document.getElementById('cfg-reconnect-max').value = cfg.spicetifyReconnectMaxDelayMs;
     document.getElementById('cfg-progress-delta').value = cfg.spicetifyProgressDeltaThresholdMs;
@@ -75,8 +72,6 @@ async function saveConfig(e) {
     port: parseInt(document.getElementById('cfg-port').value),
     allowedOrigins: document.getElementById('cfg-origins').value.split(',').map(s => s.trim()).filter(Boolean),
     defaultVolume: parseFloat(document.getElementById('cfg-volume').value),
-    maxQueueSize: parseInt(document.getElementById('cfg-max-queue').value),
-    queueRateLimitSeconds: parseInt(document.getElementById('cfg-rate-limit').value),
     enableOBS: document.getElementById('cfg-obs').checked,
     enableWebsite: document.getElementById('cfg-website').checked,
     enableLyrics: document.getElementById('cfg-lyrics').checked,
@@ -86,7 +81,6 @@ async function saveConfig(e) {
     stateSaveDebounceSeconds: parseFloat(document.getElementById('cfg-save-debounce').value),
     lyricsFetchTimeoutSeconds: parseInt(document.getElementById('cfg-lyrics-timeout').value),
     spicetifyPollingIntervalMs: parseInt(document.getElementById('cfg-polling').value),
-    spicetifyQueuePollingIntervalMs: parseInt(document.getElementById('cfg-queue-polling').value),
     spicetifyReconnectBaseDelayMs: parseInt(document.getElementById('cfg-reconnect-base').value),
     spicetifyReconnectMaxDelayMs: parseInt(document.getElementById('cfg-reconnect-max').value),
     spicetifyProgressDeltaThresholdMs: parseInt(document.getElementById('cfg-progress-delta').value),

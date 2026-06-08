@@ -198,9 +198,4 @@ async def start_progress_broadcasting() -> None:
         await asyncio.sleep(PROGRESS_BROADCAST_INTERVAL)
 
 
-async def broadcast_queue_update() -> None:
-    await broadcast({
-        "type": "queueUpdate",
-        "queue": state["queue"]["nextTracks"],
-        "queueRevision": state["queue"]["queueRevision"]
-    })
+

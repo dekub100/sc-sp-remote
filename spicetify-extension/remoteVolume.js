@@ -8,7 +8,6 @@
       DEFAULT_PORT: 8889,
       SERVER_URL: null,
       POLLING_INTERVAL_MS: 500,
-      QUEUE_POLLING_INTERVAL_MS: 2000,
       RECONNECT_DELAY_BASE: 1000,
       MAX_RECONNECT_DELAY: 10000,
       MAX_RECONNECT_ATTEMPTS: 10,
@@ -27,7 +26,6 @@
       trackUri: null,
       progress: -1,
       timestamp: 0,
-      queueRevision: "",
     },
 
     ws: null,
@@ -35,7 +33,6 @@
     _initialized: false,
     _connecting: false,
     pollInterval: null,
-    queueInterval: null,
 
     _loadSettings() {
       try {
@@ -188,10 +185,6 @@
         this.config.POLLING_INTERVAL_MS = data.pollingIntervalMs;
         console.log(`[RemoteVolume] Config: pollingInterval = ${data.pollingIntervalMs}ms`);
       }
-      if (data.queuePollingIntervalMs !== undefined) {
-        this.config.QUEUE_POLLING_INTERVAL_MS = data.queuePollingIntervalMs;
-        console.log(`[RemoteVolume] Config: queuePollingInterval = ${data.queuePollingIntervalMs}ms`);
-      }
       if (data.reconnectBaseDelayMs !== undefined) {
         this.config.RECONNECT_DELAY_BASE = data.reconnectBaseDelayMs;
       }
@@ -227,15 +220,6 @@
             break;
           case "playbackControl":
             this.handleCommand(data);
-            break;
-          case "addToQueue":
-            this.handleAddToQueue(data);
-            break;
-          case "removeFromQueue":
-            this.handleRemoveFromQueue(data);
-            break;
-          case "clearQueue":
-            this.handleClearQueue();
             break;
         }
       } catch (err) {
@@ -312,22 +296,12 @@
           this.config.POLLING_INTERVAL_MS
         );
       }
-      if (!this.queueInterval) {
-        this.queueInterval = setInterval(
-          this.checkQueue.bind(this),
-          this.config.QUEUE_POLLING_INTERVAL_MS
-        );
-      }
     },
 
     stopServices() {
       if (this.pollInterval) {
         clearInterval(this.pollInterval);
         this.pollInterval = null;
-      }
-      if (this.queueInterval) {
-        clearInterval(this.queueInterval);
-        this.queueInterval = null;
       }
       if (this._onSongChange) {
         Spicetify.Player.removeEventListener("songchange", this._onSongChange);
@@ -382,7 +356,6 @@
 
       this.state = { ...snapshot };
       this.send(snapshot);
-      this.checkQueue();
     },
 
     checkVolume(force = false) {
@@ -449,7 +422,6 @@
         };
 
         this.send(metadata);
-        this.checkQueue();
       }
     },
 
@@ -576,91 +548,7 @@
       }, this.config.COMMAND_FEEDBACK_DELAY_MS);
     },
 
-    checkQueue() {
-      const q = Spicetify.Queue;
-      if (!q) return;
-      const rev = String(q.queueRevision);
-      if (rev === this.state.queueRevision) return;
-      this.state.queueRevision = rev;
-      const rawItems = q.nextTracks || [];
-      const tracks = rawItems
-        .filter(item => {
-          const ct = item.contextTrack || item;
-          return ct.uri && ct.uri !== "spotify:delimiter";
-        })
-        .map(item => {
-          const ct = item.contextTrack || item;
-          const meta = ct.metadata || {};
-          const rawImg = meta.image_url || meta.image_small_url || meta.image_large_url || "";
-          return {
-            uri: ct.uri || "",
-            uid: String(ct.uid ?? ""),
-            metadata: {
-              title: meta.title || ct.name || "",
-              artist_name: meta.artist_name || (ct.artists?.[0]?.name) || "",
-              album_name: meta.album_title || meta.album_name || (ct.album?.name) || "",
-              image_url: rawImg.startsWith("spotify:image:")
-                ? "https://i.scdn.co/image/" + rawImg.substring(14)
-                : rawImg,
-              duration: meta.duration || ""
-            }
-          };
-        });
-      this.send({ type: "queueSnapshot", nextTracks: tracks, queueRevision: rev });
-    },
 
-    async handleAddToQueue(data) {
-      try {
-        const uri = data.uri;
-        if (!uri) return;
-        await Spicetify.addToQueue([{ uri }]);
-        console.log(`[RemoteVolume] Added to queue: ${uri}`);
-      } catch (err) {
-        console.error("[RemoteVolume] addToQueue failed:", err);
-        this.send({ type: "error", message: `Failed to add track: ${err.message}` });
-      }
-    },
-
-    async handleRemoveFromQueue(data) {
-      try {
-        const uri = data.uri;
-        const uid = data.uid;
-        if (!uri) return;
-        if (!uid) {
-          console.warn("[RemoteVolume] removeFromQueue: no uid provided, may remove duplicates");
-        }
-        const track = { uri };
-        if (uid) track.uid = uid;
-        await Spicetify.removeFromQueue([track]);
-        console.log(`[RemoteVolume] Removed from queue: ${uri}`);
-      } catch (err) {
-        console.error("[RemoteVolume] removeFromQueue failed:", err);
-        this.send({ type: "error", message: `Failed to remove track: ${err.message}` });
-      }
-    },
-
-    async handleClearQueue() {
-      try {
-        const q = Spicetify.Queue;
-        if (!q || !q.nextTracks || q.nextTracks.length === 0) return;
-        const items = q.nextTracks
-          .filter(item => {
-            const ct = item.contextTrack || item;
-            return ct.uri && ct.uri !== "spotify:delimiter";
-          })
-          .map(item => {
-            const ct = item.contextTrack || item;
-            const track = { uri: ct.uri };
-            if (ct.uid) track.uid = ct.uid;
-            return track;
-          });
-        await Spicetify.removeFromQueue(items);
-        console.log(`[RemoteVolume] Cleared ${items.length} tracks from queue`);
-      } catch (err) {
-        console.error("[RemoteVolume] clearQueue failed:", err);
-        this.send({ type: "error", message: `Failed to clear queue: ${err.message}` });
-      }
-    }
   };
 
   SpotifyRemote.init();

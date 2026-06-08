@@ -16,10 +16,6 @@ from routes import (
     handle_admin_log_file,
     handle_admin_logs_list,
     handle_config,
-    handle_queue_add,
-    handle_queue_clear,
-    handle_queue_get,
-    handle_queue_remove,
     handle_state,
     index_handler,
     obs_handler,
@@ -85,11 +81,6 @@ async def main() -> None:
     main_app.router.add_get('/obs/', obs_handler)
     main_app.router.add_get('/api/config', handle_config)
     main_app.router.add_get('/api/state', handle_state)
-
-    main_app.router.add_get('/api/queue', handle_queue_get)
-    main_app.router.add_post('/api/queue/add', handle_queue_add)
-    main_app.router.add_delete('/api/queue/remove', handle_queue_remove)
-    main_app.router.add_post('/api/queue/clear', handle_queue_clear)
 
     main_app.router.add_get('/api/admin/config', handle_admin_config_get)
     main_app.router.add_put('/api/admin/config', handle_admin_config_put)
