@@ -16,8 +16,8 @@ This project was written entirely by AI (OpenCode). I describe what I want, revi
 
 ## Quick Start
 
-1. **Install the extensions** — `python tools/install.py`
-2. **Start the server** — `python server/server.py`
+1. **Install the extensions** — `python manage.py install`
+2. **Start the server** — `python manage.py run`
 3. Open the **web UI** at `http://localhost:8888/`
 
 Or run `setup.bat` for a one-click install on Windows.

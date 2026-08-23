@@ -82,7 +82,7 @@ jobs:
           zip -r "$ZIP_NAME" \
             README.md requirements.txt setup.bat \
             server/ data/config.json \
-            tools/install.py tools/service.py \
+            manage.py \
             spicetify-extension/ soundcloud-plugin/ web/ \
             -x "server/__pycache__/*" "*/__pycache__/*"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV

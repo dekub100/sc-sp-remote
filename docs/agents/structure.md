@@ -28,10 +28,7 @@
 │   ├── lyrics.py             # LRC parser, LRCLIB fetcher, SQLite cache
 │   ├── handlers.py           # Message handlers + dispatch table (25+ types)
 │   └── routes.py             # WS handler, HTTP endpoints, admin config
-├── tools/
-│   ├── dev.py                # Dev server (auto-reload, port isolation)
-│   ├── service.py            # Windows service wrapper
-│   └── install.py            # Extension installer
+├── manage.py                 # CLI: run / dev / install / service subcommands
 ├── web/
 │   ├── index.html / style.css / script.js / lib.js / filter.js
 │   ├── admin/                 # Admin panel (config editor + log viewer)
