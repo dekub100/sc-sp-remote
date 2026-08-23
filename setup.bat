@@ -47,7 +47,9 @@ if not exist "data\config.json" (
 
         echo   "logLevel": "INFO",
         echo   "backupCount": 3,
-
+        echo   "lyricsFetchTimeoutSeconds": 30,
+        echo   "lyricsProviderOrder": ["musixmatch", "lrclib"],
+        echo   "musixmatchToken": "",
         echo }
     ) > data\config.json
     echo [OK] Default config created at data\config.json

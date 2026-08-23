@@ -25,3 +25,4 @@ streamdeck-plugin/node_modules/
 *.streamDeckPlugin
 localhost-*.log
 *.log
+data/config.dev.json

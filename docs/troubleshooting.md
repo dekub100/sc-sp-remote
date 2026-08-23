@@ -58,10 +58,12 @@ If SoundCloud actions stop working:
 
 ## Lyrics not loading
 
-- The server fetches lyrics from [LRCLIB](https://lrclib.net). If the track isn't in their database, lyrics will show as unavailable.
+- Lyrics come from [Musixmatch](https://musixmatch.com) first (with word-level karaoke when available), falling back to [LRCLIB](https://lrclib.net). If a track isn't in either database, lyrics will show as unavailable.
 - Ensure `enableLyrics` is `true` in `data/config.json` (or toggled on in the admin panel).
 - Clear the local cache: delete `data/lyrics_cache.db` and restart the server.
 - Adjust `lyricsFetchTimeoutSeconds` in the admin panel if requests time out.
+- Check `lyricsProviderOrder` in the admin panel — remove `"musixmatch"` if Musixmatch is having issues; the server will use LRCLIB only.
+- If Musixmatch lyrics suddenly stop but LRCLIB still works, force a token refresh: **Refresh Token** button in the admin panel, or `python manage.py musixmatch-token`.
 
 ## Port conflicts
 
@@ -79,12 +81,14 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 | `defaultVolume` | float | `0.5` | Initial volume (0.0–1.0) |
 | `enableOBS` | bool | `true` | Enable OBS widget at `/obs/` |
 | `enableWebsite` | bool | `true` | Enable web UI at `/` |
-| `enableLyrics` | bool | `true` | Enable LRCLIB lyrics fetching |
+| `enableLyrics` | bool | `true` | Enable lyrics fetching |
 | `logLevel` | string | `"INFO"` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `backupCount` | int | `3` | Number of old log files to keep |
 | `progressBroadcastInterval` | float | `1.0` | Seconds between progress broadcasts to clients |
 | `stateSaveDebounceSeconds` | float | `2.0` | Seconds of inactivity before saving state to disk |
-| `lyricsFetchTimeoutSeconds` | int | `30` | LRCLIB request timeout |
+| `lyricsFetchTimeoutSeconds` | int | `30` | Lyrics request timeout (per provider) |
+| `lyricsProviderOrder` | list | `["musixmatch", "lrclib"]` | Provider priority order (`musixmatch`, `lrclib`) |
+| `musixmatchToken` | string | `""` | Musixmatch usertoken — auto-fetched, don't edit manually (use admin panel / `manage.py musixmatch-token`) |
 | `spicetifyPollingIntervalMs` | int | `500` | Spotify polling interval (ms) |
 | `spicetifyReconnectBaseDelayMs` | int | `1000` | Initial reconnect backoff (ms) |
 | `spicetifyReconnectMaxDelayMs` | int | `10000` | Max reconnect backoff (ms) |

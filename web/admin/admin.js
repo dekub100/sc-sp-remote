@@ -44,6 +44,7 @@ async function loadConfig() {
     document.getElementById('cfg-save-debounce').value = cfg.stateSaveDebounceSeconds;
     document.getElementById('cfg-lyrics').checked = !!cfg.enableLyrics;
     document.getElementById('cfg-lyrics-timeout').value = cfg.lyricsFetchTimeoutSeconds;
+    document.getElementById('cfg-provider-order').value = (cfg.lyricsProviderOrder || []).join(', ');
 
     document.getElementById('cfg-polling').value = cfg.spicetifyPollingIntervalMs;
     document.getElementById('cfg-reconnect-base').value = cfg.spicetifyReconnectBaseDelayMs;
@@ -80,6 +81,7 @@ async function saveConfig(e) {
     progressBroadcastInterval: parseFloat(document.getElementById('cfg-progress-broadcast').value),
     stateSaveDebounceSeconds: parseFloat(document.getElementById('cfg-save-debounce').value),
     lyricsFetchTimeoutSeconds: parseInt(document.getElementById('cfg-lyrics-timeout').value),
+    lyricsProviderOrder: document.getElementById('cfg-provider-order').value.split(',').map(s => s.trim()).filter(Boolean),
     spicetifyPollingIntervalMs: parseInt(document.getElementById('cfg-polling').value),
     spicetifyReconnectBaseDelayMs: parseInt(document.getElementById('cfg-reconnect-base').value),
     spicetifyReconnectMaxDelayMs: parseInt(document.getElementById('cfg-reconnect-max').value),
@@ -159,5 +161,25 @@ async function openLog(filename) {
 ui.refreshLogsBtn.addEventListener('click', loadLogs);
 ui.closeLogBtn.addEventListener('click', () => ui.logViewer.classList.add('hidden'));
 ui.configForm.addEventListener('submit', saveConfig);
+
+document.getElementById('mxm-token-btn').addEventListener('click', async (e) => {
+  const btn = e.target;
+  btn.disabled = true;
+  btn.value = '  ~~ Refreshing... ~~  ';
+  try {
+    const res = await fetch(`${API}/api/admin/lyrics/musixmatch-token`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      showConfigStatus('~~ Musixmatch token refreshed (' + data.tokenPreview + ') ~~', 'success');
+    } else {
+      showConfigStatus('Error: ' + (data.error || 'Token refresh failed'), 'error');
+    }
+  } catch (e) {
+    showConfigStatus('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.value = '  ~~ Refresh Token ~~  ';
+  }
+});
 
 loadConfig();

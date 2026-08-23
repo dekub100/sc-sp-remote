@@ -48,6 +48,14 @@ npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.sc-s
 ```
 The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — only included in GitHub releases.
 
+### Config Hygiene
+
+`data/config.json` is the tracked default config — it must contain only defaults. Never commit user data in it (Musixmatch tokens, custom ports, personal origins, etc.). The server writes runtime values (like the auto-fetched Musixmatch token) to this file at runtime, so **always reset it to defaults before committing**:
+
+- `"musixmatchToken": ""` (never commit a real token)
+
+If you've run the server locally and it changed `data/config.json`, restore just that file before staging: `git checkout -- data/config.json`.
+
 ---
 
 ## CI / CD

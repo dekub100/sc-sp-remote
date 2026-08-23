@@ -17,6 +17,7 @@ from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, confi
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import (
+    get_interpolated_track_progress,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
@@ -139,7 +140,7 @@ async def handle_state(request: web.Request) -> web.Response:
             "isShuffling": state["isShuffling"],
             "repeatStatus": state["repeatStatus"],
             "isLiked": state["isLiked"],
-            "progress": state["trackProgress"],
+            "progress": get_interpolated_track_progress(),
             "duration": state["trackDuration"],
             "progressFmt": format_ms(state["trackProgress"]),
             "durationFmt": format_ms(state["trackDuration"])
@@ -267,6 +268,17 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
 
     logger.info(f"Admin: Config updated ({', '.join(updates.keys())})")
     return web.json_response({"status": "ok", "updated": list(updates.keys())}, headers=_cors_headers(request))
+
+
+async def handle_admin_mxm_token_refresh(request: web.Request) -> web.Response:
+    from lyrics import refresh_musixmatch_token
+    try:
+        token = await refresh_musixmatch_token()
+        logger.info("Admin: Musixmatch token refreshed")
+        return web.json_response({"status": "ok", "tokenPreview": token[:6] + "..."}, headers=_cors_headers(request))
+    except Exception as e:
+        logger.error(f"Admin: Musixmatch token refresh failed: {type(e).__name__}: {e}")
+        return web.json_response({"error": f"Token refresh failed: {e}"}, status=502, headers=_cors_headers(request))
 
 
 async def handle_admin_logs_list(request: web.Request) -> web.Response:

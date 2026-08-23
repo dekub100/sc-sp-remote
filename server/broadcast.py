@@ -163,6 +163,8 @@ async def broadcast_lyrics_update() -> None:
         "instrumental": lyrics["instrumental"],
         "synced": lyrics["synced"],
         "plain": lyrics["plain"],
+        "karaoke": lyrics.get("karaoke", []),
+        "provider": lyrics.get("provider", ""),
         "loading": lyrics["loading"]
     })
 
