@@ -3,14 +3,24 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from typing import Any
 
 from aiohttp import web
-from broadcast import CLIENTS, set_soundcloud_client, set_spicetify_client
+from broadcast import (
+    CLIENTS,
+    broadcast_playback_update,
+    set_soundcloud_client,
+    set_spicetify_client,
+)
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
-from state import state
+from state import (
+    save_sc_state_debounced,
+    save_spotify_state_debounced,
+    state,
+)
 
 
 def _write_config_to_disk() -> None:
@@ -81,10 +91,20 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     finally:
         info: dict[str, Any] | None = CLIENTS.pop(ws, None)
         if info:
+            # Source controller gone: pause it so clients (web/OBS/streamdeck)
+            # stop showing phantom playback and auto-routing gets unstuck.
             if info.get("type") == "spicetify":
                 set_spicetify_client(None)
+                state["isPlaying"] = False
+                state["trackProgressStartTimestamp"] = time.time() * 1000
+                await save_spotify_state_debounced()
             elif info.get("type") == "soundcloud":
                 set_soundcloud_client(None)
+                state["scIsPlaying"] = False
+                state["scProgressStartTimestamp"] = time.time() * 1000
+                await save_sc_state_debounced()
+            if info.get("type") in ("spicetify", "soundcloud"):
+                await broadcast_playback_update()
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
 
     return ws
