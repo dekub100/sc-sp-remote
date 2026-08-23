@@ -84,8 +84,9 @@ async def _mxm_fetch_token() -> str:
         timeout=_get_mxm_timeout(),
     ) as resp:
         data: dict[str, Any] = await resp.json(content_type=None)
-    header: dict[str, Any] = data.get("message", {}).get("header", {})
-    token: str = data.get("message", {}).get("body", {}).get("user_token", "") or ""
+    header: dict[str, Any] = _as_dict(data.get("message", {})).get("header", {})
+    body: dict[str, Any] = _as_dict(_as_dict(data.get("message", {})).get("body"))
+    token: str = body.get("user_token", "") or ""
     if header.get("status_code") != 200 or not token:
         raise RuntimeError(f"token.get failed ({header.get('status_code')}: {header.get('hint', 'no hint')})")
     config["musixmatchToken"] = token
@@ -170,6 +171,11 @@ def _subtitle_to_lrc(subtitle_body: str) -> str:
     return "\n".join(lrc_lines)
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Musixmatch returns [] instead of {} for empty bodies — coerce so .get() chains are safe."""
+    return value if isinstance(value, dict) else {}
+
+
 async def _fetch_musixmatch(params: dict[str, Any], duration_ms: int) -> Optional[dict[str, Any]]:
     """Fetch lyrics from Musixmatch. Returns normalized result dict or None to fall through."""
     durr: float = duration_ms / 1000
@@ -189,25 +195,27 @@ async def _fetch_musixmatch(params: dict[str, Any], duration_ms: int) -> Optiona
     if macro_data is None:
         return None
     try:
-        macro_calls: dict[str, Any] = macro_data["message"]["body"]["macro_calls"]
-        matcher_header: dict[str, Any] = macro_calls["matcher.track.get"]["message"]["header"]
+        macro_calls: dict[str, Any] = _as_dict(_as_dict(_as_dict(macro_data["message"])["body"])["macro_calls"])
+        matcher_header: dict[str, Any] = _as_dict(_as_dict(macro_calls["matcher.track.get"])["message"])["header"]
         if matcher_header.get("status_code") != 200:
             logger.info(f"Lyrics: Musixmatch matcher failed ({matcher_header.get('mode')})")
             return None
-        meta: dict[str, Any] = macro_calls["matcher.track.get"]["message"]["body"]
+        meta: dict[str, Any] = _as_dict(_as_dict(macro_calls["matcher.track.get"])["message"])["body"]
     except (KeyError, TypeError):
         return None
 
     track: dict[str, Any] = meta.get("track", {})
     instrumental: bool = bool(track.get("instrumental", False))
-    lyrics_section: dict[str, Any] = macro_calls.get("track.lyrics.get", {}).get("message", {}).get("body", {}).get("lyrics", {})
+    lyrics_section: dict[str, Any] = _as_dict(
+        _as_dict(_as_dict(_as_dict(macro_calls.get("track.lyrics.get"))["message"])["body"]).get("lyrics", {})
+    )
     if lyrics_section.get("restricted"):
         logger.info("Lyrics: Musixmatch lyrics restricted, falling through")
         return None
 
     synced_raw: str = ""
     subtitle_list: list[Any] = (
-        macro_calls.get("track.subtitles.get", {}).get("message", {}).get("body", {}).get("subtitle_list", []) or []
+        _as_dict(_as_dict(_as_dict(macro_calls.get("track.subtitles.get"))["message"])["body"]).get("subtitle_list", []) or []
     )
     subtitle: dict[str, Any] = subtitle_list[0].get("subtitle", {}) if subtitle_list else {}
     if track.get("has_subtitles") and subtitle.get("subtitle_body"):
@@ -236,7 +244,10 @@ async def _fetch_musixmatch(params: dict[str, Any], duration_ms: int) -> Optiona
             "f_subtitle_length": track.get("track_length", max(1, round(durr))),
             "q_duration": track.get("track_length", max(1, round(durr))),
         })
-        richsync_body: str = richsync_data.get("message", {}).get("body", {}).get("richsync", {}).get("richsync_body", "") if richsync_data else ""
+        richsync_body: str = (
+            _as_dict(_as_dict(_as_dict(richsync_data.get("message"))["body"])["richsync"]).get("richsync_body", "")
+            if richsync_data else ""
+        )
         if richsync_body:
             try:
                 karaoke = _parse_richsync(richsync_body)
@@ -373,7 +384,8 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
             "provider": provider or "",
             "loading": False
         }
-        logger.info(f"Lyrics: Cache hit for '{track_name}' ({len(synced)} synced lines)")
+        karaoke_note = " (karaoke)" if karaoke else ""
+        logger.info(f"Lyrics: Cache hit for '{track_name}' ({len(synced)} synced lines, provider: {provider or 'unknown'}{karaoke_note})")
         await broadcast_lyrics_update()
         return
 
@@ -394,6 +406,7 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
                 logger.error(f"Lyrics: {provider} failed for '{track_name}': {type(e).__name__}: {e}")
             if result:
                 break
+            logger.info(f"Lyrics: {provider} returned no results")
 
         if result:
             if _discard_if_stale(track_uri):
@@ -414,7 +427,8 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
                 "provider": result["provider"],
                 "loading": False
             }
-            logger.info(f"Lyrics: Found {len(synced)} synced lines for '{track_name}'")
+            karaoke_note = " (karaoke)" if result["karaoke"] else ""
+            logger.info(f"Lyrics: Found {len(synced)} synced lines for '{track_name}' (provider: {result['provider']}{karaoke_note})")
             set_cached_lyrics(
                 params,
                 synced_raw,

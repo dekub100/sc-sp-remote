@@ -1053,3 +1053,18 @@ class TestInterpolatedProgress:
         st.state["trackDuration"] = 200000
         st.state["trackProgressStartTimestamp"] = _time.time() * 1000 - 60000
         assert st.get_interpolated_track_progress() == 200000
+
+
+class TestMusixmatchEmptyBody:
+    async def test_empty_list_body_returns_none_not_crash(self, mxm_config: dict[str, Any]) -> None:
+        """MXM returns "body": [] when there's no data; must not raise AttributeError."""
+        payload = {"message": {"header": {"status_code": 200}, "body": {"macro_calls": {
+            "matcher.track.get": {"message": {"header": {"status_code": 200},
+                                              "body": {"track": {"has_lyrics": True}}}},
+            "track.lyrics.get": {"message": {"header": {"status_code": 200}, "body": []}},
+            "track.subtitles.get": {"message": {"header": {"status_code": 200}, "body": []}},
+        }}}}
+        with patch.object(lyrics, "_mxm_get", new_callable=AsyncMock, return_value=payload):
+            result = await lyrics._fetch_musixmatch(
+                {"artist_name": "A", "track_name": "S", "album_name": "Al", "duration": 100}, 100000)
+        assert result is None
