@@ -17,7 +17,9 @@ from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, confi
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import (
+    get_album_art_url,
     get_interpolated_track_progress,
+    get_sc_cover_url,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
@@ -134,7 +136,7 @@ async def handle_state(request: web.Request) -> web.Response:
             "artistName": state["currentTrack"]["artistName"],
             "albumName": state["currentTrack"]["albumName"],
             "trackUri": state["currentTrack"]["trackUri"],
-            "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+            "albumArtUrl": get_album_art_url(),
             "volume": state["volume"],
             "isPlaying": state["isPlaying"],
             "isShuffling": state["isShuffling"],
@@ -149,7 +151,7 @@ async def handle_state(request: web.Request) -> web.Response:
             "track": state["scTrack"],
             "artist": state["scArtist"],
             "album": state["scAlbum"],
-            "coverUrl": state["scCoverUrl"],
+            "coverUrl": get_sc_cover_url(),
             "isPlaying": state["scIsPlaying"],
             "progressMs": state["scProgressMs"],
             "durationMs": state["scDurationMs"],

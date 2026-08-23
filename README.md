@@ -32,6 +32,8 @@ Or run `setup.bat` for a one-click install on Windows.
 
 Configure the Spotify extension from the profile menu → **Remote Config** (set host/port at runtime, no file editing needed).
 
+> **Disclaimer:** Album covers and other artwork are shown exactly as provided by Spotify/SoundCloud. You are responsible for what you display on stream — the author is not liable for any strikes, bans, or other consequences caused by showing inappropriate artwork. If in doubt, toggle **Show Album Art** off in the admin panel.
+
 ## Configuration
 
 Edit `data/config.json` or use the admin panel at `http://localhost:8888/admin`.

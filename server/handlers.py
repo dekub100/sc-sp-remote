@@ -23,8 +23,10 @@ from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
+    get_album_art_url,
     get_interpolated_sc_progress,
     get_interpolated_track_progress,
+    get_sc_cover_url,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
@@ -61,7 +63,7 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "albumName": state["currentTrack"]["albumName"],
         "trackUri": state["currentTrack"]["trackUri"],
         "albumUri": state["currentTrack"]["albumUri"],
-        "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+        "albumArtUrl": get_album_art_url(),
         "progress": get_interpolated_track_progress(),
         "duration": state["trackDuration"],
         "isShuffling": state["isShuffling"],
@@ -78,7 +80,7 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "artist": state["scArtist"],
         "album": state["scAlbum"],
         "id": state["scId"],
-        "coverUrl": state["scCoverUrl"],
+        "coverUrl": get_sc_cover_url(),
         "isPlaying": state["scIsPlaying"],
         "progressMs": get_interpolated_sc_progress(),
         "durationMs": state["scDurationMs"],

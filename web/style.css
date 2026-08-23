@@ -344,11 +344,14 @@ input[type="range"] {
   max-height: 280px;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .lyrics-content {
   position: relative;
-  max-height: 280px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
   padding: 0.25rem 0.5rem;
@@ -435,6 +438,7 @@ input[type="range"] {
 }
 
 .lyrics-source {
+  flex: 0 0 auto;
   text-align: center;
   color: #666;
   font-size: 0.72rem;

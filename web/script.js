@@ -347,6 +347,9 @@ function connect() {
                 ui.albumArt.crossOrigin = "Anonymous";
                 ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
                 ui.albumArt.src = data.albumArtUrl;
+                ui.albumArt.style.display = '';
+            } else if (!data.albumArtUrl) {
+                ui.albumArt.style.display = 'none';
             }
 
         }

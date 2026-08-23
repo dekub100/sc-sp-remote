@@ -130,6 +130,20 @@ def get_interpolated_sc_progress() -> int:
     return int(min(state["scProgressMs"] + max(0, elapsed), state["scDurationMs"]))
 
 
+def get_album_art_url() -> str:
+    """Spotify album art URL, or "" when the cover toggle is off (stream safety)."""
+    if not config.get("enableAlbumArt", True):
+        return ""
+    return state["currentTrack"]["albumArtUrl"]
+
+
+def get_sc_cover_url() -> str:
+    """SoundCloud cover URL, gated by the same cover toggle."""
+    if not config.get("enableAlbumArt", True):
+        return ""
+    return state["scCoverUrl"]
+
+
 def get_spotify_save_data() -> dict[str, Any]:
     return {
         "volume": round(state["volume"], 2),
