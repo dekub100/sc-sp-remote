@@ -347,6 +347,7 @@ input[type="range"] {
 }
 
 .lyrics-content {
+  position: relative;
   max-height: 280px;
   overflow-y: auto;
   scroll-behavior: smooth;
@@ -387,8 +388,40 @@ input[type="range"] {
   color: #999;
 }
 
+.lyric-word {
+  /* Fixed lyrics color scheme (matches OBS): bright sung / dim unsung. */
+  background-image: linear-gradient(
+    to right,
+    #1ed760,
+    #1ed760 45%,
+    rgba(255, 255, 255, 0.4) 55%,
+    rgba(255, 255, 255, 0.4)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 225% 100%;
+  background-position: top left 100%;
+  transition-property: background-position;
+  transition-timing-function: linear;
+}
+
+.lyric-word.active {
+  background-position: top left;
+  transition-duration: calc(var(--word-duration, 300ms) + 0.05s);
+}
+
+.lyric-line.blur-near {
+  filter: blur(0.4px);
+}
+
+.lyric-line.blur-far {
+  filter: blur(1px);
+  opacity: 0.7;
+}
+
 .lyric-line:empty::before {
-  content: "\266A";
+  content: "\2022 \2022 \2022";
   color: #444;
 }
 
@@ -399,6 +432,17 @@ input[type="range"] {
   font-size: 0.9rem;
   padding: 1rem 0;
   margin: 0;
+}
+
+.lyrics-source {
+  text-align: center;
+  color: #666;
+  font-size: 0.72rem;
+  padding: 0.35rem 0 0.5rem;
+}
+
+.lyrics-source.hidden {
+  display: none;
 }
 
 #lyricsBtn.active {

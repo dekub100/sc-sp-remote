@@ -64,6 +64,7 @@ const lyricsState = {
   available: false,
   instrumental: false,
   loading: false,
+  karaoke: [],
   currentIndex: -1,
 };
 
@@ -95,21 +96,78 @@ function setWidgetVisibility(visible) {
 function updateDynamicColors(img) {
   const color = extractDominantColor(img);
   if (!color) return;
-  const { r, g, b } = color;
+  let { r, g, b } = color;
+  // Dark album colors are unreadable on the dark background — brighten them.
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  if (brightness < 60) {
+    const scale = 60 / Math.max(brightness, 1);
+    r = Math.min(255, Math.round(r * scale));
+    g = Math.min(255, Math.round(g * scale));
+    b = Math.min(255, Math.round(b * scale));
+  }
   elements.container.style.background = `rgba(${Math.floor(r * 0.4)}, ${Math.floor(g * 0.4)}, ${Math.floor(b * 0.4)}, 0.65)`;
+}
+
+let lyricSwapTimer = null;
+
+function setLyricLineContent(content, visible, isHtml) {
+  const el = elements.lyricLine;
+  // Cancel any pending swap so rapid line changes can't stack up.
+  if (lyricSwapTimer) clearTimeout(lyricSwapTimer);
+  el.classList.add('fade');
+  lyricSwapTimer = setTimeout(() => {
+    lyricSwapTimer = null;
+    if (isHtml) el.innerHTML = content;
+    else el.textContent = content;
+    el.classList.remove('fade');
+    el.classList.toggle('hidden', !visible);
+  }, 120);
 }
 
 function setLyricLineText(text) {
   text = filterText(text);
   const el = elements.lyricLine;
-  if (el.textContent === text) return;
-  const visible = text.length > 0;
-  el.classList.add('fade');
-  setTimeout(() => {
-    el.textContent = text;
-    el.classList.remove('fade');
-    el.classList.toggle('hidden', !visible);
-  }, 350);
+  if (el.textContent === text && !lyricSwapTimer) return;
+  setLyricLineContent(text, text.length > 0);
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function updateCurrentKaraokeLine(progressMs) {
+  const lines = lyricsState.karaoke;
+  let lineIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (progressMs >= lines[i].startTime) {
+      lineIndex = i;
+      break;
+    }
+  }
+
+  if (lineIndex !== lyricsState.currentIndex) {
+    lyricsState.currentIndex = lineIndex;
+    if (lineIndex < 0) {
+      setLyricLineText('');
+    } else {
+      const words = lines[lineIndex].words || [];
+      setLyricLineHtml(words.map(w => {
+        const dur = w.duration || 300;
+        return `<span class="lyric-word" style="--word-duration:${dur}ms">${escapeHtml(filterText(w.text))}</span>`;
+      }).join(''));
+    }
+  }
+
+  if (lineIndex < 0) return;
+  const spans = elements.lyricLine.querySelectorAll('.lyric-word');
+  const words = lines[lineIndex].words || [];
+  spans.forEach((el, j) => {
+    if (words[j] !== undefined) el.classList.toggle('active', progressMs >= words[j].time);
+  });
+}
+
+function setLyricLineHtml(html) {
+  setLyricLineContent(html, html.length > 0, true);
 }
 
 function handleLyricsUpdate(data) {
@@ -118,6 +176,14 @@ function handleLyricsUpdate(data) {
   lyricsState.instrumental = data.instrumental;
   lyricsState.synced = data.synced || [];
   lyricsState.plain = data.plain || '';
+  // Precompute per-word durations for the CSS background-position sweep.
+  lyricsState.karaoke = (data.karaoke || []).map(l => {
+    const words = (l.words || []).map(w => ({ text: w.text, time: w.time }));
+    words.forEach((w, i) => {
+      w.duration = Math.max(0, (i + 1 < words.length ? words[i + 1].time : l.endTime) - w.time);
+    });
+    return { startTime: l.startTime, endTime: l.endTime, words };
+  });
   lyricsState.currentIndex = -1;
   lyricsState.loading = data.loading || false;
 
@@ -134,7 +200,9 @@ function handleLyricsUpdate(data) {
 
 function updateCurrentLyricLine(progressMs) {
   if (DISABLE_LYRICS) return;
-  if (!lyricsState.available || !lyricsState.synced.length) return;
+  if (!lyricsState.available) return;
+  if (lyricsState.karaoke.length) return updateCurrentKaraokeLine(progressMs);
+  if (!lyricsState.synced.length) return;
   const newIndex = findLyricIndex(lyricsState.synced, progressMs);
   if (newIndex === lyricsState.currentIndex) return;
   lyricsState.currentIndex = newIndex;
@@ -284,6 +352,24 @@ function handleMessage(data) {
 
   if (data.type === 'lyricsUpdate') {
     handleLyricsUpdate(data);
+    return;
+  }
+
+  if (data.type === 'progressUpdate' && data.source === 'spotify') {
+    // Periodic corrected anchors from the server — keeps interpolation honest
+    // after page refresh (initial snapshot can carry a stale raw progress).
+    if (data.progress !== undefined) spotifyState.progress = data.progress;
+    if (data.duration !== undefined) spotifyState.duration = data.duration;
+    spotifyState.timestamp = data.timestamp || Date.now();
+    spotifyState.clientTimestamp = Date.now();
+    return;
+  }
+
+  if (data.type === 'scProgressUpdate') {
+    if (data.progressMs !== undefined) soundcloudState.progressMs = data.progressMs;
+    if (data.durationMs !== undefined) soundcloudState.durationMs = data.durationMs;
+    soundcloudState.timestamp = data.timestamp || Date.now();
+    soundcloudState.clientTimestamp = Date.now();
     return;
   }
 

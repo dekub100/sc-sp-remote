@@ -20,7 +20,8 @@ OBS Widget (obs-script.js) ─────────────────�
                                          └─────────────────────┘
                                                     │
                                          ┌──────────┴──────────┐
-                                         │  LRCLIB API (HTTPS) │
+                                         │ Musixmatch + LRCLIB │
+                                         │  APIs (HTTPS)       │
                                          │  SQLite cache (local)│
                                          └─────────────────────┘
 ```
@@ -51,7 +52,7 @@ state = {
     "currentTrack": {trackName, artistName, albumName, trackUri, albumUri, albumArtUrl},
     "trackProgress": int (ms), "trackDuration": int (ms), "trackProgressStartTimestamp": float,
     "isShuffling": bool, "repeatStatus": 0|1|2, "isLiked": bool,
-    "lyrics": {trackUri, synced, plain, available, instrumental, loading},
+    "lyrics": {trackUri, synced, plain, available, instrumental, karaoke, provider, loading},
     # SoundCloud (sc* prefix)
     "scTrack", "scArtist", "scAlbum", "scId", "scCoverUrl",
     "scIsPlaying": bool, "scProgressMs": 0, "scDurationMs": 0,
@@ -81,7 +82,7 @@ state = {
 | `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
 | `like` | Web→Server | Like current track (source-aware) |
 | **Server→All** | | |
-| `lyricsUpdate` | Server→All | Lyrics data |
+| `lyricsUpdate` | Server→All | Lyrics data (`synced`/`plain`/`karaoke`, `provider` attribution) |
 | `error` | Any | Error relay |
 
 

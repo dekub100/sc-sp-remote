@@ -15,6 +15,7 @@ from routes import (
     handle_admin_config_put,
     handle_admin_log_file,
     handle_admin_logs_list,
+    handle_admin_mxm_token_refresh,
     handle_config,
     handle_state,
     index_handler,
@@ -60,14 +61,22 @@ if track_uri and track_duration > 0:
         "duration": max(1, round(track_duration / 1000))
     })
     if cached:
-        synced_raw, plain, instrumental = cached
+        synced_raw, plain, instrumental, karaoke_json, provider = cached
         synced = parse_synced_lyrics(synced_raw) if synced_raw else []
+        karaoke = []
+        if karaoke_json:
+            try:
+                karaoke = json.loads(karaoke_json)
+            except (TypeError, ValueError):
+                karaoke = []
         state["lyrics"] = {
             "trackUri": track_uri,
             "synced": synced,
             "plain": plain or "",
             "available": True,
             "instrumental": bool(instrumental),
+            "karaoke": karaoke,
+            "provider": provider or "",
             "loading": False
         }
         logger.info(f"Lyrics: Loaded from cache for '{state['currentTrack']['trackName']}' ({len(synced)} synced lines)")
@@ -86,6 +95,7 @@ async def main() -> None:
     main_app.router.add_put('/api/admin/config', handle_admin_config_put)
     main_app.router.add_get('/api/admin/logs', handle_admin_logs_list)
     main_app.router.add_get('/api/admin/logs/{filename}', handle_admin_log_file)
+    main_app.router.add_post('/api/admin/lyrics/musixmatch-token', handle_admin_mxm_token_refresh)
 
     async def admin_redirect(request: web.Request) -> web.Response:
         return web.HTTPFound('/static/admin/admin.html')

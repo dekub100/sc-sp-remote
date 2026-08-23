@@ -207,7 +207,7 @@ body {
   min-height: 2rem;
   opacity: 1;
   transition:
-    opacity 0.35s ease,
+    opacity 0.12s ease,
     color 0.35s ease;
   font-style: italic;
   letter-spacing: 0.01em;
@@ -230,6 +230,29 @@ body {
 .progress-section.fade-out,
 .lyric-line.fade-out {
   opacity: 0;
+}
+
+.lyric-word {
+  /* Fixed lyrics color scheme: bright sung / dim unsung — always readable on dark. */
+  background-image: linear-gradient(
+    to right,
+    #1ed760,
+    #1ed760 45%,
+    rgba(255, 255, 255, 0.5) 55%,
+    rgba(255, 255, 255, 0.5)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 225% 100%;
+  background-position: top left 100%;
+  transition-property: background-position;
+  transition-timing-function: linear;
+}
+
+.lyric-word.active {
+  background-position: top left;
+  transition-duration: calc(var(--word-duration, 300ms) + 0.05s);
 }
 
 .text-info.fade-in {

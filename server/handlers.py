@@ -23,6 +23,8 @@ from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
+    get_interpolated_sc_progress,
+    get_interpolated_track_progress,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
@@ -60,7 +62,7 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "trackUri": state["currentTrack"]["trackUri"],
         "albumUri": state["currentTrack"]["albumUri"],
         "albumArtUrl": state["currentTrack"]["albumArtUrl"],
-        "progress": state["trackProgress"],
+        "progress": get_interpolated_track_progress(),
         "duration": state["trackDuration"],
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
@@ -78,7 +80,7 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "id": state["scId"],
         "coverUrl": state["scCoverUrl"],
         "isPlaying": state["scIsPlaying"],
-        "progressMs": state["scProgressMs"],
+        "progressMs": get_interpolated_sc_progress(),
         "durationMs": state["scDurationMs"],
         "volume": state["scVolume"],
         "isLiked": state["scIsLiked"],
@@ -92,7 +94,9 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
         "available": lyrics["available"],
         "instrumental": lyrics["instrumental"],
         "synced": lyrics["synced"],
-        "plain": lyrics["plain"]
+        "plain": lyrics["plain"],
+        "karaoke": lyrics.get("karaoke", []),
+        "provider": lyrics.get("provider", "")
     })
     await ws.send_str(lyrics_msg)
 
@@ -128,7 +132,7 @@ async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str,
 
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
         if config["enableLyrics"]:
-            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": True}
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "karaoke": [], "provider": "", "loading": True}
             await broadcast_lyrics_update()
             task: asyncio.Task[None] = asyncio.create_task(fetch_and_broadcast_lyrics(
                 new_uri,
@@ -139,7 +143,7 @@ async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str,
             ))
             task.add_done_callback(_lyrics_task_done)
         else:
-            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "loading": False}
+            state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "karaoke": [], "provider": "", "loading": False}
             await broadcast_lyrics_update()
 
     await save_spotify_state_debounced()

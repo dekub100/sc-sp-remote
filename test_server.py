@@ -155,6 +155,8 @@ class TestLyricsCache:
                 synced_lyrics TEXT,
                 plain_lyrics TEXT,
                 instrumental INTEGER NOT NULL DEFAULT 0,
+                karaoke TEXT,
+                provider TEXT,
                 fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (artist_name, track_name, album_name, duration)
             )
@@ -538,6 +540,8 @@ class TestBroadcast:
             "synced": [{"time": 1000, "text": "hello"}],
             "plain": "hello",
             "loading": False,
+            "karaoke": [],
+            "provider": "",
             "trackUri": "spotify:track:test"
         }
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
@@ -548,6 +552,8 @@ class TestBroadcast:
             "instrumental": False,
             "synced": [{"time": 1000, "text": "hello"}],
             "plain": "hello",
+            "karaoke": [],
+            "provider": "",
             "loading": False
         })
 
@@ -801,3 +807,249 @@ class TestAdminLogEndpoints:
         assert resp.status == 400
         data = await resp.json()
         assert "invalid" in data["error"].lower()
+
+
+class _FakeMxmResponse:
+    def __init__(self, payload: dict[str, Any]):
+        self._payload = payload
+
+    async def json(self, content_type: Any = None) -> dict[str, Any]:
+        return self._payload
+
+    async def __aenter__(self) -> "_FakeMxmResponse":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+def _mxm_header(status_code: int, hint: str = "") -> dict[str, Any]:
+    return {"message": {"header": {"status_code": status_code, "hint": hint}, "body": {}}}
+
+
+@pytest.fixture
+def mxm_config(tmp_path: Any):
+    """Isolate Musixmatch config/token state per test."""
+    old_token = cfg.config.get("musixmatchToken")
+    old_order = cfg.config.get("lyricsProviderOrder")
+    with patch("lyrics.CONFIG_PATH", str(tmp_path / "config.json")):
+        yield cfg.config
+    if old_token is not None:
+        cfg.config["musixmatchToken"] = old_token
+    if old_order is not None:
+        cfg.config["lyricsProviderOrder"] = old_order
+
+
+class TestMusixmatchParsing:
+    def test_subtitle_to_lrc(self) -> None:
+        subtitle = json.dumps([
+            {"text": "Hello", "time": {"total": 61.25}},
+            {"text": "World", "time": {"total": 4.0}},
+        ])
+        result: str = lyrics._subtitle_to_lrc(subtitle)
+        assert result == "[01:01.25]Hello\n[00:04.00]World"
+        parsed = lyrics.parse_synced_lyrics(result)
+        assert {"time": 61250, "text": "Hello"} in parsed
+        assert {"time": 4000, "text": "World"} in parsed
+
+    def test_parse_richsync_absolute_word_times(self) -> None:
+        richsync = json.dumps([
+            {
+                "ts": 10.0,
+                "te": 14.0,
+                "l": [
+                    {"c": "La ", "o": 0.0},
+                    {"c": "la", "o": 1.5},
+                ],
+            }
+        ])
+        result: list[dict[str, Any]] = lyrics._parse_richsync(richsync)
+        line = result[0]
+        assert line["startTime"] == 10000
+        assert line["endTime"] == 14000
+        assert line["words"][0] == {"text": "La ", "time": 10000}
+        # Last word runs to the line end.
+        assert line["words"][1] == {"text": "la", "time": 11500}
+
+
+class TestMusixmatchToken:
+    async def test_get_token_uses_cached(self, mxm_config: dict[str, Any]) -> None:
+        mxm_config["musixmatchToken"] = "cached-token"
+        with patch.object(lyrics, "_mxm_fetch_token", new_callable=AsyncMock) as mock_fetch:
+            token = await lyrics._get_mxm_token()
+        assert token == "cached-token"
+        mock_fetch.assert_not_awaited()
+
+    async def test_mxm_get_retries_once_on_auth_failure(self, mxm_config: dict[str, Any]) -> None:
+        import aiohttp
+        responses = [_FakeMxmResponse(_mxm_header(401)), _FakeMxmResponse(_mxm_header(200))]
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=responses)
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=aiohttp.ClientTimeout(total=1)), \
+             patch.object(lyrics, "_mxm_fetch_token", new_callable=AsyncMock, return_value="fresh"):
+            data = await lyrics._mxm_get("token.get", {})
+        assert data == _mxm_header(200)
+        assert mock_session.get.call_count == 2
+
+    async def test_mxm_get_returns_none_after_second_auth_failure(self, mxm_config: dict[str, Any]) -> None:
+        import aiohttp
+        responses = [_FakeMxmResponse(_mxm_header(401)), _FakeMxmResponse(_mxm_header(401))]
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(side_effect=responses)
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=aiohttp.ClientTimeout(total=1)), \
+             patch.object(lyrics, "_mxm_fetch_token", new_callable=AsyncMock, return_value="fresh"):
+            data = await lyrics._mxm_get("macro.subtitles.get", {})
+        assert data is None
+
+    async def test_refresh_persists_token_to_config(self, mxm_config: dict[str, Any], tmp_path: Any) -> None:
+        import os
+
+        import aiohttp
+        payload = {"message": {"header": {"status_code": 200}, "body": {"user_token": "brand-new-token"}}}
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeMxmResponse(payload))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=aiohttp.ClientTimeout(total=1)):
+            token = await lyrics.refresh_musixmatch_token()
+        assert token == "brand-new-token"
+        assert mxm_config["musixmatchToken"] == "brand-new-token"
+        saved = json.loads(open(os.path.join(str(tmp_path), "config.json")).read())
+        assert saved["musixmatchToken"] == "brand-new-token"
+
+
+class TestProviderFallback:
+    @pytest.fixture(autouse=True)
+    def setup_db(self, temp_db: Any) -> None:
+        self.db_path = temp_db
+        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lyrics_cache (
+                artist_name TEXT NOT NULL,
+                track_name TEXT NOT NULL,
+                album_name TEXT NOT NULL,
+                duration INTEGER NOT NULL,
+                synced_lyrics TEXT,
+                plain_lyrics TEXT,
+                instrumental INTEGER NOT NULL DEFAULT 0,
+                karaoke TEXT,
+                provider TEXT,
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (artist_name, track_name, album_name, duration)
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+    def _current_track(self, uri: str) -> None:
+        st.state["currentTrack"]["trackUri"] = uri
+
+    async def test_musixmatch_result_used_lrclib_not_called(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:abc")
+        mxm_result = {"synced_raw": "[00:01.00]Hi", "plain": "", "instrumental": False,
+                      "karaoke": [{"startTime": 1000}],
+                      "provider": "musixmatch"}
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=mxm_result), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock) as mock_lrc, \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:abc", "Song", "Artist", "Album", 200000)
+        mock_lrc.assert_not_called()
+        assert st.state["lyrics"]["karaoke"] == [{"startTime": 1000}]
+        assert st.state["lyrics"]["available"] is True
+
+    async def test_falls_through_to_lrclib_on_musixmatch_miss(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:def")
+        lrc_result = {"synced_raw": "", "plain": "Plain words", "instrumental": False, "karaoke": [], "provider": "lrclib"}
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=None), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=lrc_result) as mock_lrc, \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:def", "Song", "Artist", "Album", 200000)
+        mock_lrc.assert_awaited_once()
+        assert st.state["lyrics"]["plain"] == "Plain words"
+
+    async def test_all_providers_missing_marks_unavailable(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:xyz")
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=None), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=None), \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:xyz", "Song", "Artist", "Album", 200000)
+        assert st.state["lyrics"]["available"] is False
+        assert st.state["lyrics"]["loading"] is False
+
+    async def test_provider_exception_falls_through(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:err")
+        lrc_result = {"synced_raw": "[00:02.00]Ok", "plain": "", "instrumental": False, "karaoke": [], "provider": "lrclib"}
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, side_effect=RuntimeError("boom")), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=lrc_result), \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:err", "Song", "Artist", "Album", 200000)
+        assert st.state["lyrics"]["synced"][0]["text"] == "Ok"
+
+
+class TestKaraokeCacheRoundtrip:
+    @pytest.fixture(autouse=True)
+    def setup_db(self, temp_db: Any) -> None:
+        self.db_path = temp_db
+        conn: sqlite3.Connection = sqlite3.connect(self.db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lyrics_cache (
+                artist_name TEXT NOT NULL,
+                track_name TEXT NOT NULL,
+                album_name TEXT NOT NULL,
+                duration INTEGER NOT NULL,
+                synced_lyrics TEXT,
+                plain_lyrics TEXT,
+                instrumental INTEGER NOT NULL DEFAULT 0,
+                karaoke TEXT,
+                provider TEXT,
+                fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (artist_name, track_name, album_name, duration)
+            )
+        """)
+        conn.commit()
+        conn.close()
+
+    def test_karaoke_roundtrip(self) -> None:
+        params = {"artist_name": "A", "track_name": "S", "album_name": "Al", "duration": 100}
+        karaoke = json.dumps([{"startTime": 500, "endTime": 900, "words": [{"text": "yo", "time": 500}]}])
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            lyrics.set_cached_lyrics(params, "[00:00.50]yo", "", False, karaoke, "musixmatch")
+            row = lyrics.get_cached_lyrics(params)
+        assert json.loads(row[3])[0]["words"][0]["text"] == "yo"
+        assert row[4] == "musixmatch"
+
+    def test_row_without_karaoke(self) -> None:
+        params = {"artist_name": "A", "track_name": "S", "album_name": "Al", "duration": 101}
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            lyrics.set_cached_lyrics(params, None, "plain", False)
+            row = lyrics.get_cached_lyrics(params)
+        assert row[3] is None or row[3] == ""
+
+
+class TestInterpolatedProgress:
+    def test_paused_returns_raw_progress(self) -> None:
+        st.state["isPlaying"] = False
+        st.state["trackProgress"] = 5000
+        assert st.get_interpolated_track_progress() == 5000
+
+    def test_playing_interpolates_from_anchor(self) -> None:
+        import time as _time
+        st.state["isPlaying"] = True
+        st.state["trackProgress"] = 10000
+        st.state["trackDuration"] = 200000
+        st.state["trackProgressStartTimestamp"] = _time.time() * 1000 - 1500
+        value: int = st.get_interpolated_track_progress()
+        assert 11400 <= value <= 11600
+
+    def test_clamps_to_duration(self) -> None:
+        import time as _time
+        st.state["isPlaying"] = True
+        st.state["trackProgress"] = 199000
+        st.state["trackDuration"] = 200000
+        st.state["trackProgressStartTimestamp"] = _time.time() * 1000 - 60000
+        assert st.get_interpolated_track_progress() == 200000

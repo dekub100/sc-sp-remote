@@ -7,6 +7,7 @@ Usage:
     python manage.py install [spicetify|soundcloud]             Install extensions/plugins
     python manage.py service {install|update|start|stop|restart|remove}
                                                                 Windows service management
+    python manage.py musixmatch-token                           Refresh Musixmatch lyrics token
 
 Examples:
     python manage.py dev --port 7777        Dev server on custom port
@@ -263,6 +264,55 @@ def cmd_install(args):
         print("Done! Start the server with: python manage.py run")
 
 
+# --- musixmatch token ---------------------------------------------------------
+
+def cmd_musixmatch_token(args):
+    """Refresh the Musixmatch usertoken.
+
+    Prefers the running server's admin endpoint (refreshes the live in-memory
+    token); falls back to fetching directly + persisting to config.json when
+    the server is down (picked up on next server start).
+    """
+    port, host = 8888, "127.0.0.1"
+    try:
+        with open(PROD_CONFIG_PATH) as f:
+            cfg = json.load(f)
+        port, host = cfg.get("port", port), cfg.get("host", host)
+    except (OSError, json.JSONDecodeError):
+        pass
+
+    url = f"http://{host}:{port}/api/admin/lyrics/musixmatch-token"
+    print(f"Asking running server ({url})...")
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, method="POST", data=b"")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = json.load(resp)
+        print(f"SUCCESS: Token refreshed on running server ({body.get('tokenPreview', '?')})")
+        return
+    except Exception as e:
+        print(f"Server not reachable ({type(e).__name__}), refreshing directly instead...")
+
+    server_dir = os.path.join(PROJECT_ROOT, "server")
+    sys.path.insert(0, server_dir)
+    try:
+        import asyncio
+
+        import lyrics
+
+        async def _refresh() -> str:
+            try:
+                return await lyrics.refresh_musixmatch_token()
+            finally:
+                await lyrics._close_session()
+
+        token = asyncio.run(_refresh())
+        print(f"SUCCESS: New token fetched and saved to config.json ({token[:6]}...)")
+        print("Restart the server if it is currently running so it picks up the new token.")
+    except Exception as e:
+        sys.exit(f"ERROR: Could not refresh Musixmatch token: {type(e).__name__}: {e}")
+
+
 # --- service (Windows only) ---------------------------------------------------
 
 # Class must exist at module level: the pywin32 service host imports this
@@ -428,6 +478,7 @@ Examples:
   python manage.py dev --no-reload         Dev server without auto-reload
   python manage.py install                 Install both extensions
   python manage.py service install         Install + start Windows service
+  python manage.py musixmatch-token        Refresh Musixmatch lyrics token
 """,
     )
     sub = parser.add_subparsers(dest="cmd")
@@ -452,6 +503,9 @@ Examples:
     p_service = sub.add_parser("service", help=f"Windows service management ({', '.join(SERVICE_COMMANDS)})")
     p_service.add_argument("action", choices=SERVICE_COMMANDS)
     p_service.set_defaults(func=cmd_service)
+
+    p_mxm = sub.add_parser("musixmatch-token", help="Refresh the Musixmatch lyrics token")
+    p_mxm.set_defaults(func=cmd_musixmatch_token)
 
     args = parser.parse_args(argv)
 

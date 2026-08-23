@@ -47,6 +47,7 @@ const ui = {
     lyricsBtn: document.getElementById('lyricsBtn'),
     lyricsPanel: document.getElementById('lyricsPanel'),
     lyricsContent: document.getElementById('lyricsContent'),
+    lyricsSource: document.getElementById('lyricsSource'),
     // SoundCloud
     scAlbumArt: document.getElementById('scAlbumArt'),
     scSongTitle: document.getElementById('scSongTitle'),
@@ -67,9 +68,15 @@ const lyricsState = {
     available: false,
     instrumental: false,
     loading: false,
+    karaoke: [],
+    provider: "",
     currentIndex: -1,
+    activeWordSpans: null,
+    activeWordTimes: null,
     isVisible: false
 };
+
+const LYRICS_PROVIDER_NAMES = { musixmatch: "Musixmatch", lrclib: "LRCLIB" };
 
 function send(data) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
@@ -128,7 +135,19 @@ ui.sourceTabs.forEach(tab => {
 });
 
 // --- Lyrics ---
+function updateLyricsSource() {
+    const name = LYRICS_PROVIDER_NAMES[lyricsState.provider];
+    if (lyricsState.available && name) {
+        ui.lyricsSource.textContent = `Lyrics provided by ${name}`;
+        ui.lyricsSource.classList.remove('hidden');
+    } else {
+        ui.lyricsSource.textContent = '';
+        ui.lyricsSource.classList.add('hidden');
+    }
+}
+
 function renderLyrics() {
+    updateLyricsSource();
     if (lyricsState.instrumental) {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">Instrumental track</p>';
         return;
@@ -141,7 +160,14 @@ function renderLyrics() {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">No lyrics available</p>';
         return;
     }
-    if (lyricsState.synced.length > 0) {
+    if (lyricsState.karaoke.length > 0) {
+        ui.lyricsContent.innerHTML = lyricsState.karaoke
+            .map((line, i) => '<div class="lyric-line lyric-karaoke" data-index="' + i + '" data-time="' + line.startTime + '">' +
+                line.words.map(w => '<span class="lyric-word" data-time="' + w.time + '" style="--word-duration:' + (w.duration || 300) + 'ms">' + w.text + '</span>').join('') +
+                '</div>')
+            .join('');
+        lyricsState.currentIndex = -1;
+    } else if (lyricsState.synced.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.synced
             .map((line, i) => `<div class="lyric-line" data-index="${i}" data-time="${line.time}">${line.text || ''}</div>`)
             .join('');
@@ -155,7 +181,9 @@ function renderLyrics() {
 }
 
 function updateLyricsHighlight(progressMs) {
-    if (!lyricsState.available || !lyricsState.synced.length) return;
+    if (!lyricsState.available) return;
+    if (lyricsState.karaoke.length) return updateKaraokeHighlight(progressMs);
+    if (!lyricsState.synced.length) return;
 
     const newIndex = findLyricIndex(lyricsState.synced, progressMs);
     if (newIndex === lyricsState.currentIndex) return;
@@ -163,23 +191,82 @@ function updateLyricsHighlight(progressMs) {
 
     const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
     lines.forEach((el, i) => {
-        el.classList.remove('active', 'near-active');
+        el.classList.remove('active', 'near-active', 'blur-near', 'blur-far');
         const dist = i - newIndex;
         if (dist === 0) el.classList.add('active');
-        else if (dist > 0 && dist <= 2) el.classList.add('near-active');
+        else if (dist > 0 && dist <= 2) el.classList.add('near-active', 'blur-near');
+        else if (dist < 0 || dist > 2) el.classList.add('blur-far');
     });
 
     if (newIndex >= 0 && lyricsState.isVisible) {
-        const activeLine = lines[newIndex];
-        if (activeLine) activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        scrollToLine(lines[newIndex]);
     }
+}
+
+function scrollToLine(line) {
+    if (!line) return;
+    // Debounce rapid line changes into instant jumps; otherwise glide.
+    const nowMs = performance.now();
+    const smooth = nowMs - (lyricsState.lastScrollAt || 0) > 400;
+    lyricsState.lastScrollAt = nowMs;
+    const container = ui.lyricsContent;
+    const top = Math.max(0, line.offsetTop - container.clientHeight / 2 + line.clientHeight / 2);
+    container.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function updateKaraokeHighlight(progressMs) {
+    const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
+    let lineIndex = -1;
+    for (let i = lyricsState.karaoke.length - 1; i >= 0; i--) {
+        if (progressMs >= lyricsState.karaoke[i].startTime) {
+            lineIndex = i;
+            break;
+        }
+    }
+
+    if (lineIndex !== lyricsState.currentIndex) {
+        lyricsState.currentIndex = lineIndex;
+        lyricsState.activeWordSpans = null;
+        lyricsState.activeWordTimes = null;
+        lines.forEach((el, i) => {
+            el.classList.remove('active', 'near-active', 'blur-near', 'blur-far');
+            const dist = i - lineIndex;
+            if (dist === 0) el.classList.add('active');
+            else if (dist > 0 && dist <= 2) el.classList.add('near-active', 'blur-near');
+            else if (dist < 0 || dist > 2) el.classList.add('blur-far');
+        });
+        if (lineIndex >= 0 && lyricsState.isVisible) {
+            scrollToLine(lines[lineIndex]);
+        }
+    }
+
+    if (lineIndex < 0) return;
+
+    // Cache the active line's word spans/times once per line change.
+    if (!lyricsState.activeWordSpans) {
+        const activeLine = lines[lineIndex];
+        lyricsState.activeWordSpans = activeLine ? Array.from(activeLine.querySelectorAll('.lyric-word')) : [];
+        lyricsState.activeWordTimes = lyricsState.activeWordSpans.map(el => parseInt(el.dataset.time, 10));
+    }
+    lyricsState.activeWordSpans.forEach((el, j) => {
+        el.classList.toggle('active', progressMs >= lyricsState.activeWordTimes[j]);
+    });
 }
 
 function handleLyricsUpdate(data) {
     lyricsState.available = data.available;
     lyricsState.instrumental = data.instrumental;
     lyricsState.synced = (data.synced || []).map(l => ({ ...l, text: filterText(l.text) }));
+    // Precompute per-word durations for the CSS background-position sweep.
+    lyricsState.karaoke = (data.karaoke || []).map(l => {
+        const words = (l.words || []).map(w => ({ text: filterText(w.text), time: w.time }));
+        words.forEach((w, i) => {
+            w.duration = Math.max(0, (i + 1 < words.length ? words[i + 1].time : l.endTime) - w.time);
+        });
+        return { startTime: l.startTime, endTime: l.endTime, words };
+    });
     lyricsState.plain = filterText(data.plain || "");
+    lyricsState.provider = data.provider || "";
     lyricsState.loading = data.loading || false;
     lyricsState.currentIndex = -1;
     renderLyrics();
@@ -191,8 +278,7 @@ function toggleLyrics() {
     ui.lyricsBtn.classList.toggle('active', lyricsState.isVisible);
     if (lyricsState.isVisible && lyricsState.currentIndex >= 0) {
         const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
-        const activeLine = lines[lyricsState.currentIndex];
-        if (activeLine) setTimeout(() => activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+        setTimeout(() => scrollToLine(lines[lyricsState.currentIndex]), 50);
     }
 }
 

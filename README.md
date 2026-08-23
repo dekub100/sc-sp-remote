@@ -44,7 +44,14 @@ SoundCloud support works by scraping the SoundCloud DOM via [soundcloud-rpc](htt
 
 ## Lyrics
 
-Synced and plain lyrics are fetched from [LRCLIB](https://lrclib.net) and cached in a local SQLite database. The admin panel has a "Lyrics Fetch Timeout" setting and an "Enable Lyrics Fetching" toggle. Delete `data/lyrics_cache.db` to clear the cache.
+Lyrics are fetched server-side and cached in a local SQLite database (`data/lyrics_cache.db` — delete it to clear the cache).
+
+- **Providers:** [Musixmatch](https://musixmatch.com) (primary, synced + plain + word-level karaoke) with [LRCLIB](https://lrclib.net) as fallback. Order is configurable via `lyricsProviderOrder` in `data/config.json` or the admin panel.
+- **Token:** Musixmatch needs an anonymous usertoken. It's fetched automatically on first use and refreshed when it expires — no interaction needed. If auto-refresh ever breaks: click **Refresh Token** in the admin panel, or run `python manage.py musixmatch-token`.
+- **Karaoke:** When Musixmatch has a richsync for a track, the web UI highlights word-by-word and the OBS widget shows sung words in the album's accent color.
+- The admin panel also has "Lyrics Fetch Timeout" and "Enable Lyrics Fetching" settings.
+
+> The lyrics UI (especially the word-by-word karaoke styling and sync feel) is heavily inspired by Spicetify's [lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) — go star it.
 
 ## Service Management
 

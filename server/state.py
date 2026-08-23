@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from typing import Any, Callable, Optional
 
 from config import SC_STATE_FILE, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
@@ -106,6 +107,27 @@ async def save_sc_state_debounced() -> None:
     if _sc_save_timer:
         _sc_save_timer.cancel()
     _sc_save_timer = asyncio.create_task(_actually_save_sc_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
+
+
+def get_interpolated_track_progress() -> int:
+    """Current Spotify position in ms, interpolating from the last progress anchor.
+
+    Raw state["trackProgress"] can be 0-2s stale (the extension only re-anchors
+    past PROGRESS_DELTA_THRESHOLD_MS). Fresh clients must anchor on this, not the
+    raw value, or they start offset until the next play/pause.
+    """
+    if not state["isPlaying"]:
+        return state["trackProgress"]
+    elapsed = time.time() * 1000 - state["trackProgressStartTimestamp"]
+    return int(min(state["trackProgress"] + max(0, elapsed), state["trackDuration"]))
+
+
+def get_interpolated_sc_progress() -> int:
+    """Same as get_interpolated_track_progress but for SoundCloud."""
+    if not state["scIsPlaying"]:
+        return state["scProgressMs"]
+    elapsed = time.time() * 1000 - state["scProgressStartTimestamp"]
+    return int(min(state["scProgressMs"] + max(0, elapsed), state["scDurationMs"]))
 
 
 def get_spotify_save_data() -> dict[str, Any]:
