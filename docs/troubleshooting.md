@@ -52,7 +52,7 @@ If SoundCloud actions stop working:
 - Make sure `enableOBS` is `true` in `data/config.json`.
 - Add a Browser Source in OBS pointing to `http://localhost:8888/obs/`.
 - Enable "Use custom frame rate" and set to 60 FPS for smoother marquee animations.
-- The widget shows album art, track info, a progress bar, and a synced lyrics line.
+- The widget shows album art (hideable via the album art toggle), track info, a progress bar, and a synced/karaoke lyrics line.
 - A **source badge** (Spotify/SoundCloud) appears in the top-left corner.
 - When a track is nearing the end, "Up Next" is shown ahead of time (threshold configurable via `obsUpNextThresholdMs` in the admin panel).
 

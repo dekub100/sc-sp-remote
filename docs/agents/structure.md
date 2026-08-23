@@ -25,7 +25,7 @@
 │   ├── log.py                # Logger setup, rotation
 │   ├── state.py              # State dict, JSON persistence, debounced saves
 │   ├── broadcast.py          # CLIENTS dict, broadcast functions, progress interpolation
-│   ├── lyrics.py             # LRC parser, LRCLIB fetcher, SQLite cache
+│   ├── lyrics.py             # Lyrics providers (Musixmatch + LRCLIB), token mgmt, SQLite cache
 │   ├── handlers.py           # Message handlers + dispatch table (25+ types)
 │   └── routes.py             # WS handler, HTTP endpoints, admin config
 ├── manage.py                 # CLI: run / dev / install / service subcommands
