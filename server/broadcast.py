@@ -8,7 +8,7 @@ from typing import Any, Optional
 from aiohttp import web
 from config import PROGRESS_BROADCAST_INTERVAL
 from log import logger
-from state import state
+from state import get_album_art_url, get_sc_cover_url, state
 
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
@@ -74,7 +74,7 @@ async def broadcast_spotify_state(exclude_ws: Optional[web.WebSocketResponse] = 
         "albumName": state["currentTrack"]["albumName"],
         "trackUri": state["currentTrack"]["trackUri"],
         "albumUri": state["currentTrack"]["albumUri"],
-        "albumArtUrl": state["currentTrack"]["albumArtUrl"],
+        "albumArtUrl": get_album_art_url(),
         "progress": state["trackProgress"],
         "duration": state["trackDuration"],
         "isShuffling": state["isShuffling"],
@@ -93,7 +93,7 @@ async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse]
         "artist": state["scArtist"],
         "album": state["scAlbum"],
         "id": state["scId"],
-        "coverUrl": state["scCoverUrl"],
+        "coverUrl": get_sc_cover_url(),
         "isPlaying": state["scIsPlaying"],
         "progressMs": state["scProgressMs"],
         "durationMs": state["scDurationMs"],

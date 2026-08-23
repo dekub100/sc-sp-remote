@@ -1068,3 +1068,26 @@ class TestMusixmatchEmptyBody:
             result = await lyrics._fetch_musixmatch(
                 {"artist_name": "A", "track_name": "S", "album_name": "Al", "duration": 100}, 100000)
         assert result is None
+
+
+class TestAlbumArtToggle:
+    @pytest.fixture(autouse=True)
+    def restore_config(self):
+        old = cfg.config.get("enableAlbumArt")
+        yield
+        if old is not None:
+            cfg.config["enableAlbumArt"] = old
+
+    def test_album_art_visible_by_default(self) -> None:
+        cfg.config["enableAlbumArt"] = True
+        st.state["currentTrack"]["albumArtUrl"] = "http://example.com/art.jpg"
+        st.state["scCoverUrl"] = "http://example.com/cover.jpg"
+        assert st.get_album_art_url() == "http://example.com/art.jpg"
+        assert st.get_sc_cover_url() == "http://example.com/cover.jpg"
+
+    def test_album_art_hidden_when_disabled(self) -> None:
+        cfg.config["enableAlbumArt"] = False
+        st.state["currentTrack"]["albumArtUrl"] = "http://example.com/art.jpg"
+        st.state["scCoverUrl"] = "http://example.com/cover.jpg"
+        assert st.get_album_art_url() == ""
+        assert st.get_sc_cover_url() == ""

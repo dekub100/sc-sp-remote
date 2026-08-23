@@ -37,6 +37,7 @@ async function loadConfig() {
     document.getElementById('cfg-volume').value = cfg.defaultVolume;
     document.getElementById('cfg-obs').checked = !!cfg.enableOBS;
     document.getElementById('cfg-website').checked = !!cfg.enableWebsite;
+    document.getElementById('cfg-album-art').checked = cfg.enableAlbumArt !== false;
     document.getElementById('cfg-log-level').value = cfg.logLevel;
     document.getElementById('cfg-backup').value = cfg.backupCount;
 
@@ -75,6 +76,7 @@ async function saveConfig(e) {
     defaultVolume: parseFloat(document.getElementById('cfg-volume').value),
     enableOBS: document.getElementById('cfg-obs').checked,
     enableWebsite: document.getElementById('cfg-website').checked,
+    enableAlbumArt: document.getElementById('cfg-album-art').checked,
     enableLyrics: document.getElementById('cfg-lyrics').checked,
     logLevel: document.getElementById('cfg-log-level').value,
     backupCount: parseInt(document.getElementById('cfg-backup').value),

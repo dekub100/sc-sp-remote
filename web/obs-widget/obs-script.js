@@ -248,6 +248,10 @@ function updateDisplay() {
     elements.albumArt.crossOrigin = 'Anonymous';
     elements.albumArt.onload = () => updateDynamicColors(elements.albumArt);
     elements.albumArt.src = imgUrl;
+    elements.albumArt.style.display = '';
+  } else if (!imgUrl) {
+    // display:none collapses the 275px art box so text uses the full width.
+    elements.albumArt.style.display = 'none';
   }
 
   if (source !== 'spotify') {

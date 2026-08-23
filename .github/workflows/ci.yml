@@ -72,7 +72,7 @@ jobs:
         run: |
           if [ ! -f data/config.json ]; then
             mkdir -p data
-            printf '{"port":8888,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"enableLyrics":true,"lyricsFetchTimeoutSeconds":30,"lyricsProviderOrder":["musixmatch","lrclib"],"musixmatchToken":"","logLevel":"INFO","backupCount":3,"spicetifyPollingIntervalMs":500,"soundcloudPollingIntervalMs":500}\n' > data/config.json
+            printf '{"port":8888,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"enableAlbumArt":true,"enableLyrics":true,"lyricsFetchTimeoutSeconds":30,"lyricsProviderOrder":["musixmatch","lrclib"],"musixmatchToken":"","logLevel":"INFO","backupCount":3,"spicetifyPollingIntervalMs":500,"soundcloudPollingIntervalMs":500}\n' > data/config.json
           fi
 
       - name: Build release zip

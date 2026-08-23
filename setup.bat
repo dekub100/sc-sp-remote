@@ -44,6 +44,7 @@ if not exist "data\config.json" (
         echo   "defaultVolume": 0.5,
         echo   "enableOBS": true,
         echo   "enableWebsite": true,
+        echo   "enableAlbumArt": true,
 
         echo   "logLevel": "INFO",
         echo   "backupCount": 3,

@@ -81,6 +81,7 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 | `defaultVolume` | float | `0.5` | Initial volume (0.0–1.0) |
 | `enableOBS` | bool | `true` | Enable OBS widget at `/obs/` |
 | `enableWebsite` | bool | `true` | Enable web UI at `/` |
+| `enableAlbumArt` | bool | `true` | Show album covers (off = hidden on all clients; stream safety) |
 | `enableLyrics` | bool | `true` | Enable lyrics fetching |
 | `logLevel` | string | `"INFO"` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `backupCount` | int | `3` | Number of old log files to keep |
