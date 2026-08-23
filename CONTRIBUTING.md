@@ -12,20 +12,20 @@ Installs dependencies, creates `data/` with default config, copies the Spicetify
 
 #### Server
 ```bash
-python server/server.py
+python manage.py run
 ```
 
 #### Windows Service
 ```powershell
-python tools/service.py install
-python tools/service.py start
-python tools/service.py stop
-python tools/service.py remove
+python manage.py service install
+python manage.py service start
+python manage.py service stop
+python manage.py service remove
 ```
 
 #### Spicetify Extension Install
 ```bash
-python tools/install.py
+python manage.py install
 ```
 
 ### Tests

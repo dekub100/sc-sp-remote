@@ -7,15 +7,15 @@ Run the server as a background Windows Service. The script automatically asks fo
 ### Install & Start
 
 ```powershell
-python tools/service.py install
-python tools/service.py start
+python manage.py service install
+python manage.py service start
 ```
 
 ### Stop & Remove
 
 ```powershell
-python tools/service.py stop
-python tools/service.py remove
+python manage.py service stop
+python manage.py service remove
 ```
 
 ## Linux

@@ -36,3 +36,5 @@
 34. **`broadcast_spotify_state` and `broadcast_soundcloud_state` are separate** — not a single `broadcast_current_state` like main. Each source broadcasts its own shape.
 35. **`handle_client_log`** — SC plugin logs via WebSocket `clientLog` messages (SC can't access DevTools).
 36. **Extension reconnection** — uses `_connecting` flag to prevent re-entrant `connect()` calls. Max 10 reconnect attempts before giving up.
+37. **CLI unified in `manage.py`** — `tools/` (dev.py, install.py, service.py) deleted; all entry points are subcommands (`run`/`dev`/`install`/`service`). Old `tools/dev.py` set env var `SC_REMOTE_CONFIG`, but the server reads `SC_SP_REMOTE_CONFIG` — dev port isolation was silently broken; manage.py uses the correct name.
+38. **pywin32 service class must be module-level** — SCM's service host imports `manage.py` and resolves class string `manage.ScSpRemoteService`. A factory function returning the class breaks service start while install/restart still print success. Also: `HandleCommandLine()` parses `sys.argv`, so pass `argv=[sys.argv[0], action]` or the subcommand name confuses it.

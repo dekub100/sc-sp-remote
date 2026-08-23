@@ -58,7 +58,7 @@ echo.
 
 :: Install Spicetify extension
 echo Installing Spicetify extension...
-python tools\install.py
+python manage.py install
 echo.
 
 :: Ask about Windows service
@@ -73,7 +73,7 @@ set /p INSTALL_SERVICE="Install service? (y/N): "
 if /i "%INSTALL_SERVICE%"=="y" (
     echo.
     echo Installing and starting Windows service...
-    python tools\service.py install
+    python manage.py service install
     if %errorlevel% equ 0 (
         echo [OK] Service installed and started.
     ) else (
@@ -81,7 +81,7 @@ if /i "%INSTALL_SERVICE%"=="y" (
     )
 ) else (
     echo Skipping service installation.
-    echo To start the server manually: python server\server.py
+    echo To start the server manually: python manage.py run
 )
 
 echo.
@@ -94,6 +94,6 @@ echo Logs:    data\logs\
 echo State:   data\state_spotify.json / data\state_soundcloud.json
 echo.
 echo To start the server manually:
-echo   python server\server.py
+echo   python manage.py run
 echo.
 pause

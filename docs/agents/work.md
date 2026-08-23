@@ -7,9 +7,9 @@ When asked to commit, push, create a PR, or update release artifacts, first read
 ## Dev Server
 
 ```
-python tools/dev.py                        # Port 8888 with auto-reload
-python tools/dev.py --port 7777            # Custom port
-python tools/dev.py --no-reload            # No file watcher
+python manage.py dev                        # Port 8888 with auto-reload
+python manage.py dev --port 7777            # Custom port
+python manage.py dev --no-reload            # No file watcher
 ```
 
 Dev tool uses isolated `config.dev.json` so it doesn't interfere with a production server running as a service. The extension reads host/port from localStorage via the in-app Remote Config menu — no file patching needed.
