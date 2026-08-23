@@ -50,7 +50,8 @@ Lyrics are fetched server-side and cached in a local SQLite database (`data/lyri
 
 - **Providers:** [Musixmatch](https://musixmatch.com) (primary, synced + plain + word-level karaoke) with [LRCLIB](https://lrclib.net) as fallback. Order is configurable via `lyricsProviderOrder` in `data/config.json` or the admin panel.
 - **Token:** Musixmatch needs an anonymous usertoken. It's fetched automatically on first use and refreshed when it expires — no interaction needed. If auto-refresh ever breaks: click **Refresh Token** in the admin panel, or run `python manage.py musixmatch-token`.
-- **Karaoke:** When Musixmatch has a richsync for a track, the web UI highlights word-by-word and the OBS widget shows sung words in the album's accent color.
+- **Karaoke:** When Musixmatch has a richsync for a track, both the web UI and OBS widget sweep word-by-word in a fixed highlight color.
+- **Covers:** Album artwork on all clients can be hidden with the **Show Album Art** toggle (see disclaimer above).
 - The admin panel also has "Lyrics Fetch Timeout" and "Enable Lyrics Fetching" settings.
 
 > The lyrics UI (especially the word-by-word karaoke styling and sync feel) is heavily inspired by Spicetify's [lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) — go star it.
