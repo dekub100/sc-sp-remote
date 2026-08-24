@@ -1,6 +1,7 @@
 [project]
 name = "sc-sp-remote"
 version = "2.1.0"
+license = "MIT"
 requires-python = ">=3.9"
 
 [tool.ruff]
