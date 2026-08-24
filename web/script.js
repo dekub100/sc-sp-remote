@@ -59,6 +59,8 @@ const ui = {
     scVolumeValue: document.getElementById('scVolumeValue'),
     scPlayPauseBtn: document.getElementById('scPlayPauseBtn'),
     scLikeBtn: document.getElementById('scLikeBtn'),
+    scShuffleBtn: document.getElementById('scShuffleBtn'),
+    scRepeatBtn: document.getElementById('scRepeatBtn'),
 };
 
 // Lyrics state
@@ -433,6 +435,21 @@ function connect() {
             if (data.isLiked !== undefined) {
                 ui.scLikeBtn.classList.toggle('liked', data.isLiked);
             }
+
+            if (data.isShuffling !== undefined) {
+                ui.scShuffleBtn.classList.toggle('active', data.isShuffling);
+            }
+            if (data.repeatStatus !== undefined) {
+                const repeatIcon = ui.scRepeatBtn.querySelector('i');
+                ui.scRepeatBtn.classList.toggle('active', data.repeatStatus > 0);
+                if (data.repeatStatus === 2) {
+                    repeatIcon.className = 'fas fa-redo-alt';
+                    ui.scRepeatBtn.setAttribute('data-mode', 'track');
+                } else {
+                    repeatIcon.className = 'fas fa-repeat';
+                    ui.scRepeatBtn.removeAttribute('data-mode');
+                }
+            }
         }
 
         if (data.type === 'scVolumeUpdate') {
@@ -522,6 +539,8 @@ ui.scPlayPauseBtn.onclick = () => send({type: 'scPlaybackControl', command: 'tog
 document.getElementById('scPreviousBtn').onclick = () => send({type: 'scPlaybackControl', command: 'previous'});
 document.getElementById('scNextBtn').onclick = () => send({type: 'scPlaybackControl', command: 'next'});
 ui.scLikeBtn.onclick = () => send({type: 'scPlaybackControl', command: 'like'});
+ui.scShuffleBtn.onclick = () => send({type: 'scPlaybackControl', command: 'toggleShuffle'});
+ui.scRepeatBtn.onclick = () => send({type: 'scPlaybackControl', command: 'toggleRepeat'});
 
 const sendScVolume = debounce((val) => send({type: 'scVolumeUpdate', volume: val}), 150);
 ui.scVolumeSlider.oninput = (e) => {

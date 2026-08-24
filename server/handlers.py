@@ -16,79 +16,24 @@ from broadcast import (
     broadcast_soundcloud_state,
     broadcast_spotify_state,
     broadcast_volume_update,
-    set_soundcloud_client,
-    set_spicetify_client,
+    build_sc_state_message,
+    build_spotify_state_message,
 )
 from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
-    get_album_art_url,
     get_interpolated_sc_progress,
     get_interpolated_track_progress,
-    get_sc_cover_url,
     save_sc_state_debounced,
     save_spotify_state_debounced,
     state,
 )
 
-KNOWN_CLIENT_TYPES: frozenset[str] = frozenset({"spicetify", "soundcloud", "website", "obs"})
-PROTOCOL_VERSION: int = 1
-
-
-async def handle_register(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    client_type: str = data.get("client", "unknown")
-    client_version: int = data.get("protocolVersion", 0)
-    if client_type not in KNOWN_CLIENT_TYPES:
-        logger.warning(f"Unknown client type registration: {client_type}")
-        client_type = "unknown"
-    CLIENTS[ws]["type"] = client_type
-    CLIENTS[ws]["protocolVersion"] = client_version
-    if client_type == "spicetify":
-        set_spicetify_client(ws)
-    elif client_type == "soundcloud":
-        set_soundcloud_client(ws)
-    logger.info(f"Client registered as: {client_type} (protocol v{client_version})")
-    await ws.send_str(json.dumps({"type": "registered", "protocolVersion": PROTOCOL_VERSION}))
-
 
 async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    initial_state: dict[str, Any] = {
-        "type": "stateUpdate",
-        "source": "spotify",
-        "volume": state["volume"],
-        "isPlaying": state["isPlaying"],
-        "trackName": state["currentTrack"]["trackName"],
-        "artistName": state["currentTrack"]["artistName"],
-        "albumName": state["currentTrack"]["albumName"],
-        "trackUri": state["currentTrack"]["trackUri"],
-        "albumUri": state["currentTrack"]["albumUri"],
-        "albumArtUrl": get_album_art_url(),
-        "progress": get_interpolated_track_progress(),
-        "duration": state["trackDuration"],
-        "isShuffling": state["isShuffling"],
-        "repeatStatus": state["repeatStatus"],
-        "isLiked": state["isLiked"],
-        "timestamp": time.time() * 1000
-    }
-    await ws.send_str(json.dumps(initial_state))
-
-    sc_state: dict[str, Any] = {
-        "type": "scStateUpdate",
-        "source": "soundcloud",
-        "track": state["scTrack"],
-        "artist": state["scArtist"],
-        "album": state["scAlbum"],
-        "id": state["scId"],
-        "coverUrl": get_sc_cover_url(),
-        "isPlaying": state["scIsPlaying"],
-        "progressMs": get_interpolated_sc_progress(),
-        "durationMs": state["scDurationMs"],
-        "volume": state["scVolume"],
-        "isLiked": state["scIsLiked"],
-        "timestamp": time.time() * 1000
-    }
-    await ws.send_str(json.dumps(sc_state))
+    await ws.send_str(json.dumps(build_spotify_state_message(get_interpolated_track_progress())))
+    await ws.send_str(json.dumps(build_sc_state_message(get_interpolated_sc_progress())))
 
     lyrics: dict[str, Any] = state["lyrics"]
     lyrics_msg: str = json.dumps({
@@ -230,6 +175,10 @@ async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]
         state["scVolume"] = max(0.0, min(1.0, data["volume"]))
     if "isLiked" in data:
         state["scIsLiked"] = data["isLiked"]
+    if "isShuffling" in data:
+        state["scIsShuffling"] = data["isShuffling"]
+    if "repeatStatus" in data:
+        state["scRepeatStatus"] = data["repeatStatus"]
     if "progressMs" in data or "isPlaying" in data:
         state["scProgressStartTimestamp"] = time.time() * 1000
 
@@ -294,7 +243,6 @@ async def handle_client_log(ws: web.WebSocketResponse, data: dict[str, Any]) -> 
 
 
 MESSAGE_HANDLERS: dict[str, Any] = {
-    "register": handle_register,
     "getInitialState": handle_get_initial_state,
     # Spotify messages
     "stateUpdate": handle_spotify_state_update,

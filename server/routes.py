@@ -10,8 +10,6 @@ from aiohttp import web
 from broadcast import (
     CLIENTS,
     broadcast_playback_update,
-    set_soundcloud_client,
-    set_spicetify_client,
 )
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
@@ -78,11 +76,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     client_config = _build_client_config(client_type)
     await ws.send_json(client_config)
 
-    if client_type == "spicetify":
-        set_spicetify_client(ws)
-    elif client_type == "soundcloud":
-        set_soundcloud_client(ws)
-    else:
+    if client_type not in ("spicetify", "soundcloud"):
         await handle_get_initial_state(ws, {})
 
     try:
@@ -97,12 +91,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
             # Source controller gone: pause it so clients (web/OBS/streamdeck)
             # stop showing phantom playback and auto-routing gets unstuck.
             if info.get("type") == "spicetify":
-                set_spicetify_client(None)
                 state["isPlaying"] = False
                 state["trackProgressStartTimestamp"] = time.time() * 1000
                 await save_spotify_state_debounced()
             elif info.get("type") == "soundcloud":
-                set_soundcloud_client(None)
                 state["scIsPlaying"] = False
                 state["scProgressStartTimestamp"] = time.time() * 1000
                 await save_sc_state_debounced()
@@ -179,35 +171,19 @@ async def handle_admin_config_get(request: web.Request) -> web.Response:
     return web.json_response(config, headers=_cors_headers(request))
 
 
-_CONFIG_ERRORS: dict[str, str] = {
-    "port": "must be an integer between 1 and 65535",
-    "host": "must be a valid IP address or hostname",
-    "defaultVolume": "must be a number between 0.0 and 1.0",
-    "backupCount": "must be a non-negative integer",
-    "progressBroadcastInterval": "must be a positive number",
-    "stateSaveDebounceSeconds": "must be a positive number",
-    "lyricsFetchTimeoutSeconds": "must be a positive number",
-    "spicetifyPollingIntervalMs": "must be a positive integer",
-    "spicetifyReconnectBaseDelayMs": "must be a positive integer",
-    "spicetifyReconnectMaxDelayMs": "must be a positive integer",
-    "spicetifyProgressDeltaThresholdMs": "must be a positive integer",
-    "spicetifyCommandFeedbackDelayMs": "must be a positive integer",
-    "soundcloudPollingIntervalMs": "must be a positive integer",
-    "obsUpNextThresholdMs": "must be a positive integer",
-    "enableOBS": "must be a boolean",
-    "enableWebsite": "must be a boolean",
-    "enableLyrics": "must be a boolean",
-    "logLevel": "must be a string",
-    "allowedOrigins": "must be a list of strings",
+# key -> (min, max) inclusive; None = unbounded on that side
+_CONFIG_LIMITS: dict[str, tuple[Any, Any]] = {
+    "port": (1, 65535),
+    "defaultVolume": (0.0, 1.0),
+    "backupCount": (0, None),
 }
-
-
-def _coerce_type(value: Any, expected_type: type) -> Any:
-    if expected_type is list:
-        if not isinstance(value, list):
-            raise TypeError(f"expected list, got {type(value).__name__}")
-        return value
-    return expected_type(value)
+_CONFIG_POSITIVE_KEYS: frozenset[str] = frozenset({
+    "progressBroadcastInterval", "stateSaveDebounceSeconds", "lyricsFetchTimeoutSeconds",
+    "spicetifyPollingIntervalMs", "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
+    "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
+    "soundcloudPollingIntervalMs", "obsUpNextThresholdMs",
+})
+_LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 
 
 async def handle_admin_config_put(request: web.Request) -> web.Response:
@@ -219,43 +195,22 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
     errors: list[str] = []
     updates: dict[str, Any] = {}
     for key, value in body.items():
-        if key not in CONFIG_FIELD_TYPES:
+        expected_type = CONFIG_FIELD_TYPES.get(key)
+        if expected_type is None:
             continue
-        expected_type = CONFIG_FIELD_TYPES[key]
-        error_msg = _CONFIG_ERRORS.get(key, "invalid value")
         try:
-            coerced = _coerce_type(value, expected_type)
-        except (ValueError, TypeError):
-            errors.append(f"{key}: {error_msg}")
+            # list must be an actual list (list("abc") would "coerce" a string)
+            coerced = value if expected_type is list else expected_type(value)
+            assert isinstance(coerced, expected_type)
+            lo, hi = _CONFIG_LIMITS.get(key, (None, None))
+            assert lo is None or coerced >= lo
+            assert hi is None or coerced <= hi
+            assert key not in _CONFIG_POSITIVE_KEYS or coerced > 0
+            assert key != "logLevel" or coerced in _LOG_LEVELS
+            assert key != "allowedOrigins" or all(isinstance(o, str) for o in coerced)
+        except (ValueError, TypeError, AssertionError):
+            errors.append(f"{key}: invalid value")
             continue
-        if not isinstance(coerced, expected_type):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key == "port" and (coerced < 1 or coerced > 65535):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("defaultVolume",) and (coerced < 0.0 or coerced > 1.0):
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("backupCount",) and coerced < 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key in ("progressBroadcastInterval", "stateSaveDebounceSeconds",
-                     "lyricsFetchTimeoutSeconds",
-                     "spicetifyPollingIntervalMs",
-                     "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
-                     "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
-                     "soundcloudPollingIntervalMs",
-                     "obsUpNextThresholdMs") and coerced <= 0:
-            errors.append(f"{key}: {error_msg}")
-            continue
-        if key == "logLevel" and coerced not in ("DEBUG", "INFO", "WARNING", "ERROR"):
-            errors.append(f"{key}: must be one of DEBUG, INFO, WARNING, ERROR")
-            continue
-        if key == "allowedOrigins":
-            if not all(isinstance(o, str) for o in coerced):
-                errors.append(f"{key}: must be a list of strings")
-                continue
         updates[key] = coerced
 
     if errors:

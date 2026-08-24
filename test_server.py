@@ -56,8 +56,6 @@ def reset_state():
         },
     })
     broadcast.CLIENTS.clear()
-    broadcast.set_spicetify_client(None)
-    broadcast.set_soundcloud_client(None)
     st._spotify_save_timer = None
     st._sc_save_timer = None
     yield
@@ -346,31 +344,18 @@ class TestMessageHandlers:
         assert st.state["repeatStatus"] == 1
         assert st.state["isLiked"] is True
 
+    async def test_handle_sc_state_update_shuffle_repeat(self, mock_ws: AsyncMock) -> None:
+        with patch.object(broadcast, "broadcast_soundcloud_state", new_callable=AsyncMock):
+            with patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+                await handlers.handle_sc_state_update(mock_ws, {"type": "scStateUpdate", "isShuffling": True, "repeatStatus": 2})
+        assert st.state["scIsShuffling"] is True
+        assert st.state["scRepeatStatus"] == 2
+
     async def test_handle_spotify_progress_update(self, mock_ws: AsyncMock) -> None:
         with patch.object(broadcast, "broadcast_progress_update", new_callable=AsyncMock):
             await handlers.handle_spotify_progress_update(mock_ws, {"type": "progressUpdate", "progress": 30000, "duration": 240000})
         assert st.state["trackProgress"] == 30000
         assert st.state["trackDuration"] == 240000
-
-    async def test_handle_register_spicetify(self, mock_ws: AsyncMock) -> None:
-        broadcast.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
-        await handlers.handle_register(mock_ws, {"type": "register", "client": "spicetify"})
-        assert broadcast.CLIENTS[mock_ws]["type"] == "spicetify"
-        assert broadcast.get_spicetify_client() is mock_ws
-
-    async def test_handle_register_website(self, mock_ws: AsyncMock) -> None:
-        broadcast.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
-        await handlers.handle_register(mock_ws, {"type": "register", "client": "website"})
-        assert broadcast.CLIENTS[mock_ws]["type"] == "website"
-        assert broadcast.get_spicetify_client() is None
-
-    async def test_handle_register_unknown(self, mock_ws: AsyncMock) -> None:
-        broadcast.CLIENTS[mock_ws] = {"type": "unknown", "remote_ip": "127.0.0.1"}
-        with patch.object(handlers.logger, "warning") as mock_warn:
-            await handlers.handle_register(mock_ws, {"type": "register", "client": "foobar"})
-        assert broadcast.CLIENTS[mock_ws]["type"] == "unknown"
-        mock_warn.assert_called_once()
-        assert "foobar" in mock_warn.call_args[0][0]
 
     async def test_handle_playback_control_targets_spicetify(self, mock_ws: AsyncMock) -> None:
         broadcast.CLIENTS[mock_ws] = {"type": "website", "remote_ip": "127.0.0.1"}
