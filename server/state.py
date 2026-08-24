@@ -47,6 +47,8 @@ state: dict[str, Any] = {
     "scProgressStartTimestamp": 0,
     "scVolume": 0.5,
     "scIsLiked": False,
+    "scIsShuffling": False,
+    "scRepeatStatus": 0,
 }
 
 _spotify_save_timer: Optional[asyncio.Task[None]] = None

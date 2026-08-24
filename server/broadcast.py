@@ -12,27 +12,6 @@ from state import get_album_art_url, get_sc_cover_url, state
 
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
-spicetify_client: Optional[web.WebSocketResponse] = None
-soundcloud_client: Optional[web.WebSocketResponse] = None
-
-
-def set_spicetify_client(ws: Optional[web.WebSocketResponse]) -> None:
-    global spicetify_client
-    spicetify_client = ws
-
-
-def get_spicetify_client() -> Optional[web.WebSocketResponse]:
-    return spicetify_client
-
-
-def set_soundcloud_client(ws: Optional[web.WebSocketResponse]) -> None:
-    global soundcloud_client
-    soundcloud_client = ws
-
-
-def get_soundcloud_client() -> Optional[web.WebSocketResponse]:
-    return soundcloud_client
-
 
 async def broadcast(
     message: dict[str, Any],
@@ -63,8 +42,8 @@ async def broadcast(
         CLIENTS.pop(ws, None)
 
 
-async def broadcast_spotify_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
-    full_state_message: dict[str, Any] = {
+def build_spotify_state_message(progress: int) -> dict[str, Any]:
+    return {
         "type": "stateUpdate",
         "source": "spotify",
         "volume": state["volume"],
@@ -75,18 +54,17 @@ async def broadcast_spotify_state(exclude_ws: Optional[web.WebSocketResponse] = 
         "trackUri": state["currentTrack"]["trackUri"],
         "albumUri": state["currentTrack"]["albumUri"],
         "albumArtUrl": get_album_art_url(),
-        "progress": state["trackProgress"],
+        "progress": progress,
         "duration": state["trackDuration"],
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
         "isLiked": state["isLiked"],
         "timestamp": time.time() * 1000
     }
-    await broadcast(full_state_message, exclude_ws)
 
 
-async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
-    sc_state_message: dict[str, Any] = {
+def build_sc_state_message(progress_ms: int) -> dict[str, Any]:
+    return {
         "type": "scStateUpdate",
         "source": "soundcloud",
         "track": state["scTrack"],
@@ -95,13 +73,22 @@ async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse]
         "id": state["scId"],
         "coverUrl": get_sc_cover_url(),
         "isPlaying": state["scIsPlaying"],
-        "progressMs": state["scProgressMs"],
+        "progressMs": progress_ms,
         "durationMs": state["scDurationMs"],
         "volume": state["scVolume"],
         "isLiked": state["scIsLiked"],
+        "isShuffling": state["scIsShuffling"],
+        "repeatStatus": state["scRepeatStatus"],
         "timestamp": time.time() * 1000
     }
-    await broadcast(sc_state_message, exclude_ws)
+
+
+async def broadcast_spotify_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    await broadcast(build_spotify_state_message(state["trackProgress"]), exclude_ws)
+
+
+async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
+    await broadcast(build_sc_state_message(state["scProgressMs"]), exclude_ws)
 
 
 async def broadcast_volume_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:

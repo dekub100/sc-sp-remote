@@ -346,12 +346,6 @@ def _track_still_current(track_uri: str) -> bool:
     return state["currentTrack"]["trackUri"] == track_uri
 
 
-def _discard_if_stale(track_uri: str) -> bool:
-    if not _track_still_current(track_uri):
-        return True
-    return False
-
-
 async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_name: str, album_name: str, duration_ms: int) -> None:
     duration_s: int = max(1, round(duration_ms / 1000))
     params: dict[str, Any] = {
@@ -372,7 +366,7 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
                 karaoke = json.loads(karaoke_json)
             except (TypeError, ValueError):
                 karaoke = []
-        if _discard_if_stale(track_uri):
+        if not _track_still_current(track_uri):
             return
         state["lyrics"] = {
             "trackUri": track_uri,
@@ -409,7 +403,7 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
             logger.info(f"Lyrics: {provider} returned no results")
 
         if result:
-            if _discard_if_stale(track_uri):
+            if not _track_still_current(track_uri):
                 logger.info("Lyrics: Track changed during fetch, discarding.")
                 return
             synced_raw = result["synced_raw"]

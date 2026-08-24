@@ -5,29 +5,39 @@ import {
   SingletonAction,
   WillAppearEvent,
   WillDisappearEvent,
+  DidReceiveSettingsEvent,
 } from "@elgato/streamdeck";
 import { wsManager } from "../websocket-manager";
 
 type ToggleShuffleSettings = {
   state?: number;
+  source?: string;
 };
 
 @action({ UUID: "com.dekub.sc-sp-remote.toggleshuffle" })
 export class ToggleShuffle extends SingletonAction<ToggleShuffleSettings> {
   private actionContext: KeyAction<ToggleShuffleSettings> | null = null;
+  private currentSource: string = "spotify";
 
   private handleMessage = (data: any) => {
-    if (typeof data.isShuffling === "boolean" && this.actionContext) {
+    if (!this.actionContext) return;
+    const source = this.currentSource;
+    const effectiveSource = source === "auto" ? wsManager.activeSource : source;
+
+    if (data.source === effectiveSource && typeof data.isShuffling === "boolean") {
       const newState = data.isShuffling ? 1 : 0;
       this.actionContext.setState(newState);
-      this.actionContext.setSettings({ state: newState });
+      this.actionContext.setSettings({ state: newState, source });
     }
   };
 
-  override onWillAppear(
+  override async onWillAppear(
     ev: WillAppearEvent<ToggleShuffleSettings>
-  ): void | Promise<void> {
+  ): Promise<void> {
     this.actionContext = ev.action as KeyAction<ToggleShuffleSettings>;
+    const settings = await ev.action.getSettings();
+    this.currentSource = settings.source || "spotify";
+
     wsManager.connect();
     wsManager.on("message", this.handleMessage);
 
@@ -46,9 +56,19 @@ export class ToggleShuffle extends SingletonAction<ToggleShuffleSettings> {
     this.actionContext = null;
   }
 
+  override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ToggleShuffleSettings>): Promise<void> {
+    this.currentSource = ev.payload.settings.source || "spotify";
+  }
+
   override async onKeyUp(
     ev: KeyUpEvent<ToggleShuffleSettings>
   ): Promise<void> {
-    wsManager.send({ type: "playbackControl", command: "toggleShuffle" });
+    const source = ev.payload.settings.source || "spotify";
+    const effectiveSource = source === "auto" ? wsManager.activeSource : source;
+    if (effectiveSource === "soundcloud") {
+      wsManager.send({ type: "scPlaybackControl", command: "toggleShuffle" });
+    } else {
+      wsManager.send({ type: "playbackControl", command: "toggleShuffle" });
+    }
   }
 }

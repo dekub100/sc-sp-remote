@@ -162,6 +162,21 @@ module.exports = {
                     return m ? m.volume : 1;
                 }
 
+                function _getRepeatStatus() {
+                    // Button classes cycle m-none -> m-all -> m-one (0/1/2, same as Spotify)
+                    var btn = document.querySelector('.playControls__repeat .repeatControl');
+                    if (!btn) return 0;
+                    if (btn.classList.contains('m-one')) return 2;
+                    if (btn.classList.contains('m-all')) return 1;
+                    return 0;
+                }
+
+                function _getShuffle() {
+                    // 'm-shuffling' class present = on, absent = off
+                    var btn = document.querySelector('.playControls__shuffle .shuffleControl');
+                    return !!(btn && btn.classList.contains('m-shuffling'));
+                }
+
                 function getState() {
                     var ms = navigator.mediaSession;
 
@@ -197,7 +212,9 @@ module.exports = {
                         isPlaying: isPlaying,
                         progressMs: progressMs,
                         durationMs: durationMs,
-                        volume: _getVolume()
+                        volume: _getVolume(),
+                        isShuffling: _getShuffle(),
+                        repeatStatus: _getRepeatStatus()
                     };
                 }
 
@@ -373,6 +390,17 @@ module.exports = {
                             if (btn) btn.click();
                             break;
                         }
+                        case 'toggleShuffle': {
+                            var btn = document.querySelector('.playControls__shuffle button');
+                            if (btn) btn.click();
+                            break;
+                        }
+                        case 'toggleRepeat': {
+                            // Native click cycles m-none -> m-all -> m-one -> m-none
+                            var btn = document.querySelector('.playControls__repeat button');
+                            if (btn) btn.click();
+                            break;
+                        }
                     }
                 }
 
@@ -389,7 +417,6 @@ module.exports = {
 
                     ws.onopen = function() {
                         reconnectDelay = 1000;
-                        ws.send(JSON.stringify({ type: 'register', client: 'soundcloud' }));
                         var state = getState();
                         ws.send(JSON.stringify(state));
                         lastTrackId = state.id;

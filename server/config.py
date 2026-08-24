@@ -13,9 +13,6 @@ SC_STATE_FILE: str = os.path.join(DATA_DIR, "state_soundcloud.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
-STATE_SAVE_DEBOUNCE_SECONDS: float = 2.0
-PROGRESS_BROADCAST_INTERVAL: float = 1.0
-
 config: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",
@@ -47,6 +44,11 @@ if os.path.exists(CONFIG_PATH):
             config.update(json.load(f))
     except Exception as e:
         print(f"Failed to read config.json, using defaults: {e}")
+
+# Derived from user config so admin docs stay truthful (applied at startup).
+STATE_SAVE_DEBOUNCE_SECONDS: float = float(config["stateSaveDebounceSeconds"])
+PROGRESS_BROADCAST_INTERVAL: float = float(config["progressBroadcastInterval"])
+
 
 CONFIG_FIELD_TYPES: dict[str, type] = {
     "port": int,
