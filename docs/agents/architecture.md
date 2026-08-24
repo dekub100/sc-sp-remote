@@ -40,6 +40,7 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
 - **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
+- **Security gates** — CORS allowlist (explicit localhost default), WebSocket origin allowlist (`_is_foreign_web_origin`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
 
 
 ## State Shape (state.py)
@@ -58,6 +59,7 @@ state = {
     "scIsPlaying": bool, "scProgressMs": 0, "scDurationMs": 0,
     "scProgressStartTimestamp": float,
     "scVolume": 0.5, "scIsLiked": bool,
+    "scIsShuffling": bool, "scRepeatStatus": 0|1|2,
 }
 
 ```
@@ -66,7 +68,6 @@ state = {
 
 | Type | Direction | Purpose |
 |---|---|---|
-| `register` | Client→Server | Register client type |
 | `getInitialState` | Client→Server | Request full state dump |
 | `stateUpdate`/`trackUpdate` | Spicetify→Server | Spotify snapshot |
 | `volumeUpdate` | Spicetify→Server | Spotify volume |
@@ -75,9 +76,9 @@ state = {
 | `progressUpdate` | Spicetify→Server | Spotify progress sync |
 | `clientLog` | Any→Server | Client-side log messages (useful for SC which can't access DevTools) |
 | **SoundCloud** | | |
-| `scStateUpdate` | SC Plugin→Server | SC track/artist/progress |
+| `scStateUpdate` | SC Plugin→Server | SC track/artist/progress + shuffle/repeat (normalized to Spotify's 0=off, 1=all, 2=one scale) |
 | `scVolumeUpdate` | SC Plugin→Server | SC volume |
-| `scPlaybackControl` | Server→SC Plugin | Play/pause/next/prev |
+| `scPlaybackControl` | Web/StreamDeck→Server→SC Plugin | Play/pause/next/prev/toggleShuffle/toggleRepeat/like (server routes by source) |
 | **Commands** | | |
 | `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
 | `like` | Web→Server | Like current track (source-aware) |

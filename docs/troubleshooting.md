@@ -77,7 +77,7 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 |---|---|---|---|
 | `port` | int | `8888` | HTTP/WebSocket server port |
 | `host` | string | `"127.0.0.1"` | Bind address (`"0.0.0.0"` for LAN) |
-| `allowedOrigins` | list | `["*"]` | CORS allowed origins |
+| `allowedOrigins` | list | `["http://localhost:8888", "http://127.0.0.1:8888"]` | CORS allowed origins (`"*"` = allow all, not recommended) |
 | `defaultVolume` | float | `0.5` | Initial volume (0.0–1.0) |
 | `enableOBS` | bool | `true` | Enable OBS widget at `/obs/` |
 | `enableWebsite` | bool | `true` | Enable web UI at `/` |

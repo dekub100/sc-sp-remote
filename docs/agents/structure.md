@@ -9,7 +9,7 @@
 ├── .github/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions (lint + test + CD on tag)
-├── test_server.py            # 118 tests for server logic
+├── test_server.py            # 100 tests for server logic
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow
@@ -37,8 +37,8 @@
 │   └── remoteVolume.js       # Runs inside Spotify (port 8888)
 ├── soundcloud-plugin/
 │   └── soundcloud-remote-bridge.js  # Runs inside SoundCloud (soundcloud-rpc)
-├── streamdeck-plugin/        # TypeScript + Rollup + Elgato SDK (future)
-└── streamerbot-commands/     # Streamer.bot integration (future)
+├── streamdeck-plugin/        # TypeScript + Rollup + Elgato SDK; src/actions/ (12 actions) build to bin/, ui/ Property Inspectors share pi-common.js
+└── streamerbot-commands/     # Streamer.bot integration (future — README only)
 ```
 
 **Ignored:** `logs/`, `state_spotify.json`, `state_soundcloud.json`, `lyrics_cache.db`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `streamdeck-plugin/node_modules/`
