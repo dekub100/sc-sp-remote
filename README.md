@@ -72,3 +72,7 @@ No authentication. Designed for localhost-only use. Do not expose to the interne
 ## Development
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, tests, linting, and release workflow.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
