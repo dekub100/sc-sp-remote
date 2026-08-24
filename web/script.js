@@ -75,7 +75,8 @@ const lyricsState = {
     currentIndex: -1,
     activeWordSpans: null,
     activeWordTimes: null,
-    isVisible: false
+    isVisible: false,
+    wasOpen: false
 };
 
 const LYRICS_PROVIDER_NAMES = { musixmatch: "Musixmatch", lrclib: "LRCLIB" };
@@ -121,6 +122,15 @@ function setActiveSource(source) {
     });
     ui.spotifyPanel.classList.toggle('active', source === 'spotify');
     ui.soundcloudPanel.classList.toggle('active', source === 'soundcloud');
+
+    // Auto-close lyrics when leaving Spotify; restore when returning
+    if (source !== 'spotify') {
+        lyricsState.wasOpen = lyricsState.isVisible;
+        if (lyricsState.isVisible) toggleLyrics();
+    } else if (lyricsState.wasOpen && !lyricsState.isVisible) {
+        lyricsState.wasOpen = false;
+        toggleLyrics();
+    }
 
     // Update dynamic colors based on active album art
     if (source === 'spotify' && ui.albumArt.src) {
@@ -361,7 +371,9 @@ function connect() {
             ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
         }
 
-        if (data.type === 'playbackUpdate' && data.source === 'spotify') {
+        // stateUpdate/trackUpdate (initial sync) also carry isPlaying — without
+        // this the client free-runs thinking it's paused until a play/pause event.
+        if ((data.type === 'playbackUpdate' || data.type === 'stateUpdate' || data.type === 'trackUpdate') && data.source === 'spotify') {
             spotifyState.isPlaying = data.isPlaying;
             ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
             ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
@@ -387,7 +399,7 @@ function connect() {
             ui.likeBtn.classList.toggle('liked', data.isLiked);
         }
 
-        if ((data.type === 'progressUpdate' || data.type === 'playbackUpdate') && data.source === 'spotify') {
+        if ((data.type === 'progressUpdate' || data.type === 'playbackUpdate' || data.type === 'stateUpdate' || data.type === 'trackUpdate') && data.source === 'spotify') {
             if (data.progress !== undefined) {
                 const prevProgress = spotifyState.progress;
                 spotifyState.progress = data.progress;
