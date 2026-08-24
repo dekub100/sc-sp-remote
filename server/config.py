@@ -16,7 +16,7 @@ LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 config: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",
-    "allowedOrigins": ["*"],
+    "allowedOrigins": ["http://localhost:8888", "http://127.0.0.1:8888"],
     "defaultVolume": 0.5,
     "enableOBS": True,
     "enableWebsite": True,

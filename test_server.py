@@ -674,6 +674,49 @@ class TestAdminConfigPut:
         assert resp.status == 200
         assert cfg.config["allowedOrigins"] == ["http://localhost:3000"]
 
+    async def test_config_get_redacts_token(self, client) -> None:
+        cfg.config["musixmatchToken"] = "secret-token-123"
+        resp = await client.get('/api/admin/config')
+        assert resp.status == 200
+        data = await resp.json()
+        assert "musixmatchToken" not in data
+        assert "port" in data  # other fields still present
+
+    async def test_ws_rejects_foreign_web_origin(self) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        app.router.add_get('/ws', routes.websocket_handler)
+        async with TestClient(TestServer(app)) as tc:
+            for origin in ("https://evil.example.com", "http://evil.example.com"):
+                resp = await tc.get('/ws', headers={"Origin": origin})
+                assert resp.status == 403, f"{origin} should be rejected"
+
+    async def test_ws_allows_known_client_origins(self) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        async def ok_handler(request):
+            return web.json_response({"foreign": routes._is_foreign_web_origin(request)})
+        app.router.add_get('/probe', ok_handler)
+        async with TestClient(TestServer(app)) as tc:
+            origins = (
+                "http://localhost:8888", "http://127.0.0.1:8888",
+                "https://soundcloud.com", "https://xpui.app.spotify.com",
+                "chrome-extension://abc", "",
+            )
+            for origin in origins:
+                headers = {"Origin": origin} if origin else {}
+                resp = await tc.get('/probe', headers=headers)
+                data = await resp.json()
+                assert data["foreign"] is False, f"{origin!r} wrongly flagged foreign"
+
+        async with TestClient(TestServer(app)) as tc:
+            for origin in ("http://localhost:8888", "http://127.0.0.1:8888"):
+                resp = await tc.get('/probe', headers={"Origin": origin})
+                data = await resp.json()
+                assert data["foreign"] is False, f"{origin!r} wrongly flagged foreign"
+
     async def test_allowed_origins_not_list(self, client) -> None:
         orig = cfg.config["allowedOrigins"].copy()
         resp = await client.put('/api/admin/config', json={"allowedOrigins": "not-a-list"})
