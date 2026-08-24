@@ -112,7 +112,7 @@ async def main() -> None:
     logger.info(f"Server: http://localhost:{config['port']}")
 
     try:
-        main_site: web.TCPSite = web.TCPSite(main_runner, config.get('host', '0.0.0.0'), config['port'])
+        main_site: web.TCPSite = web.TCPSite(main_runner, config.get('host', '127.0.0.1'), config['port'])
 
         await main_site.start()
 

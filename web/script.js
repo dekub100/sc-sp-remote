@@ -165,17 +165,17 @@ function renderLyrics() {
     if (lyricsState.karaoke.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.karaoke
             .map((line, i) => '<div class="lyric-line lyric-karaoke" data-index="' + i + '" data-time="' + line.startTime + '">' +
-                line.words.map(w => '<span class="lyric-word" data-time="' + w.time + '" style="--word-duration:' + (w.duration || 300) + 'ms">' + w.text + '</span>').join('') +
+                line.words.map(w => '<span class="lyric-word" data-time="' + w.time + '" style="--word-duration:' + (w.duration || 300) + 'ms">' + escapeHtml(w.text) + '</span>').join('') +
                 '</div>')
             .join('');
         lyricsState.currentIndex = -1;
     } else if (lyricsState.synced.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.synced
-            .map((line, i) => `<div class="lyric-line" data-index="${i}" data-time="${line.time}">${line.text || ''}</div>`)
+            .map((line, i) => `<div class="lyric-line" data-index="${i}" data-time="${line.time}">${escapeHtml(line.text || '')}</div>`)
             .join('');
         lyricsState.currentIndex = -1;
     } else if (lyricsState.plain) {
-        ui.lyricsContent.innerHTML = `<div class="lyric-plain">${lyricsState.plain.replace(/\n/g, '<br>')}</div>`;
+        ui.lyricsContent.innerHTML = `<div class="lyric-plain">${escapeHtml(lyricsState.plain).replace(/\n/g, '<br>')}</div>`;
         lyricsState.currentIndex = -1;
     } else {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">No lyrics available</p>';

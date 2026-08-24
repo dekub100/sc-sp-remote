@@ -5,6 +5,7 @@ import json
 import os
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from aiohttp import web
 from broadcast import (
@@ -60,7 +61,24 @@ def _cors_headers(request: web.Request) -> dict[str, str]:
     return {}
 
 
+_ALLOWED_WS_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1", "xpui.app.spotify.com", "soundcloud.com"}
+
+
+def _is_foreign_web_origin(request: web.Request) -> bool:
+    # WebSockets ignore CORS — any website you visit could open ws://localhost and send commands.
+    # Allowlist known client origins (web UI, Spicetify/CEF, SoundCloud tab); everything else is blocked.
+    # Native clients (streamdeck plugin etc.) send no Origin header at all.
+    origin = request.headers.get("Origin", "")
+    if not origin.startswith(("http://", "https://")):
+        return False
+    hostname = urlparse(origin).hostname or ""
+    return hostname not in _ALLOWED_WS_ORIGIN_HOSTS and hostname != request.host
+
+
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    if _is_foreign_web_origin(request):
+        logger.warning(f"Rejected WebSocket connection from foreign origin: {request.headers.get('Origin')}")
+        raise web.HTTPForbidden(text="foreign origin rejected")
     ws: web.WebSocketResponse = web.WebSocketResponse()
     await ws.prepare(request)
 
@@ -168,7 +186,8 @@ async def obs_handler(request: web.Request) -> web.StreamResponse:
 
 
 async def handle_admin_config_get(request: web.Request) -> web.Response:
-    return web.json_response(config, headers=_cors_headers(request))
+    # Don't leak the musixmatch token to anyone who can read this endpoint.
+    return web.json_response({k: v for k, v in config.items() if k != "musixmatchToken"}, headers=_cors_headers(request))
 
 
 # key -> (min, max) inclusive; None = unbounded on that side

@@ -1,10 +1,11 @@
-// Shared utilities for the website.
-// Loaded via <script src="lib.js"></script> in index.html.
-
 function formatTime(ms) {
     if (isNaN(ms) || ms < 0) return "0:00";
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function extractDominantColor(img) {
