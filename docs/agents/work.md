@@ -40,8 +40,12 @@ Dev tool uses isolated `config.dev.json` so it doesn't interfere with a producti
 ## Security Model
 
 - **No authentication** — by design, localhost-only. No user accounts, no PII, no cloud secrets.
-- **Threat model** — LAN attacker sees now-playing and can skip/pause. Annoying but not sensitive. Admin API (`/api/admin/config`) is localhost-only by default.
+- **Threat model** — LAN attacker sees now-playing and can skip/pause. Annoying but not sensitive. Admin API (`/api/admin/config`) is localhost-only by default; `GET` redacts `musixmatchToken`.
+- **CORS** — configurable via `allowedOrigins`, default explicit localhost origins (`http://localhost:8888`, `http://127.0.0.1:8888`). `"*"` still honored if explicitly set.
+- **WebSocket origin gate** — WS handshakes ignore CORS entirely, so a malicious website could open `ws://localhost:8888` from the visitor's browser. `_is_foreign_web_origin()` in `routes.py` allowlists browser origins (localhost, `xpui.app.spotify.com`, `soundcloud.com`); anything else gets 403. Native clients that send no Origin header pass.
+- **XSS** — lyric text comes from third-party APIs (Musixmatch/LRCLIB) and MUST go through `escapeHtml` before any `innerHTML` interpolation. OBS widget already does this; keep it that way.
+- **Bind fallback** — `server.py` falls back to `127.0.0.1` when `host` can't be read from config (previously fell back to `0.0.0.0`).
 - **Input validation** — JSON parse errors, type checks, unknown message types all handled gracefully.
 - **CORS** — configurable via `allowedOrigins`, default `*`.
-- **Auth not worth implementing** for localhost use case. Would require changes to 4+ client types with reconnect handling — ~80 lines for marginal security gain on a tool that already binds to localhost by default. Queue-adding from chat is handled via Streamer.bot → localhost HTTP API.
+- **Auth not worth implementing** for localhost use case. Queue-adding from chat is handled via Streamer.bot → localhost HTTP API.
 - Do not expose to internet without a reverse proxy with auth.
