@@ -311,19 +311,6 @@ input[type="range"] {
   z-index: 100;
 }
 
-/* --- SoundCloud Notice --- */
-.sc-notice {
-  text-align: center;
-  color: #666;
-  font-size: 0.75rem;
-  padding: 0.5rem;
-  border-top: 1px solid #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-}
-
 /* --- Panel Toggles --- */
 .panel-toggles {
   display: flex;
