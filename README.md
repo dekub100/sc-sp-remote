@@ -6,7 +6,7 @@ A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via sou
 
 ## 🤖 AI-Generated
 
-This project was written entirely by AI (OpenCode). I describe what I want, review the output, and run the tests — the AI does the coding. Full transparency.
+This project was written entirely by AI ([OpenCode](https://github.com/anomalyco/opencode) & [PI Coding Agent](https://github.com/earendil-works/pi) [actual good projects unlike this one]). I do the tests to see if it works etc. Issues and PR's are very welcome to fix my (bad) approach.
 
 ## Requirements
 
