@@ -1,5 +1,9 @@
 # Troubleshooting
 
+## Default file paths
+1. Spicetify extension: `C:\Users\YOUR_USER\AppData\Roaming\spicetify\Extensions\remoteVolume.js`
+2. Soundcloud plugin: `C:\Users\YOUR_USER\AppData\Roaming\soundcloud-rpc\plugins\soundcloud-remote-bridge.js`
+
 ## Server won't start
 
 Check that the port in `data/config.json` isn't already in use. Change the port if needed:
@@ -10,18 +14,12 @@ Check that the port in `data/config.json` isn't already in use. Change the port 
 
 By default the server binds to `127.0.0.1` (localhost only). Set `"host": "0.0.0.0"` in `data/config.json` for LAN access.
 
-## Extension not connecting
-
-1. Verify the server is running: `http://localhost:8888/` should load the web UI.
-2. Open Spotify, click your profile → **Remote Config**, and verify the host/port match your server.
-3. Check Spicetify is installed and the extension is applied: `spicetify config extensions remoteVolume.js` then `spicetify apply`.
-
 ## Web UI not loading
 
 The website at `http://localhost:8888/` shows a dual-source remote with Spotify and SoundCloud panels.
 
-- Both panels show album art, track info, progress bar (draggable), and volume slider.
-- Spotify panel also has shuffle, repeat, and lyrics toggle.
+- Both panels show album art, track info, progress bar (draggable), shuffle, repeat, and volume slider.
+- Spotify panel also has a lyrics toggle and album name.
 - Ensure `enableWebsite` is `true` in `data/config.json`.
 - Switch sources via the **Spotify / SoundCloud** tabs at the top.
 
@@ -32,6 +30,31 @@ Open `http://localhost:8888/admin` for a web-based config editor and log viewer.
 - **Server Config** tab — edit all settings live (changes apply immediately, reconnect clients after saving).
 - **Log Viewer** tab — browse and view server log files.
 
+## Fixing / reinstalling the Spicetify extension & SoundCloud plugin
+
+Both client scripts can go stale or break after a Spicetify/soundcloud-rpc update. The fix is to reinstall them from this repo:
+
+### Spicetify extension
+
+1. Pull the latest version of this repo.
+2. Reinstall: `python manage.py install spicetify` (answers `y` to overwrite).
+3. If it didn't auto-apply, run `spicetify apply` manually.
+4. Restart Spotify.
+5. Still not connecting? Check [Extension not connecting](#extension-not-connecting) below.
+
+### SoundCloud plugin
+
+1. Pull the latest version of this repo.
+2. Reinstall: `python manage.py install soundcloud` (answers `y` to overwrite).
+3. Restart the `soundcloud-rpc` app (plugins only load on startup).
+4. Still broken? Check the plugin is at the default path ([see file paths](#default-file-paths)) and check the server log (`Log Viewer` in the admin panel).
+
+## Extension not connecting
+
+1. Verify the server is running: `http://localhost:8888/` should load the web UI.
+2. Open Spotify, click your profile → **Remote Config**, and verify the host/port match your server.
+3. Check Spicetify is installed and the extension is applied: `spicetify config extensions remoteVolume.js` then `spicetify apply`.
+
 ## SoundCloud integration is fragile
 
 SoundCloud support works by **scraping the SoundCloud website's DOM** via the [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) Electron app. This is inherently fragile:
@@ -39,19 +62,16 @@ SoundCloud support works by **scraping the SoundCloud website's DOM** via the [s
 - SoundCloud UI changes can break track/state detection at any time.
 - Metadata (album art, progress, like status) is read from DOM elements — delays and missed updates are expected.
 - `soundcloud-rpc` must be running for any SoundCloud actions to work.
-- There is no shuffle or repeat for SoundCloud (these are Spotify API features only).
-- Track progress polling relies on the DOM — seek commands may feel slower than Spotify.
+- ~~Track progress polling relies on the DOM — seek commands may feel slower than Spotify.~~ Actually doesnt seem that much behind spotify by my testing.
 
-If SoundCloud actions stop working:
+If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing--reinstalling-the-spicetify-extension--soundcloud-plugin). If that doesn't help:
 1. Check that `soundcloud-rpc` is running.
-2. Restart the `soundcloud-rpc` app.
-3. Check the server log for polling or WebSocket errors (`Log Viewer` in the admin panel).
+2. Check the server log for polling or WebSocket errors (`Log Viewer` in the admin panel).
 
 ## OBS widget not displaying
 
 - Make sure `enableOBS` is `true` in `data/config.json`.
 - Add a Browser Source in OBS pointing to `http://localhost:8888/obs/`.
-- Enable "Use custom frame rate" and set to 60 FPS for smoother marquee animations.
 - The widget shows album art (hideable via the album art toggle), track info, a progress bar, and a synced/karaoke lyrics line.
 - A **source badge** (Spotify/SoundCloud) appears in the top-left corner.
 - When a track is nearing the end, "Up Next" is shown ahead of time (threshold configurable via `obsUpNextThresholdMs` in the admin panel).
@@ -67,7 +87,7 @@ If SoundCloud actions stop working:
 
 ## Port conflicts
 
-If port 8888 is in use, change it in `data/config.json`. Then open Spotify, click your profile → **Remote Config** and update the port there too. Update your OBS Browser Source URL and Stream Deck Property Inspector port as needed.
+If port 8888 is in use, change it in `data/config.json`. Then open Spotify, click your profile → **Remote Config** and update the port there too. For SoundCloud, update the `SERVER_PORT` value at the top of [the plugin file](../soundcloud-plugin/soundcloud-remote-bridge.js) manually. Update your OBS Browser Source URL and Stream Deck Property Inspector port as needed.
 
 ## Config reference
 

@@ -10,13 +10,18 @@
 - **Volume Up/Down** — Adjust volume (configurable source).
 - **Set Volume** — Set exact percentage (configurable source).
 - **Volume Display** — Shows current volume dynamically on the button (configurable source).
-- **Toggle Shuffle** — Toggle shuffle mode (Spotify only).
-- **Toggle Repeat** — Cycle repeat: off → context → track (Spotify only).
+- **Toggle Shuffle** — Toggle shuffle mode.
+- **Toggle Repeat** — Cycle repeat: off → playlist → track/one.
 - **Toggle Like** — Like/unlike current track (configurable source).
 
 ## Source Configuration
 
-Each action (except Shuffle and Repeat) has a **Source** setting in its Property Inspector. Choose `Spotify` or `SoundCloud` to control which source the button operates on. Default is `Spotify`.
+Each action has a **Source** setting in its Property Inspector. Choose `Spotify` or `SoundCloud` to control which source the button operates on. Default is `Spotify`.
+
+Source setting has a `Auto` mode which automatically chooses the last playing source as the active one examples:
+- Spotify playing -> `Auto` controls spotify
+- Soundcloud playing -> `Auto` controls soundcloud
+- Spotify stopped and Soundcloud stopped - both on but spotify was the last one to play music -> `Auto` controls spotify
 
 The Source setting is stored per action instance, so you can have separate buttons for each source on your Stream Deck.
 

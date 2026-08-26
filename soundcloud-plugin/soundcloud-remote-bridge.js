@@ -3,14 +3,6 @@
  * @description Bridges soundcloud-rpc to the sc-sp-remote Python server via WebSocket
  * @version 2.0.0
  * @license MIT
- *
- * v2.0.0 — Full rewrite.
- * FIXED: Volume control now uses the correct hover-expand-click sequence.
- *        Setting audio.volume directly does NOT work — SoundCloud overrides it.
- * FIXED: Play state uses navigator.mediaSession.playbackState (reliable).
- * FIXED: Metadata uses navigator.mediaSession primary, DOM fallback.
- * FIXED: Seek DOM fallback uses actual duration, not a hardcoded 300000.
- * FIXED: Volume read-back uses slider height ratio, not audio.volume.
  */
 
 module.exports = {
