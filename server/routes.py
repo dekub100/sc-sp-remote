@@ -47,7 +47,7 @@ def _build_client_config(client_type: str) -> dict[str, Any]:
             "pollingIntervalMs": config.get("soundcloudPollingIntervalMs", 500),
         })
     elif client_type == "obs":
-        base["upNextThresholdMs"] = config.get("obsUpNextThresholdMs", 15000)
+        pass
     return base
 
 
@@ -200,7 +200,7 @@ _CONFIG_POSITIVE_KEYS: frozenset[str] = frozenset({
     "progressBroadcastInterval", "stateSaveDebounceSeconds", "lyricsFetchTimeoutSeconds",
     "spicetifyPollingIntervalMs", "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
     "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
-    "soundcloudPollingIntervalMs", "obsUpNextThresholdMs",
+    "soundcloudPollingIntervalMs",
 })
 _LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 

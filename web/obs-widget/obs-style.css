@@ -136,12 +136,6 @@ body {
   padding-right: 120px;
 }
 
-.up-next-prefix {
-  flex-shrink: 0;
-  font-weight: 600;
-  margin-right: 0.1em;
-}
-
 .marquee-active .marquee-wrapper {
   animation: marquee-scroll var(--duration, 10s) linear infinite;
   display: inline-block;

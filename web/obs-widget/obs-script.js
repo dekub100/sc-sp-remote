@@ -68,7 +68,6 @@ const lyricsState = {
   currentIndex: -1,
 };
 
-let UP_NEXT_THRESHOLD_MS = 15000;
 let isVisible = true;
 let hideTimeout = null;
 
@@ -286,9 +285,6 @@ function animate() {
 
 function handleMessage(data) {
   if (data.type === 'config') {
-    if (data.upNextThresholdMs !== undefined) {
-      UP_NEXT_THRESHOLD_MS = data.upNextThresholdMs;
-    }
     return;
   }
 

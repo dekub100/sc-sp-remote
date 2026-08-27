@@ -14,7 +14,7 @@ A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via sou
 | File | When to read |
 |---|---|
 | `docs/agents/structure.md` | Need file locations |
-| `docs/agents/architecture.md` | Need state shape, message types, queue system |
+| `docs/agents/architecture.md` | Need state shape, message types |
 | `docs/agents/conventions.md` | Need Python/JS code style rules |
 | `docs/agents/gotchas.md` | Need numbered gotchas/war stories |
 | `docs/agents/work.md` | Need dev workflow, adding features, testing, security |

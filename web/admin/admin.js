@@ -52,8 +52,6 @@ async function loadConfig() {
     document.getElementById('cfg-reconnect-max').value = cfg.spicetifyReconnectMaxDelayMs;
     document.getElementById('cfg-progress-delta').value = cfg.spicetifyProgressDeltaThresholdMs;
     document.getElementById('cfg-command-feedback').value = cfg.spicetifyCommandFeedbackDelayMs;
-
-    document.getElementById('cfg-up-next').value = cfg.obsUpNextThresholdMs;
   } catch (e) {
     showConfigStatus('Error loading config: ' + e.message, 'error');
   }
@@ -89,7 +87,6 @@ async function saveConfig(e) {
     spicetifyReconnectMaxDelayMs: parseInt(document.getElementById('cfg-reconnect-max').value),
     spicetifyProgressDeltaThresholdMs: parseInt(document.getElementById('cfg-progress-delta').value),
     spicetifyCommandFeedbackDelayMs: parseInt(document.getElementById('cfg-command-feedback').value),
-    obsUpNextThresholdMs: parseInt(document.getElementById('cfg-up-next').value),
   };
 
   try {
