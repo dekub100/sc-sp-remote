@@ -35,7 +35,6 @@ config: dict[str, Any] = {
     "spicetifyProgressDeltaThresholdMs": 2000,
     "spicetifyCommandFeedbackDelayMs": 150,
     "soundcloudPollingIntervalMs": 500,
-    "obsUpNextThresholdMs": 15000,
 }
 
 if os.path.exists(CONFIG_PATH):
@@ -72,5 +71,4 @@ CONFIG_FIELD_TYPES: dict[str, type] = {
     "spicetifyProgressDeltaThresholdMs": int,
     "spicetifyCommandFeedbackDelayMs": int,
     "soundcloudPollingIntervalMs": int,
-    "obsUpNextThresholdMs": int,
 }

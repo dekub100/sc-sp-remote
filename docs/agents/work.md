@@ -33,7 +33,7 @@ Dev tool uses isolated `config.dev.json` so it doesn't interfere with a producti
 
 - Don't test frontend (browser/Spotify, painful to mock)
 - Don't test full server lifecycle
-- DO test: message handlers, input validation, broadcasting, config, lyrics cache, queue handlers, rate limiting, HTTP endpoints, pure functions
+- DO test: message handlers, input validation, broadcasting, config, lyrics cache, rate limiting, HTTP endpoints, pure functions
 - `reset_state` fixture runs before every test
 - Mock `broadcast_*` functions to avoid real WebSocket connections
 
@@ -47,5 +47,5 @@ Dev tool uses isolated `config.dev.json` so it doesn't interfere with a producti
 - **Bind fallback** — `server.py` falls back to `127.0.0.1` when `host` can't be read from config (previously fell back to `0.0.0.0`).
 - **Input validation** — JSON parse errors, type checks, unknown message types all handled gracefully.
 - **CORS** — configurable via `allowedOrigins`, default `*`.
-- **Auth not worth implementing** for localhost use case. Queue-adding from chat is handled via Streamer.bot → localhost HTTP API.
+- **Auth not worth implementing** for localhost use case. Chat-driven actions are handled via Streamer.bot → localhost HTTP API.
 - Do not expose to internet without a reverse proxy with auth.

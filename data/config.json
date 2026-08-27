@@ -25,6 +25,5 @@
   "spicetifyReconnectMaxDelayMs": 10000,
   "spicetifyProgressDeltaThresholdMs": 500,
   "spicetifyCommandFeedbackDelayMs": 150,
-  "soundcloudPollingIntervalMs": 500,
-  "obsUpNextThresholdMs": 15000
+  "soundcloudPollingIntervalMs": 500
 }
