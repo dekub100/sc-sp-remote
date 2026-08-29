@@ -229,7 +229,7 @@ function updateDisplay() {
 
   if (source !== currentSource) {
     currentSource = source;
-    elements.sourceBadge.textContent = source === 'spotify' ? '\u266B' : '\u2601';
+    elements.sourceBadge.innerHTML = source === 'spotify' ? '<i class="fa-brands fa-spotify"></i>' : '<i class="fa-brands fa-soundcloud"></i>';
     elements.sourceBadge.className = 'source-badge ' + source;
     progressBarFill.classList.toggle('soundcloud', source === 'soundcloud');
   }
