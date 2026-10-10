@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sqlite3
@@ -1167,3 +1168,389 @@ class TestAlbumArtToggle:
         st.state["scCoverUrl"] = "http://example.com/cover.jpg"
         assert st.get_album_art_url() == ""
         assert st.get_sc_cover_url() == ""
+
+
+class TestScVolumeUpdate:
+    async def test_sc_volume_update_absolute(self, mock_ws: AsyncMock) -> None:
+        st.state["scVolume"] = 0.3
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": 0.8})
+        assert st.state["scVolume"] == 0.8
+
+    async def test_sc_volume_update_up(self, mock_ws: AsyncMock) -> None:
+        st.state["scVolume"] = 0.5
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeUp"})
+        assert st.state["scVolume"] == pytest.approx(0.55)
+
+    async def test_sc_volume_update_down(self, mock_ws: AsyncMock) -> None:
+        st.state["scVolume"] = 0.5
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeDown"})
+        assert st.state["scVolume"] == pytest.approx(0.45)
+
+    async def test_sc_volume_update_clamp_max(self, mock_ws: AsyncMock) -> None:
+        st.state["scVolume"] = 0.98
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeUp"})
+        assert st.state["scVolume"] == 1.0
+
+    async def test_sc_volume_update_clamp_min(self, mock_ws: AsyncMock) -> None:
+        st.state["scVolume"] = 0.02
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeDown"})
+        assert st.state["scVolume"] == 0.0
+
+    async def test_sc_volume_update_absolute_clamp_max(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": 5.0})
+        assert st.state["scVolume"] == 1.0
+
+    async def test_sc_volume_update_absolute_clamp_min(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
+             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": -10.0})
+        assert st.state["scVolume"] == 0.0
+
+
+class TestDebouncedSave:
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        st.set_spotify_write_callback(lambda d: None)
+        st.set_sc_write_callback(lambda d: None)
+        yield
+        st.cancel_pending_save()
+        st._spotify_write_callback = None
+        st._sc_write_callback = None
+
+    async def test_spotify_debounce_collapses_rapid_calls(self) -> None:
+        calls: list[dict[str, Any]] = []
+        st.set_spotify_write_callback(calls.append)
+        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+            for _ in range(3):
+                await st.save_spotify_state_debounced()
+            await asyncio.sleep(0.05)
+        assert len(calls) == 1
+        assert calls[0]["volume"] == st.state["volume"]
+
+    async def test_spotify_save_fires_after_delay(self) -> None:
+        calls: list[dict[str, Any]] = []
+        st.set_spotify_write_callback(calls.append)
+        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+            await st.save_spotify_state_debounced()
+            await asyncio.sleep(0.05)
+        assert len(calls) == 1
+
+    async def test_cancel_prevents_save(self) -> None:
+        calls: list[dict[str, Any]] = []
+        st.set_spotify_write_callback(calls.append)
+        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+            await st.save_spotify_state_debounced()
+            st.cancel_pending_save()
+            await asyncio.sleep(0.05)
+        assert len(calls) == 0
+
+    async def test_sc_debounce_collapses_rapid_calls(self) -> None:
+        calls: list[dict[str, Any]] = []
+        st.set_sc_write_callback(calls.append)
+        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+            for _ in range(3):
+                await st.save_sc_state_debounced()
+            await asyncio.sleep(0.05)
+        assert len(calls) == 1
+        assert calls[0]["scVolume"] == st.state["scVolume"]
+
+
+class _FakeLrcResponse:
+    def __init__(self, status: int, payload: dict[str, Any] | None = None):
+        self.status = status
+        self._payload = payload or {}
+
+    async def json(self, content_type: Any = None) -> dict[str, Any]:
+        return self._payload
+
+    async def __aenter__(self) -> "_FakeLrcResponse":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+class TestFetchLrclib:
+    async def test_404_returns_none_silent(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(404))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None), \
+             patch.object(lyrics.logger, "warning") as mock_warn:
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result is None
+        mock_warn.assert_not_called()
+
+    async def test_500_returns_none_warns(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(500))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None), \
+             patch.object(lyrics.logger, "warning") as mock_warn:
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result is None
+        mock_warn.assert_called_once()
+
+    async def test_empty_lyrics_returns_none(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(200, {"syncedLyrics": "", "plainLyrics": ""}))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None):
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result is None
+
+    async def test_success_synced(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(200, {
+            "syncedLyrics": "[00:01.00]Hello\n[00:05.00]World",
+            "plainLyrics": "Hello\nWorld",
+            "instrumental": False,
+        }))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None):
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result["provider"] == "lrclib"
+        assert result["instrumental"] is False
+        assert "Hello" in result["synced_raw"]
+        assert result["karaoke"] == []
+
+    async def test_instrumental_flag(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(200, {
+            "syncedLyrics": "", "plainLyrics": "", "instrumental": True,
+        }))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None):
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result is None
+
+    async def test_instrumental_with_plain(self) -> None:
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=_FakeLrcResponse(200, {
+            "syncedLyrics": "", "plainLyrics": "instrumental text", "instrumental": True,
+        }))
+        with patch.object(lyrics, "_get_session", return_value=mock_session), \
+             patch.object(lyrics, "_get_mxm_timeout", return_value=None):
+            result = await lyrics._fetch_lrclib({"artist_name": "A", "track_name": "S"}, 180000)
+        assert result["instrumental"] is True
+        assert result["plain"] == "instrumental text"
+
+
+class TestLyricsCacheHit:
+    @pytest.fixture(autouse=True)
+    def setup_db(self, temp_db: Any) -> None:
+        self.db_path = temp_db
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            lyrics.init_lyrics_cache()
+
+    def _seed(self, uri: str) -> None:
+        st.state["currentTrack"]["trackUri"] = uri
+        params = {"artist_name": "Artist", "track_name": "Song", "album_name": "Album", "duration": 200}
+        with patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            lyrics.set_cached_lyrics(params, "[00:01.00]Hi", "", False, "", "lrclib")
+
+    async def test_cache_hit_skips_fetchers(self) -> None:
+        self._seed("spotify:track:cached")
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock) as mock_mxm, \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock) as mock_lrc, \
+             patch.object(lyrics, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_bcast, \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:cached", "Song", "Artist", "Album", 200000)
+        mock_mxm.assert_not_called()
+        mock_lrc.assert_not_called()
+        mock_bcast.assert_awaited_once()
+        assert st.state["lyrics"]["available"] is True
+        assert st.state["lyrics"]["synced"][0]["text"] == "Hi"
+        assert st.state["lyrics"]["provider"] == "lrclib"
+
+    async def test_cache_hit_discarded_if_track_changed(self) -> None:
+        self._seed("spotify:track:cached")
+        st.state["currentTrack"]["trackUri"] = "spotify:track:different"
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock), \
+             patch.object(lyrics, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_bcast, \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:cached", "Song", "Artist", "Album", 200000)
+        mock_bcast.assert_not_awaited()
+        assert st.state["lyrics"]["available"] is False
+
+
+class TestGetInitialState:
+    async def test_sends_three_messages(self, mock_ws: AsyncMock) -> None:
+        await handlers.handle_get_initial_state(mock_ws, {})
+        assert mock_ws.send_str.call_count == 3
+        types = [json.loads(mock_ws.send_str.call_args_list[i][0][0])["type"] for i in range(3)]
+        assert types == ["stateUpdate", "scStateUpdate", "lyricsUpdate"]
+
+    async def test_spotify_state_includes_artist_uri(self, mock_ws: AsyncMock) -> None:
+        st.state["currentTrack"]["artistUri"] = "spotify:artist:xyz"
+        await handlers.handle_get_initial_state(mock_ws, {})
+        spotify_msg = json.loads(mock_ws.send_str.call_args_list[0][0][0])
+        assert spotify_msg["artistUri"] == "spotify:artist:xyz"
+
+    async def test_lyrics_message_has_provider(self, mock_ws: AsyncMock) -> None:
+        st.state["lyrics"]["provider"] = "lrclib"
+        st.state["lyrics"]["karaoke"] = [{"startTime": 1000}]
+        await handlers.handle_get_initial_state(mock_ws, {})
+        lyrics_msg = json.loads(mock_ws.send_str.call_args_list[2][0][0])
+        assert lyrics_msg["provider"] == "lrclib"
+        assert lyrics_msg["karaoke"] == [{"startTime": 1000}]
+
+
+class TestFormatMs:
+    def test_zero(self) -> None:
+        assert routes.format_ms(0) == "0:00"
+
+    def test_seconds(self) -> None:
+        assert routes.format_ms(59999) == "0:59"
+
+    def test_minutes(self) -> None:
+        assert routes.format_ms(60000) == "1:00"
+
+    def test_negative_clamped(self) -> None:
+        assert routes.format_ms(-5000) == "0:00"
+
+    def test_exact_minute(self) -> None:
+        assert routes.format_ms(120000) == "2:00"
+
+
+class TestBuildClientConfig:
+    def test_spicetify_keys(self) -> None:
+        result = routes._build_client_config("spicetify")
+        for key in ("pollingIntervalMs", "reconnectBaseDelayMs", "reconnectMaxDelayMs",
+                    "progressDeltaThresholdMs", "commandFeedbackDelayMs"):
+            assert key in result
+        assert result["type"] == "config"
+
+    def test_soundcloud_keys(self) -> None:
+        result = routes._build_client_config("soundcloud")
+        assert "pollingIntervalMs" in result
+        assert "reconnectBaseDelayMs" not in result
+        assert result["type"] == "config"
+
+    def test_unknown_only_type(self) -> None:
+        result = routes._build_client_config("website")
+        assert result == {"type": "config"}
+
+
+class TestHandleClientLog:
+    async def test_error_routes_to_error(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers.logger, "error") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"level": "error", "message": "boom"})
+        assert "boom" in mock_log.call_args[0][0]
+
+    async def test_warning_routes_to_warning(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers.logger, "warning") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"level": "warning", "message": "careful"})
+        assert "careful" in mock_log.call_args[0][0]
+
+    async def test_debug_routes_to_debug(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers.logger, "debug") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"level": "debug", "message": "tracing"})
+        assert "tracing" in mock_log.call_args[0][0]
+
+    async def test_unknown_level_routes_to_info(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers.logger, "info") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"level": "weird", "message": "note"})
+        assert "note" in mock_log.call_args[0][0]
+
+    async def test_client_type_prefix(self, mock_ws: AsyncMock) -> None:
+        handlers.CLIENTS[mock_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
+        with patch.object(handlers.logger, "info") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"message": "hello"})
+        assert "[spicetify] hello" == mock_log.call_args[0][0]
+        del handlers.CLIENTS[mock_ws]
+
+
+class TestInterpolatedScProgress:
+    def test_paused_returns_raw(self) -> None:
+        st.state["scIsPlaying"] = False
+        st.state["scProgressMs"] = 5000
+        assert st.get_interpolated_sc_progress() == 5000
+
+    def test_playing_interpolates(self) -> None:
+        import time as _time
+        st.state["scIsPlaying"] = True
+        st.state["scProgressMs"] = 10000
+        st.state["scDurationMs"] = 60000
+        st.state["scProgressStartTimestamp"] = _time.time() * 1000
+        result = st.get_interpolated_sc_progress()
+        assert result >= 10000
+        assert result < 12000
+
+    def test_playing_clamped_to_duration(self) -> None:
+        import time as _time
+        st.state["scIsPlaying"] = True
+        st.state["scProgressMs"] = 59000
+        st.state["scDurationMs"] = 60000
+        st.state["scProgressStartTimestamp"] = _time.time() * 1000 - 5000
+        assert st.get_interpolated_sc_progress() == 60000
+
+
+class TestBuildStateMessages:
+    def test_spotify_message_has_artist_uri(self) -> None:
+        st.state["currentTrack"]["artistUri"] = "spotify:artist:abc"
+        msg = broadcast.build_spotify_state_message(0)
+        assert msg["artistUri"] == "spotify:artist:abc"
+        for key in ("volume", "isPlaying", "trackName", "artistName", "albumName",
+                    "trackUri", "albumUri", "isLiked", "isShuffling", "repeatStatus"):
+            assert key in msg
+
+    def test_spotify_message_missing_artist_uri_defaults_empty(self) -> None:
+        st.state["currentTrack"].pop("artistUri", None)
+        msg = broadcast.build_spotify_state_message(0)
+        assert msg["artistUri"] == ""
+
+    def test_sc_message_has_volume_and_isLiked(self) -> None:
+        st.state["scVolume"] = 0.42
+        st.state["scIsLiked"] = True
+        msg = broadcast.build_sc_state_message(0)
+        assert msg["volume"] == 0.42
+        assert msg["isLiked"] is True
+        for key in ("track", "artist", "coverUrl", "isPlaying", "isShuffling", "repeatStatus"):
+            assert key in msg
+
+
+class TestCoverSizeNormalization:
+    def test_thumbnail_size_replaced(self) -> None:
+        result = handlers._COVER_SIZE_RE.sub("-t500x500", "https://i1.sndcdn.com/artworks-abc-t100x100.jpg")
+        assert "-t500x500" in result
+        assert "-t100x100" not in result
+
+    def test_no_size_passthrough(self) -> None:
+        url = "https://i1.sndcdn.com/artworks-abc-large.jpg"
+        assert handlers._COVER_SIZE_RE.sub("-t500x500", url) == url
+
+    async def test_sc_state_update_normalizes_cover(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_state_update(mock_ws, {
+                "type": "scStateUpdate", "coverUrl": "https://i1.sndcdn.com/artworks-x-t100x100.jpg"
+            })
+        assert "-t500x500" in st.state["scCoverUrl"]
+
+
+class TestHandleMessageCrash:
+    async def test_handler_exception_is_caught(self, mock_ws: AsyncMock) -> None:
+        async def boom(ws, data):
+            raise RuntimeError("crash")
+        original = handlers.MESSAGE_HANDLERS["volumeUpdate"]
+        handlers.MESSAGE_HANDLERS["volumeUpdate"] = boom
+        try:
+            with patch.object(handlers.logger, "exception") as mock_exc:
+                await handlers.handle_message(mock_ws, json.dumps({"type": "volumeUpdate", "volume": 0.5}))
+            mock_exc.assert_called_once()
+        finally:
+            handlers.MESSAGE_HANDLERS["volumeUpdate"] = original
