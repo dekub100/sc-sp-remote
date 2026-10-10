@@ -17,6 +17,7 @@ from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import (
     get_album_art_url,
+    get_interpolated_sc_progress,
     get_interpolated_track_progress,
     get_sc_cover_url,
     save_sc_state_debounced,
@@ -152,7 +153,7 @@ async def handle_state(request: web.Request) -> web.Response:
             "isLiked": state["isLiked"],
             "progress": get_interpolated_track_progress(),
             "duration": state["trackDuration"],
-            "progressFmt": format_ms(state["trackProgress"]),
+            "progressFmt": format_ms(get_interpolated_track_progress()),
             "durationFmt": format_ms(state["trackDuration"])
         },
         "soundcloud": {
@@ -161,11 +162,11 @@ async def handle_state(request: web.Request) -> web.Response:
             "album": state["scAlbum"],
             "coverUrl": get_sc_cover_url(),
             "isPlaying": state["scIsPlaying"],
-            "progressMs": state["scProgressMs"],
+            "progressMs": get_interpolated_sc_progress(),
             "durationMs": state["scDurationMs"],
             "volume": state["scVolume"],
             "isLiked": state["scIsLiked"],
-            "progressFmt": format_ms(state["scProgressMs"]),
+            "progressFmt": format_ms(get_interpolated_sc_progress()),
             "durationFmt": format_ms(state["scDurationMs"])
         }
     })

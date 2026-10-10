@@ -154,7 +154,29 @@ async def handle_spotify_progress_update(ws: web.WebSocketResponse, data: dict[s
 
 # --- SoundCloud handlers ---
 
+_COVER_SIZE_RE = re.compile(r"-t\d+x\d+")
+
+# Fields that are actually persisted and broadcast to clients. Compared against
+# the previous fingerprint so the 500ms SC heartbeat only saves/broadcasts on
+# real changes. progressMs / scProgressStartTimestamp are deliberately excluded:
+# server state keeps updating every heartbeat (interpolation stays fresh) and
+# clients re-anchor via the 1 Hz scProgressUpdate.
+_SC_FP_KEYS = (
+    "scTrack", "scArtist", "scAlbum", "scId", "scCoverUrl", "scIsPlaying",
+    "scDurationMs", "scIsLiked", "scIsShuffling", "scRepeatStatus",
+)
+_last_sc_fingerprint: Optional[tuple] = None
+
+
+def _sc_fingerprint() -> tuple:
+    # round(volume, 3) absorbs sub-pixel getBoundingClientRect() jitter from
+    # _getVolume() so it cannot defeat the gate.
+    return (*[state[key] for key in _SC_FP_KEYS], round(state["scVolume"], 3))
+
+
 async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    global _last_sc_fingerprint
+
     if "track" in data:
         state["scTrack"] = data["track"]
     if "artist" in data:
@@ -164,7 +186,7 @@ async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]
     if "id" in data:
         state["scId"] = data["id"]
     if "coverUrl" in data:
-        state["scCoverUrl"] = re.sub(r'-t\d+x\d+', '-t500x500', data["coverUrl"])
+        state["scCoverUrl"] = _COVER_SIZE_RE.sub("-t500x500", data["coverUrl"])
     if "isPlaying" in data:
         state["scIsPlaying"] = data["isPlaying"]
     if "progressMs" in data:
@@ -182,8 +204,11 @@ async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]
     if "progressMs" in data or "isPlaying" in data:
         state["scProgressStartTimestamp"] = time.time() * 1000
 
-    await save_sc_state_debounced()
-    await broadcast_soundcloud_state(exclude_ws=ws)
+    fingerprint: tuple = _sc_fingerprint()
+    if fingerprint != _last_sc_fingerprint:
+        _last_sc_fingerprint = fingerprint
+        await save_sc_state_debounced()
+        await broadcast_soundcloud_state(exclude_ws=ws)
 
 
 async def handle_sc_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:

@@ -58,6 +58,9 @@ def reset_state():
     broadcast.CLIENTS.clear()
     st._spotify_save_timer = None
     st._sc_save_timer = None
+    # The SC delta gate keeps a module-level fingerprint; clear it so test
+    # order can never leak one test's broadcast decisions into the next.
+    handlers._last_sc_fingerprint = None
     yield
 
 
@@ -351,6 +354,28 @@ class TestMessageHandlers:
         assert st.state["scIsShuffling"] is True
         assert st.state["scRepeatStatus"] == 2
 
+    async def test_sc_state_update_suppresses_duplicate_broadcast(self, mock_ws: AsyncMock) -> None:
+        # handlers imports these by name, so patch them where it looks them up.
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast:
+            with patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock) as mock_save:
+                payload: dict[str, Any] = {"type": "scStateUpdate", "track": "Song", "isPlaying": True}
+                await handlers.handle_sc_state_update(mock_ws, dict(payload, progressMs=1000))
+                await handlers.handle_sc_state_update(mock_ws, dict(payload, progressMs=2500))
+        mock_broadcast.assert_called_once()
+        mock_save.assert_called_once()
+        # Progress still mutates server state — only the save/broadcast is gated.
+        assert st.state["scProgressMs"] == 2500
+
+    async def test_sc_state_update_broadcasts_on_field_change(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast:
+            with patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock) as mock_save:
+                first: dict[str, Any] = {"type": "scStateUpdate", "track": "Song A", "isPlaying": True}
+                await handlers.handle_sc_state_update(mock_ws, first)
+                await handlers.handle_sc_state_update(mock_ws, first)
+                await handlers.handle_sc_state_update(mock_ws, {"type": "scStateUpdate", "track": "Song B", "isPlaying": True})
+        assert mock_broadcast.call_count == 2
+        assert mock_save.call_count == 2
+
     async def test_handle_spotify_progress_update(self, mock_ws: AsyncMock) -> None:
         with patch.object(broadcast, "broadcast_progress_update", new_callable=AsyncMock):
             await handlers.handle_spotify_progress_update(mock_ws, {"type": "progressUpdate", "progress": 30000, "duration": 240000})
@@ -517,6 +542,29 @@ class TestBroadcast:
         msg = mock_broadcast.call_args_list[0][0][0]
         assert msg["type"] == "progressUpdate"
         assert msg["source"] == "spotify"
+
+    async def test_progress_tick_skips_paused_spotify(self) -> None:
+        st.state["isPlaying"] = False
+        st.state["scIsPlaying"] = True
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await broadcast._compute_and_broadcast_progress()
+        assert mock_broadcast.call_count == 1
+        assert mock_broadcast.call_args[0][0]["source"] == "soundcloud"
+
+    async def test_progress_tick_skips_paused_soundcloud(self) -> None:
+        st.state["isPlaying"] = True
+        st.state["scIsPlaying"] = False
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await broadcast._compute_and_broadcast_progress()
+        assert mock_broadcast.call_count == 1
+        assert mock_broadcast.call_args[0][0]["source"] == "spotify"
+
+    async def test_progress_tick_sends_both_when_playing(self) -> None:
+        st.state["isPlaying"] = True
+        st.state["scIsPlaying"] = True
+        with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await broadcast._compute_and_broadcast_progress()
+        assert mock_broadcast.call_count == 2
 
     async def test_broadcast_lyrics_update_shape(self) -> None:
         st.state["lyrics"] = {
