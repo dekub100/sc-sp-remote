@@ -37,6 +37,10 @@ function extractDominantColor(img) {
     }
 }
 
+function setText(el, text) {
+    if (el.textContent !== text) el.textContent = text;
+}
+
 function updateMarquee(element, text) {
     const wrapper = element.querySelector('.marquee-wrapper');
     if (!wrapper) return;

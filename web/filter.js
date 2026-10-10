@@ -6,18 +6,18 @@ const _slurList = atob(
   ),
 ).split(",");
 
+// One alternation built at module load instead of one RegExp per entry per call.
+// Longest-first so the longer variant of a prefix pair wins over the shorter one.
+// Safe as a shared /g regex: String.replace resets lastIndex.
+const _slurRegex = new RegExp(
+  `\\b(?:${_slurList.filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((slur) => slur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})\\b`,
+  "gi",
+);
+
 function filterText(text) {
   if (!text) return text;
-
-  let result = text;
-
-  for (const slur of _slurList) {
-    if (!slur) continue;
-
-    const escaped = slur.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\b${escaped}\\b`, "gi");
-    result = result.replace(regex, (match) => "*".repeat(match.length));
-  }
-
-  return result;
+  return text.replace(_slurRegex, (match) => "*".repeat(match.length));
 }

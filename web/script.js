@@ -73,6 +73,7 @@ const lyricsState = {
     karaoke: [],
     provider: "",
     currentIndex: -1,
+    lineEls: [],
     activeWordSpans: null,
     activeWordTimes: null,
     isVisible: false,
@@ -162,34 +163,31 @@ function renderLyrics() {
     updateLyricsSource();
     if (lyricsState.instrumental) {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">Instrumental track</p>';
-        return;
-    }
-    if (lyricsState.loading) {
+    } else if (lyricsState.loading) {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">Downloading lyrics...</p>';
-        return;
-    }
-    if (!lyricsState.available) {
+    } else if (!lyricsState.available) {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">No lyrics available</p>';
-        return;
-    }
-    if (lyricsState.karaoke.length > 0) {
+    } else if (lyricsState.karaoke.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.karaoke
             .map((line, i) => '<div class="lyric-line lyric-karaoke" data-index="' + i + '" data-time="' + line.startTime + '">' +
                 line.words.map(w => '<span class="lyric-word" data-time="' + w.time + '" style="--word-duration:' + (w.duration || 300) + 'ms">' + escapeHtml(w.text) + '</span>').join('') +
                 '</div>')
             .join('');
-        lyricsState.currentIndex = -1;
     } else if (lyricsState.synced.length > 0) {
         ui.lyricsContent.innerHTML = lyricsState.synced
             .map((line, i) => `<div class="lyric-line" data-index="${i}" data-time="${line.time}">${escapeHtml(line.text || '')}</div>`)
             .join('');
-        lyricsState.currentIndex = -1;
     } else if (lyricsState.plain) {
         ui.lyricsContent.innerHTML = `<div class="lyric-plain">${escapeHtml(lyricsState.plain).replace(/\n/g, '<br>')}</div>`;
-        lyricsState.currentIndex = -1;
     } else {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">No lyrics available</p>';
     }
+
+    // Cache the line nodes once — the rAF highlight loops read these every frame.
+    lyricsState.lineEls = Array.from(ui.lyricsContent.querySelectorAll('.lyric-line'));
+    lyricsState.currentIndex = -1;
+    lyricsState.activeWordSpans = null;
+    lyricsState.activeWordTimes = null;
 }
 
 function updateLyricsHighlight(progressMs) {
@@ -201,7 +199,7 @@ function updateLyricsHighlight(progressMs) {
     if (newIndex === lyricsState.currentIndex) return;
     lyricsState.currentIndex = newIndex;
 
-    const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
+    const lines = lyricsState.lineEls;
     lines.forEach((el, i) => {
         el.classList.remove('active', 'near-active', 'blur-near', 'blur-far');
         const dist = i - newIndex;
@@ -227,7 +225,7 @@ function scrollToLine(line) {
 }
 
 function updateKaraokeHighlight(progressMs) {
-    const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
+    const lines = lyricsState.lineEls;
     let lineIndex = -1;
     for (let i = lyricsState.karaoke.length - 1; i >= 0; i--) {
         if (progressMs >= lyricsState.karaoke[i].startTime) {
@@ -268,16 +266,23 @@ function updateKaraokeHighlight(progressMs) {
 function handleLyricsUpdate(data) {
     lyricsState.available = data.available;
     lyricsState.instrumental = data.instrumental;
-    lyricsState.synced = (data.synced || []).map(l => ({ ...l, text: filterText(l.text) }));
+    const rawSynced = data.synced || [];
+    const rawKaraoke = data.karaoke || [];
     // Precompute per-word durations for the CSS background-position sweep.
-    lyricsState.karaoke = (data.karaoke || []).map(l => {
+    lyricsState.karaoke = rawKaraoke.map(l => {
         const words = (l.words || []).map(w => ({ text: filterText(w.text), time: w.time }));
         words.forEach((w, i) => {
             w.duration = Math.max(0, (i + 1 < words.length ? words[i + 1].time : l.endTime) - w.time);
         });
         return { startTime: l.startTime, endTime: l.endTime, words };
     });
-    lyricsState.plain = filterText(data.plain || "");
+    // Karaoke renders first, then synced, then plain — only filter what is shown.
+    lyricsState.synced = rawKaraoke.length
+        ? rawSynced
+        : rawSynced.map(l => ({ ...l, text: filterText(l.text) }));
+    lyricsState.plain = (rawKaraoke.length || rawSynced.length)
+        ? (data.plain || "")
+        : filterText(data.plain || "");
     lyricsState.provider = data.provider || "";
     lyricsState.loading = data.loading || false;
     lyricsState.currentIndex = -1;
@@ -289,7 +294,7 @@ function toggleLyrics() {
     ui.lyricsPanel.classList.toggle('hidden', !lyricsState.isVisible);
     ui.lyricsBtn.classList.toggle('active', lyricsState.isVisible);
     if (lyricsState.isVisible && lyricsState.currentIndex >= 0) {
-        const lines = ui.lyricsContent.querySelectorAll('.lyric-line');
+        const lines = lyricsState.lineEls;
         setTimeout(() => scrollToLine(lines[lyricsState.currentIndex]), 50);
     }
 }
@@ -309,11 +314,11 @@ function animate() {
         if (spotifyState.isPlaying) {
             const { currentProgress } = interpolateProgress(spotifyState);
             ui.progressBar.value = currentProgress;
-            ui.currentTime.textContent = formatTime(currentProgress);
+            setText(ui.currentTime, formatTime(currentProgress));
             updateLyricsHighlight(currentProgress);
         } else {
             ui.progressBar.value = spotifyState.progress;
-            ui.currentTime.textContent = formatTime(spotifyState.progress);
+            setText(ui.currentTime, formatTime(spotifyState.progress));
             updateLyricsHighlight(spotifyState.progress);
         }
     }
@@ -324,10 +329,10 @@ function animate() {
             const elapsed = now - scState.clientTimestamp;
             const currentProgress = Math.min(scState.progressMs + elapsed, scState.durationMs);
             ui.scProgressBar.value = currentProgress;
-            ui.scCurrentTime.textContent = formatTime(currentProgress);
+            setText(ui.scCurrentTime, formatTime(currentProgress));
         } else {
             ui.scProgressBar.value = scState.progressMs;
-            ui.scCurrentTime.textContent = formatTime(scState.progressMs);
+            setText(ui.scCurrentTime, formatTime(scState.progressMs));
         }
     }
     requestAnimationFrame(animate);

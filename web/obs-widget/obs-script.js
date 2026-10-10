@@ -217,8 +217,8 @@ function updateProgressDisplay() {
   if (duration > 0) {
     const pct = (progress / duration) * 100;
     elements.progressBarFill.style.width = `${pct}%`;
-    elements.currentTime.textContent = formatTime(progress);
-    elements.totalTime.textContent = formatTime(duration);
+    setText(elements.currentTime, formatTime(progress));
+    setText(elements.totalTime, formatTime(duration));
   }
 }
 
@@ -271,8 +271,8 @@ function animate() {
     if (duration > 0) {
       const pct = (currentProgress / duration) * 100;
       elements.progressBarFill.style.width = `${pct}%`;
-      elements.currentTime.textContent = formatTime(currentProgress);
-      elements.totalTime.textContent = formatTime(duration);
+      setText(elements.currentTime, formatTime(currentProgress));
+      setText(elements.totalTime, formatTime(duration));
     }
 
     if (getDisplaySource() === 'spotify') {
