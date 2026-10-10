@@ -169,6 +169,13 @@ module.exports = {
                     return !!(btn && btn.classList.contains('m-shuffling'));
                 }
 
+                function _getIsLiked() {
+                    var btn = document.querySelector('.playbackSoundBadge__like')
+                           || document.querySelector('.playbackSoundBadge button.sc-button-like')
+                           || document.querySelector('.playControls__soundBadge button.sc-button-like');
+                    return !!(btn && btn.classList.contains('sc-button-selected'));
+                }
+
                 function getState() {
                     var ms = navigator.mediaSession;
 
@@ -205,6 +212,7 @@ module.exports = {
                         progressMs: progressMs,
                         durationMs: durationMs,
                         volume: _getVolume(),
+                        isLiked: _getIsLiked(),
                         isShuffling: _getShuffle(),
                         repeatStatus: _getRepeatStatus()
                     };
@@ -377,7 +385,8 @@ module.exports = {
                             break;
                         }
                         case 'like': {
-                            var btn = document.querySelector('.playbackSoundBadge button.sc-button-like')
+                            var btn = document.querySelector('.playbackSoundBadge__like')
+                                   || document.querySelector('.playbackSoundBadge button.sc-button-like')
                                    || document.querySelector('.playControls__soundBadge button.sc-button-like');
                             if (btn) btn.click();
                             break;

@@ -71,6 +71,7 @@ async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str,
         "albumName": data.get("albumName", state["currentTrack"]["albumName"]),
         "trackUri": new_uri,
         "albumUri": data.get("albumUri", state["currentTrack"]["albumUri"]),
+        "artistUri": data.get("artistUri", state["currentTrack"].get("artistUri", "")),
         "albumArtUrl": data.get("albumArtUrl", state["currentTrack"]["albumArtUrl"])
     })
     state["trackDuration"] = data.get("duration", state["trackDuration"])

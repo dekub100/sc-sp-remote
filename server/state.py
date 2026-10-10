@@ -19,6 +19,7 @@ state: dict[str, Any] = {
         "albumName": "",
         "trackUri": "",
         "albumUri": "",
+        "artistUri": "",
         "albumArtUrl": ""
     },
     "trackProgress": 0,
