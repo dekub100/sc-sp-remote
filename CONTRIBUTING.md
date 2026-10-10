@@ -35,7 +35,7 @@ python -m pytest test_server.py -v
 
 ### Linting
 ```bash
-ruff check server/ test_server.py
+ruff check server/ manage.py test_server.py
 ```
 
 ### Stream Deck Plugin
