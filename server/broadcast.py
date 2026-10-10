@@ -64,6 +64,7 @@ def build_spotify_state_message(progress: int) -> dict[str, Any]:
         "albumName": state["currentTrack"]["albumName"],
         "trackUri": state["currentTrack"]["trackUri"],
         "albumUri": state["currentTrack"]["albumUri"],
+        "artistUri": state["currentTrack"].get("artistUri", ""),
         "albumArtUrl": get_album_art_url(),
         "progress": progress,
         "duration": state["trackDuration"],

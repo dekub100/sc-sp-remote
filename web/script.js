@@ -34,6 +34,7 @@ const ui = {
     artistName: document.getElementById('artistName'),
     albumName: document.getElementById('albumName'),
     songLink: document.getElementById('songLink'),
+    artistLink: document.getElementById('artistLink'),
     albumLink: document.getElementById('albumLink'),
     progressBar: document.getElementById('progressBar'),
     currentTime: document.getElementById('currentTime'),
@@ -359,6 +360,15 @@ function connect() {
 
             if (data.trackUri) ui.songLink.href = spotifyUriToUrl(data.trackUri);
             if (data.albumUri) ui.albumLink.href = spotifyUriToUrl(data.albumUri);
+            if (data.artistUri) ui.artistLink.href = spotifyUriToUrl(data.artistUri);
+
+            if (data.volume !== undefined) {
+                ui.volumeSlider.value = data.volume;
+                ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
+            }
+            if (data.isLiked !== undefined) {
+                ui.likeBtn.classList.toggle('liked', data.isLiked);
+            }
 
             if (data.albumArtUrl && ui.albumArt.src !== data.albumArtUrl) {
                 ui.albumArt.crossOrigin = "Anonymous";
@@ -451,6 +461,11 @@ function connect() {
 
             if (data.isLiked !== undefined) {
                 ui.scLikeBtn.classList.toggle('liked', data.isLiked);
+            }
+
+            if (data.volume !== undefined) {
+                ui.scVolumeSlider.value = data.volume;
+                ui.scVolumeValue.textContent = `${Math.round(data.volume * 100)}%`;
             }
 
             if (data.isShuffling !== undefined) {

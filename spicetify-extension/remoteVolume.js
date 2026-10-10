@@ -348,6 +348,7 @@
         albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
         trackUri: track.uri || meta.uri || "",
         albumUri: (track.album && track.album.uri) || meta.album_uri || "",
+        artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
         albumArtUrl: artUrl,
         duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
         progress: this._safeGet(() => Spicetify.Player.getProgress(), 0)
@@ -415,6 +416,7 @@
           albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
           trackUri: track.uri || meta.uri || "",
           albumUri: (track.album && track.album.uri) || meta.album_uri || "",
+          artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
           albumArtUrl: artUrl,
           duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
           progress: 0
