@@ -13,6 +13,25 @@ from state import get_album_art_url, get_sc_cover_url, state
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
 
+async def _send_to_client(
+    ws: web.WebSocketResponse,
+    info: dict[str, Any],
+    msg: str
+) -> Optional[web.WebSocketResponse]:
+    try:
+        await ws.send_str(msg)
+    except ConnectionResetError:
+        logger.debug(f"Broadcast: Client disconnected ({info.get('type', 'unknown')})")
+        return ws
+    except ConnectionAbortedError:
+        logger.debug(f"Broadcast: Connection aborted ({info.get('type', 'unknown')})")
+        return ws
+    except Exception:
+        logger.warning(f"Broadcast: Removing dead client ({info.get('type', 'unknown')})")
+        return ws
+    return None
+
+
 async def broadcast(
     message: dict[str, Any],
     exclude_ws: Optional[web.WebSocketResponse] = None,
@@ -21,25 +40,17 @@ async def broadcast(
     if not CLIENTS:
         return
     msg: str = json.dumps(message)
-    dead: list[web.WebSocketResponse] = []
-    for ws, info in list(CLIENTS.items()):
-        if ws == exclude_ws:
-            continue
-        if target_type and info.get("type") != target_type:
-            continue
-        try:
-            await ws.send_str(msg)
-        except ConnectionResetError:
-            logger.debug(f"Broadcast: Client disconnected ({info.get('type', 'unknown')})")
-            dead.append(ws)
-        except ConnectionAbortedError:
-            logger.debug(f"Broadcast: Connection aborted ({info.get('type', 'unknown')})")
-            dead.append(ws)
-        except Exception:
-            logger.warning(f"Broadcast: Removing dead client ({info.get('type', 'unknown')})")
-            dead.append(ws)
-    for ws in dead:
-        CLIENTS.pop(ws, None)
+    targets: list[tuple[web.WebSocketResponse, dict[str, Any]]] = [
+        (ws, info) for ws, info in list(CLIENTS.items())
+        if ws != exclude_ws and not (target_type and info.get("type") != target_type)
+    ]
+    if not targets:
+        return
+    # Parallel fan-out: one buffered client must not stall the rest.
+    results = await asyncio.gather(*(_send_to_client(ws, info, msg) for ws, info in targets))
+    for dead in results:
+        if dead is not None:
+            CLIENTS.pop(dead, None)
 
 
 def build_spotify_state_message(progress: int) -> dict[str, Any]:
@@ -158,26 +169,28 @@ async def broadcast_lyrics_update() -> None:
 
 async def _compute_and_broadcast_progress() -> None:
     now: float = time.time() * 1000
-    spotify_elapsed: float = now - state["trackProgressStartTimestamp"]
-    spotify_interpolated: float = min(state["trackProgress"] + spotify_elapsed, state["trackDuration"])
-    await broadcast({
-        "type": "progressUpdate",
-        "source": "spotify",
-        "progress": int(spotify_interpolated),
-        "duration": state["trackDuration"],
-        "isPlaying": state["isPlaying"],
-        "timestamp": now
-    })
-    sc_elapsed: float = now - state["scProgressStartTimestamp"]
-    sc_interpolated: float = min(state["scProgressMs"] + sc_elapsed, state["scDurationMs"])
-    await broadcast({
-        "type": "scProgressUpdate",
-        "source": "soundcloud",
-        "progressMs": int(sc_interpolated),
-        "durationMs": state["scDurationMs"],
-        "isPlaying": state["scIsPlaying"],
-        "timestamp": now
-    })
+    if state["isPlaying"]:
+        spotify_elapsed: float = now - state["trackProgressStartTimestamp"]
+        spotify_interpolated: float = min(state["trackProgress"] + spotify_elapsed, state["trackDuration"])
+        await broadcast({
+            "type": "progressUpdate",
+            "source": "spotify",
+            "progress": int(spotify_interpolated),
+            "duration": state["trackDuration"],
+            "isPlaying": state["isPlaying"],
+            "timestamp": now
+        })
+    if state["scIsPlaying"]:
+        sc_elapsed: float = now - state["scProgressStartTimestamp"]
+        sc_interpolated: float = min(state["scProgressMs"] + sc_elapsed, state["scDurationMs"])
+        await broadcast({
+            "type": "scProgressUpdate",
+            "source": "soundcloud",
+            "progressMs": int(sc_interpolated),
+            "durationMs": state["scDurationMs"],
+            "isPlaying": state["scIsPlaying"],
+            "timestamp": now
+        })
 
 
 async def start_progress_broadcasting() -> None:
