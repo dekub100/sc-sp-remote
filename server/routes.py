@@ -46,8 +46,6 @@ def _build_client_config(client_type: str) -> dict[str, Any]:
         base.update({
             "pollingIntervalMs": config.get("soundcloudPollingIntervalMs", 500),
         })
-    elif client_type == "obs":
-        pass
     return base
 
 
