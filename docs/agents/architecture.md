@@ -35,7 +35,7 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Client types** via query param (`?client=spicetify|soundcloud|website|obs`)
 - **Targeted broadcast** — commands from web go ONLY to target client type
 - **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows)
-- **SC_REMOTE_CONFIG env var** — overrides config path (instead of SPICETIFY_CONFIG)
+- **`SC_SP_REMOTE_CONFIG` env var** — overrides config path (instead of SPICETIFY_CONFIG)
 - **Debounced state saves** (2s inactivity)
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
@@ -50,10 +50,10 @@ state = {
     # Spotify
     "volume": 0.0-1.0,
     "isPlaying": bool,
-    "currentTrack": {trackName, artistName, albumName, trackUri, albumUri, albumArtUrl},
+    "currentTrack": {trackName, artistName, albumName, trackUri, albumUri, artistUri, albumArtUrl},
     "trackProgress": int (ms), "trackDuration": int (ms), "trackProgressStartTimestamp": float,
     "isShuffling": bool, "repeatStatus": 0|1|2, "isLiked": bool,
-    "lyrics": {trackUri, synced, plain, available, instrumental, karaoke, provider, loading},
+    "lyrics": {trackUri, synced, plain, available, instrumental, loading},  # karaoke/provider added at runtime
     # SoundCloud (sc* prefix)
     "scTrack", "scArtist", "scAlbum", "scId", "scCoverUrl",
     "scIsPlaying": bool, "scProgressMs": 0, "scDurationMs": 0,

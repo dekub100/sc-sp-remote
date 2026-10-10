@@ -43,7 +43,7 @@ The `.streamDeckPlugin` file is output to the project root. It is not committed 
 
 ## Server Communication
 
-The plugin communicates with the server via WebSocket. Ensure your server is running (`python server/server.py` or as a service) for the actions to function.
+The plugin communicates with the server via WebSocket. Ensure your server is running (`python manage.py run` or as a service) for the actions to function.
 
 ## Global Port Configuration
 

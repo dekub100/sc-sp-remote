@@ -9,7 +9,7 @@
 ├── .github/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions (lint + test + CD on tag)
-├── test_server.py            # 100 tests for server logic
+├── test_server.py            # 150 tests for server logic
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow
@@ -26,7 +26,7 @@
 │   ├── state.py              # State dict, JSON persistence, debounced saves
 │   ├── broadcast.py          # CLIENTS dict, broadcast functions, progress interpolation
 │   ├── lyrics.py             # Lyrics providers (Musixmatch + LRCLIB), token mgmt, SQLite cache
-│   ├── handlers.py           # Message handlers + dispatch table (25+ types)
+│   ├── handlers.py           # Message handlers + dispatch table (16 types)
 │   └── routes.py             # WS handler, HTTP endpoints, admin config
 ├── manage.py                 # CLI: run / dev / install / service subcommands
 ├── web/
@@ -38,7 +38,7 @@
 ├── soundcloud-plugin/
 │   └── soundcloud-remote-bridge.js  # Runs inside SoundCloud (soundcloud-rpc)
 ├── streamdeck-plugin/        # TypeScript + Rollup + Elgato SDK; src/actions/ (12 actions) build to bin/, ui/ Property Inspectors share pi-common.js
-└── streamerbot-commands/     # Streamer.bot integration (future — README only)
+└── streamerbot-commands/     # Streamer.bot !song/!np commands (import blob + templates)
 ```
 
 **Ignored:** `logs/`, `state_spotify.json`, `state_soundcloud.json`, `lyrics_cache.db`, `__pycache__/`, `.pytest_cache/`, `.ruff_cache/`, `streamdeck-plugin/node_modules/`

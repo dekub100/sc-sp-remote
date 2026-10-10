@@ -62,7 +62,7 @@ SoundCloud support works by **scraping the SoundCloud website's DOM** via the [s
 - SoundCloud UI changes can break track/state detection at any time.
 - Metadata (album art, progress, like status) is read from DOM elements — delays and missed updates are expected.
 - `soundcloud-rpc` must be running for any SoundCloud actions to work.
-- ~~Track progress polling relies on the DOM — seek commands may feel slower than Spotify.~~ Actually doesnt seem that much behind spotify by my testing.
+- Track progress polling is DOM-based, but in practice it keeps up with Spotify about as well.
 
 If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing--reinstalling-the-spicetify-extension--soundcloud-plugin). If that doesn't help:
 1. Check that `soundcloud-rpc` is running.
@@ -74,7 +74,6 @@ If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing-
 - Add a Browser Source in OBS pointing to `http://localhost:8888/obs/`.
 - The widget shows album art (hideable via the album art toggle), track info, a progress bar, and a synced/karaoke lyrics line.
 - A **source badge** (Spotify/SoundCloud) appears in the top-left corner.
-- When a track is nearing the end, "Up Next" is shown ahead of time (threshold configurable via `obsUpNextThresholdMs` in the admin panel).
 
 ## Lyrics not loading
 
@@ -107,7 +106,7 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 | `backupCount` | int | `3` | Number of old log files to keep |
 | `progressBroadcastInterval` | float | `1.0` | Seconds between progress broadcasts to clients |
 | `stateSaveDebounceSeconds` | float | `2.0` | Seconds of inactivity before saving state to disk |
-| `lyricsFetchTimeoutSeconds` | int | `30` | Lyrics request timeout (per provider) |
+| `lyricsFetchTimeoutSeconds` | float | `30` | Lyrics request timeout (per provider) |
 | `lyricsProviderOrder` | list | `["musixmatch", "lrclib"]` | Provider priority order (`musixmatch`, `lrclib`) |
 | `musixmatchToken` | string | `""` | Musixmatch usertoken — auto-fetched, don't edit manually (use admin panel / `manage.py musixmatch-token`) |
 | `spicetifyPollingIntervalMs` | int | `500` | Spotify polling interval (ms) |
@@ -116,4 +115,3 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 | `spicetifyProgressDeltaThresholdMs` | int | `2000` | Progress drift before re-broadcasting (ms) |
 | `spicetifyCommandFeedbackDelayMs` | int | `150` | Wait after command before checking state (ms) |
 | `soundcloudPollingIntervalMs` | int | `500` | SoundCloud DOM polling interval (ms) |
-| `obsUpNextThresholdMs` | int | `15000` | How early to show "Up Next" before track ends (ms) |
