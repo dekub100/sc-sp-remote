@@ -6,7 +6,7 @@ A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via sou
 
 ## 🤖 AI-Generated
 
-This project was written entirely by AI ([OpenCode](https://github.com/anomalyco/opencode) & [PI Coding Agent](https://github.com/earendil-works/pi) [actual good projects unlike this one]). I do the tests to see if it works etc. Issues and PR's are very welcome to fix my (bad) approach.
+This project was written entirely by AI ([OpenCode](https://github.com/anomalyco/opencode) & [PI Coding Agent](https://github.com/earendil-works/pi)). I test it to make sure it works, but the approach isn't always idiomatic — issues and PRs are very welcome.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ Or run `setup.bat` for a one-click install on Windows.
 
 Configure the Spotify extension from the profile menu → **Remote Config** (set host/port at runtime, no file editing needed).
 
-> **Disclaimer:** Album covers and other artwork are shown exactly as provided by Spotify/SoundCloud. You are responsible for what you display on stream — the author is not liable for any strikes, bans, or other consequences caused by showing inappropriate artwork. If in doubt, toggle **Show Album Art** off in the admin panel.
+> **Note:** Album art is shown exactly as Spotify/SoundCloud provide it. If you're streaming this on OBS and want to be careful, there's a **Show Album Art** toggle in the admin panel.
 
 ## Configuration
 
@@ -51,7 +51,7 @@ Lyrics are fetched server-side and cached in a local SQLite database (`data/lyri
 - **Providers:** [Musixmatch](https://musixmatch.com) (primary, synced + plain + word-level karaoke) with [LRCLIB](https://lrclib.net) as fallback. Order is configurable via `lyricsProviderOrder` in `data/config.json` or the admin panel.
 - **Token:** Musixmatch needs an anonymous usertoken. It's fetched automatically on first use and refreshed when it expires — no interaction needed. If auto-refresh ever breaks: click **Refresh Token** in the admin panel, or run `python manage.py musixmatch-token`.
 - **Karaoke:** When Musixmatch has a richsync for a track, both the web UI and OBS widget sweep word-by-word in a fixed highlight color.
-- **Covers:** Album artwork on all clients can be hidden with the **Show Album Art** toggle (see disclaimer above).
+- **Covers:** Album artwork on all clients can be hidden with the **Show Album Art** toggle (see note above).
 - The admin panel also has "Lyrics Fetch Timeout" and "Enable Lyrics Fetching" settings.
 
 > The lyrics UI (especially the word-by-word karaoke styling and sync feel) is heavily inspired by Spicetify's [lyrics-plus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus) — go star it.

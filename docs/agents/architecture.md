@@ -35,7 +35,7 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Client types** via query param (`?client=spicetify|soundcloud|website|obs`)
 - **Targeted broadcast** — commands from web go ONLY to target client type
 - **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows)
-- **`SC_SP_REMOTE_CONFIG` env var** — overrides config path (instead of SPICETIFY_CONFIG)
+- **`SC_SP_REMOTE_CONFIG` env var** — overrides config path
 - **Debounced state saves** (2s inactivity)
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)

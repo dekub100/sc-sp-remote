@@ -18,10 +18,11 @@
 
 Each action has a **Source** setting in its Property Inspector. Choose `Spotify` or `SoundCloud` to control which source the button operates on. Default is `Spotify`.
 
-Source setting has a `Auto` mode which automatically chooses the last playing source as the active one examples:
-- Spotify playing -> `Auto` controls spotify
-- Soundcloud playing -> `Auto` controls soundcloud
-- Spotify stopped and Soundcloud stopped - both on but spotify was the last one to play music -> `Auto` controls spotify
+The Source setting also has an `Auto` mode, which controls whichever source played most recently:
+
+- Spotify playing → `Auto` controls Spotify
+- SoundCloud playing → `Auto` controls SoundCloud
+- Both stopped → `Auto` controls whichever one played last (e.g. Spotify, if it was the last to play music)
 
 The Source setting is stored per action instance, so you can have separate buttons for each source on your Stream Deck.
 

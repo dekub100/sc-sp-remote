@@ -20,7 +20,9 @@ python manage.py service remove
 
 ## Linux
 
-Use `systemd` to run the server in the background.
+> **Untested.** This project is developed on Windows and the maintainer has no Linux environment to verify this against — treat it as a starting point, not a guaranteed-working recipe. PRs that fix it up are welcome.
+
+Use `systemd` to run the server in the background. The unit runs `server/server.py` directly rather than `python manage.py run`, so systemd tracks the server process itself instead of a wrapper subprocess.
 
 1. Create a service file:
 
@@ -38,8 +40,8 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/python3 /path/to/sc-sp-remote/server/server.py
 WorkingDirectory=/path/to/sc-sp-remote
-StandardOutput=inherit
-StandardError=inherit
+StandardOutput=journal
+StandardError=journal
 Restart=always
 User=YOUR_USER
 

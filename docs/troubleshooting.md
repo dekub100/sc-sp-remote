@@ -62,7 +62,7 @@ SoundCloud support works by **scraping the SoundCloud website's DOM** via the [s
 - SoundCloud UI changes can break track/state detection at any time.
 - Metadata (album art, progress, like status) is read from DOM elements — delays and missed updates are expected.
 - `soundcloud-rpc` must be running for any SoundCloud actions to work.
-- Track progress polling is DOM-based, but in practice it keeps up with Spotify about as well.
+- Track progress is polled on an interval, so it can drift slightly behind the player.
 
 If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing--reinstalling-the-spicetify-extension--soundcloud-plugin). If that doesn't help:
 1. Check that `soundcloud-rpc` is running.
