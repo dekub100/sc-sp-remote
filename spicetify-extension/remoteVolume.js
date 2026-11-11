@@ -505,7 +505,11 @@
       console.log(`[RemoteVolume] Command: ${data.command}`);
       switch (data.command) {
         case "play":
+          Spicetify.Player.play();
+          break;
         case "pause":
+          Spicetify.Player.pause();
+          break;
         case "togglePlay":
           Spicetify.Player.togglePlay();
           break;
