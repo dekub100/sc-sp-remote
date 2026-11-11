@@ -59,7 +59,7 @@ The `.streamDeckPlugin` file is output to the project root. It is not committed 
 
 ## CI / CD
 
-Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13 (Ubuntu), a Windows job (import + lint + tests) and a Stream Deck job (`npm ci`, typecheck, build). Pushing a tag matching `v*` (e.g., `v2.0.0`) also builds the release zip and creates a GitHub release automatically.
+Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13 (Ubuntu), a Windows job (import + lint + tests), a Stream Deck job (`npm ci`, typecheck, build) and a web job (`node --test "web/tests/*.test.js"`). Pushing a tag matching `v*` (e.g., `v2.0.0`) also builds the release zip and creates a GitHub release automatically.
 
 The workflow is at `.github/workflows/ci.yml`.
 

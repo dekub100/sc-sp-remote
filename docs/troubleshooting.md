@@ -22,15 +22,15 @@ The website at `http://localhost:8888/` shows a dual-source remote with Spotify 
 
 - Both panels show album art, track info, progress bar (draggable), shuffle, repeat, and volume slider.
 - Spotify panel also has a lyrics toggle and album name.
-- Ensure `enableWebsite` is `true` in `data/config.json`.
+- The web UI is always served at `/` (there is no enable/disable toggle).
 - Switch sources via the **Spotify / SoundCloud** tabs at the top.
 
 ## Admin panel
 
 Open `http://localhost:8888/admin` for a web-based config editor and log viewer. The admin API is loopback-only, so it must be opened on the machine running the server.
 
-- **Server Config** tab — edit all settings live (changes apply immediately, reconnect clients after saving).
-- **Log Viewer** tab — browse and view server log files.
+- **Server Config** tab — most settings apply immediately (polling intervals, log level, lyrics options). `port`, `host` and `backupCount` need a server restart; the save confirmation names them.
+- **Log Viewer** tab — browse server log files. Large logs show the last 256 KB instead of the whole file.
 
 ## Fixing / reinstalling the Spicetify extension & SoundCloud plugin
 
@@ -72,7 +72,6 @@ If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing-
 
 ## OBS widget not displaying
 
-- Make sure `enableOBS` is `true` in `data/config.json`.
 - Add a Browser Source in OBS pointing to `http://localhost:8888/obs/`.
 - The widget shows album art (hideable via the album art toggle), track info, a progress bar, and a synced/karaoke lyrics line.
 - A **source badge** (Spotify/SoundCloud) appears in the top-left corner.
@@ -81,7 +80,7 @@ If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing-
 
 - Lyrics come from [Musixmatch](https://musixmatch.com) first (with word-level karaoke when available), falling back to [LRCLIB](https://lrclib.net). If a track isn't in either database, lyrics will show as unavailable.
 - Ensure `enableLyrics` is `true` in `data/config.json` (or toggled on in the admin panel).
-- Clear the local cache: delete `data/lyrics_cache.db` and restart the server.
+- Clear the local cache: delete `data/lyrics_cache.db` and restart the server. Tracks known to have no lyrics are cached as "not found" for 6 hours before being retried.
 - Adjust `lyricsFetchTimeoutSeconds` in the admin panel if requests time out.
 - Check `lyricsProviderOrder` in the admin panel — remove `"musixmatch"` if Musixmatch is having issues; the server will use LRCLIB only.
 - If Musixmatch lyrics suddenly stop but LRCLIB still works, force a token refresh: **Refresh Token** button in the admin panel, or `python manage.py musixmatch-token`.
@@ -101,8 +100,6 @@ All settings live in `data/config.json` (created on first run from the tracked `
 | `allowedOrigins` | list | `["http://localhost:8888", "http://127.0.0.1:8888"]` | CORS allowed origins (`"*"` = allow all for CORS, not recommended; never opens the WebSocket gate) |
 | `allowedHosts` | list | `[]` | Extra `Host` names accepted by the anti-rebinding gate (needed for hostname access like `myrig.local`) |
 | `defaultVolume` | float | `0.5` | Initial volume (0.0–1.0) |
-| `enableOBS` | bool | `true` | Enable OBS widget at `/obs/` |
-| `enableWebsite` | bool | `true` | Enable web UI at `/` |
 | `enableAlbumArt` | bool | `true` | Show album covers (off = hidden on all clients; stream safety) |
 | `enableLyrics` | bool | `true` | Enable lyrics fetching |
 | `logLevel` | string | `"INFO"` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` |

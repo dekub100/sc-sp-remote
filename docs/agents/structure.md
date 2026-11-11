@@ -8,7 +8,7 @@
 ├── conftest.py               # pytest: adds server/ to sys.path, isolates runtime data
 ├── .github/
 │   └── workflows/
-│       └── ci.yml             # GitHub Actions (lint + test + CD on tag)
+│       └── ci.yml             # GitHub Actions (Linux + Windows + Stream Deck + web tests, CD on tag)
 ├── test_server.py            # Server test suite
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
@@ -22,9 +22,9 @@
 │   ├── state_soundcloud.json # SoundCloud state (runtime, gitignored)
 │   └── (logs/, lyrics_cache.db — runtime, gitignored)
 ├── server/
-│   ├── server.py             # Entry point, routes, main()
-│   ├── config.py             # Paths, defaults, layered config loading
-│   ├── log.py                # Logger setup, rotation
+│   ├── server.py             # Entry point, app wiring, startup/shutdown (routes live in routes.py)
+│   ├── config.py             # Paths, defaults, layered config loading, atomic JSON writes
+│   ├── log.py                # Logger setup, per-session files + retention cleanup (no rotation)
 │   ├── state.py              # SOURCES descriptor, flat state, JSON persistence, debounced saves
 │   ├── broadcast.py          # CLIENTS dict, broadcast functions, progress interpolation
 │   ├── lyrics.py             # Lyrics providers (Musixmatch + LRCLIB), token mgmt, SQLite cache
@@ -35,7 +35,8 @@
 ├── web/
 │   ├── index.html / style.css / script.js / lib.js / filter.js
 │   ├── admin/                 # Admin panel (config editor + log viewer)
-│   └── obs-widget/           # OBS browser source widget
+│   ├── obs-widget/           # OBS browser source widget
+│   └── tests/                # node --test suite for lib.js/filter.js
 ├── spicetify-extension/
 │   └── remoteVolume.js       # Runs inside Spotify (port 8888)
 ├── soundcloud-plugin/
