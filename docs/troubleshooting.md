@@ -6,6 +6,8 @@
 
 ## Server won't start
 
+If the data directory is read-only, the server logs a warning and starts with the built-in defaults (state/config won't persist). Point `SC_SP_REMOTE_DATA_DIR` at a writable directory to fix it.
+
 Check that the port in `data/config.json` isn't already in use. Change the port if needed:
 
 ```json

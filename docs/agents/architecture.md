@@ -39,11 +39,12 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Layered config** — code defaults ← tracked `data/config.default.json` ← gitignored user `data/config.json` (created on first run). `SC_SP_REMOTE_CONFIG` overrides the user-config path; `SC_SP_REMOTE_DATA_DIR` redirects all runtime data (state, logs, cache) for dev/tests.
 - **Debounced state saves** (2s inactivity, read from config at save time) written atomically (`tmp` + `os.replace`)
 - **Disconnect is not "paused"** — a source controller disconnect broadcasts `sourceStatus{connected:false}` and only pauses playback after a 1.5 s grace, re-checked against the client list, so reconnects don't pause the music
+- **Restored state never claims to be playing** — `isPlaying` is persisted but its progress anchor is not, so a restored source with no anchor is reported paused until the source client reconnects
 - **Bounded broadcast** — every WebSocket send has a 1 s timeout; an unresponsive client is dropped instead of stalling the 1 Hz progress loop
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
 - **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
-- **Security gates** — `security_middleware` (Host allowlist against DNS rebinding, same-origin check for state-changing requests, `/api/admin` loopback-only), WebSocket origin allowlist (`_is_foreign_web_origin`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
+- **Security gates** — `security_middleware` (Host allowlist against DNS rebinding, same-origin check for state-changing requests, `/api/admin` loopback-only), WebSocket origin allowlist (`_is_foreign_web_origin`), 256 KB inbound WS frame cap (`MAX_WS_MESSAGE_BYTES`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
 - **CORS is browser read permission, not a security gate** — `allowedOrigins` only adds `Access-Control-Allow-Origin` to `/api/config` and the admin responses. `/api/state` sends no CORS header, so it stays same-origin-only; `"*"` never opens the WebSocket gate
 
 
