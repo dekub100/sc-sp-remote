@@ -1,6 +1,6 @@
 # sc-sp-remote
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)
 
 A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via soundcloud-rpc) using WebSockets.
 
@@ -21,6 +21,18 @@ This project was written entirely by AI ([OpenCode](https://github.com/anomalyco
 3. Open the **web UI** at `http://localhost:8888/`
 
 Or run `setup.bat` for a one-click install on Windows.
+
+## Upgrading to 3.0
+
+3.0 moves the WebSocket wire format to **protocol v2** (`{"v":2,"type":...,"source":...,"state":{...}}`). v1 clients are rejected at connect with a `protocol_version` error and close code `1002`, so update everything together:
+
+1. **Server** — pull the release (or replace the zip contents) and restart.
+2. **Spicetify extension** — `python manage.py install`, then reload Spotify.
+3. **SoundCloud plugin** — `python manage.py install` (or copy `soundcloud-plugin/` over the installed files), then reload the SoundCloud tab.
+4. **Stream Deck plugin** — download and install the `.streamDeckPlugin` from the same release. An older build is rejected on connect and cannot control playback.
+5. **Web UI / OBS widget** — served by the server, so a browser refresh is enough. Hard-refresh if a cached `script.js` is still in use.
+
+No config migration is needed: an existing `data/config.json` keeps working and is layered over the new shipped defaults in `data/config.default.json`. Runtime files (`state_spotify.json`, `state_soundcloud.json`, logs, lyrics cache) are unchanged.
 
 ## Usage
 

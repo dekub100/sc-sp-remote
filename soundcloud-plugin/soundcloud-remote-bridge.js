@@ -1,7 +1,7 @@
 /**
  * @name soundcloud-remote-bridge
  * @description Bridges soundcloud-rpc to the sc-sp-remote Python server via WebSocket
- * @version 2.0.0
+ * @version 2.1.0
  * @license MIT
  */
 
@@ -16,7 +16,7 @@ module.exports = {
                 if (window.__scRemoteLoaded) return;
                 window.__scRemoteLoaded = true;
 
-                var VERSION = '2.0.0';
+                var VERSION = '2.1.0';
                 var SERVER_PORT = 8888;
                 var SERVER_URL = 'ws://localhost:' + SERVER_PORT + '/?client=soundcloud&protocolVersion=2';
                 var ws = null;

@@ -120,7 +120,10 @@ GitHub Actions will:
 Update version in these files:
 - `README.md` — badge URL (`version-X.X.X-blue`)
 - `AGENTS.md` — `**Version:** X.X.X`
-- `pyproject.toml` — `version = "X.X.X"`
+
+`pyproject.toml` has no `[project]` table and no version field — it only carries tool
+config. The release version comes from the git tag (`vX.X.X`), which CI passes to the
+zip name and git-cliff.
 
 Do NOT bump the StreamDeck plugin manifest version unless the plugin source actually changed.
 
