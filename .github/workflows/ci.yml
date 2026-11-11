@@ -29,12 +29,66 @@ jobs:
       - name: Lint
         run: ruff check server/ manage.py test_server.py
 
+      - name: Check JS syntax
+        run: |
+          for f in web/*.js web/*/*.js spicetify-extension/*.js soundcloud-plugin/*.js; do
+            node --check "$f"
+          done
+
       - name: Test
         run: python -m pytest test_server.py -v
 
+  # The project ships a Windows service, a setup.bat installer and pywin32-only
+  # code paths, so the Linux matrix above cannot see regressions in those.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Import check
+        run: python -c "import manage, sys; sys.path.insert(0, 'server'); import server"
+
+      - name: Lint
+        run: ruff check server/ manage.py test_server.py
+
+      - name: Test
+        run: python -m pytest test_server.py -q
+
+  streamdeck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: streamdeck-plugin/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: streamdeck-plugin
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: streamdeck-plugin
+
+      - name: Build
+        run: npm run build
+        working-directory: streamdeck-plugin
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: lint-and-test
+    needs: [lint-and-test, windows, streamdeck]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -59,13 +113,6 @@ jobs:
           npx --package=@elgato/cli --yes streamdeck pack \
             streamdeck-plugin/com.dekub.sc-sp-remote.sdPlugin \
             --output . --force
-
-      - name: Ensure default config.json
-        run: |
-          if [ ! -f data/config.json ]; then
-            mkdir -p data
-            printf '{"port":8888,"allowedOrigins":["*"],"defaultVolume":0.5,"enableOBS":true,"enableWebsite":true,"enableAlbumArt":true,"enableLyrics":true,"lyricsFetchTimeoutSeconds":30,"lyricsProviderOrder":["musixmatch","lrclib"],"musixmatchToken":"","logLevel":"INFO","backupCount":3,"spicetifyPollingIntervalMs":500,"soundcloudPollingIntervalMs":500}\n' > data/config.json
-          fi
 
       - name: Build release zip
         run: |
