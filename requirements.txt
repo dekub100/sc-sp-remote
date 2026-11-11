@@ -1,2 +1,4 @@
-aiohttp>=3.9.0,<4.0.0
-pywin32>=306;platform_system=="Windows"
+# aiohttp 3.14 requires Python >= 3.10; 3.13 is the last line that supports 3.9.
+aiohttp~=3.13; python_version < "3.10"
+aiohttp~=3.14; python_version >= "3.10"
+pywin32>=306,<313;platform_system=="Windows"
