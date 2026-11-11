@@ -20,10 +20,6 @@ export class SeekForward extends SingletonAction<SeekForwardSettings> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
     const offset = (ev.payload.settings.seconds || 10) * 1000;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "seekForward", offset });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "seekForward", offset });
-    }
+    wsManager.sendCommand(effectiveSource, "seekForward", { offset });
   }
 }

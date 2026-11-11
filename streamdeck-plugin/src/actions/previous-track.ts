@@ -18,10 +18,6 @@ export class PreviousTrack extends SingletonAction<PreviousTrackSettings> {
   override async onKeyUp(ev: KeyUpEvent<PreviousTrackSettings>): Promise<void> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "previous" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "previous" });
-    }
+    wsManager.sendCommand(effectiveSource, "previous");
   }
 }

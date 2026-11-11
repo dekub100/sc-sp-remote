@@ -18,7 +18,7 @@ module.exports = {
 
                 var VERSION = '2.0.0';
                 var SERVER_PORT = 8888;
-                var SERVER_URL = 'ws://localhost:' + SERVER_PORT + '/?client=soundcloud&protocolVersion=1';
+                var SERVER_URL = 'ws://localhost:' + SERVER_PORT + '/?client=soundcloud&protocolVersion=2';
                 var ws = null;
                 var reconnectDelay = 1000;
                 var MAX_RECONNECT = 10000;
@@ -203,18 +203,21 @@ module.exports = {
                     var durationMs = m ? Math.floor((isFinite(m.duration) ? m.duration : 0) * 1000) : 0;
 
                     return {
-                        type: 'scStateUpdate',
-                        track: title,
-                        artist: artist,
-                        coverUrl: _getCover(),
-                        id: trackUrl,
-                        isPlaying: isPlaying,
-                        progressMs: progressMs,
-                        durationMs: durationMs,
-                        volume: _getVolume(),
-                        isLiked: _getIsLiked(),
-                        isShuffling: _getShuffle(),
-                        repeatStatus: _getRepeatStatus()
+                        type: 'nowPlaying',
+                        source: 'soundcloud',
+                        state: {
+                            track: title,
+                            artist: artist,
+                            coverUrl: _getCover(),
+                            id: trackUrl,
+                            isPlaying: isPlaying,
+                            progress: progressMs,
+                            duration: durationMs,
+                            volume: _getVolume(),
+                            isLiked: _getIsLiked(),
+                            isShuffling: _getShuffle(),
+                            repeatStatus: _getRepeatStatus()
+                        }
                     };
                 }
 
@@ -356,8 +359,7 @@ module.exports = {
                             break;
                         }
                         case 'seek': {
-                            var ms = cmd.position_ms !== undefined ? cmd.position_ms : cmd.position;
-                            if (ms !== undefined) scSeek(Number(ms));
+                            if (cmd.position !== undefined) scSeek(Number(cmd.position));
                             break;
                         }
                         case 'seekForward': {
@@ -420,21 +422,19 @@ module.exports = {
                         reconnectDelay = 1000;
                         var state = getState();
                         ws.send(JSON.stringify(state));
-                        lastTrackId = state.id;
+                        lastTrackId = state.state.id;
                         startPolling();
                     };
 
                     ws.onmessage = function(e) {
                         try {
                             var msg = JSON.parse(e.data);
-                            if (msg.type === 'scPlaybackControl') {
+                            if (msg.type === 'command') {
                                 executeCommand(msg);
                                 // Send updated state after a short delay so SC has time to react
                                 setTimeout(function() {
                                     if (ws && ws.readyState === 1) ws.send(JSON.stringify(getState()));
                                 }, 400);
-                            } else if (msg.type === 'scVolumeUpdate') {
-                                if (msg.volume !== undefined) scSetVolume(Number(msg.volume));
                             } else if (msg.type === 'config' && msg.pollingIntervalMs) {
                                 startPolling(msg.pollingIntervalMs);
                             }
@@ -461,7 +461,9 @@ module.exports = {
                     pollInterval = setInterval(function() {
                         if (!ws || ws.readyState !== 1) return;
                         var state = getState();
-                        if (state.id && state.id !== lastTrackId) lastTrackId = state.id;
+                        if (state.state && state.state.id && state.state.id !== lastTrackId) {
+                            lastTrackId = state.state.id;
+                        }
                         ws.send(JSON.stringify(state));
                     }, intervalMs || 500);
                 }

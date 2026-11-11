@@ -29,11 +29,7 @@ export class SetVolume extends SingletonAction<SetVolumeSettings> {
       const volumeToSend = ev.payload.settings.volume !== undefined ? ev.payload.settings.volume : 0.5;
       const source = ev.payload.settings.source || "spotify";
       const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-      if (effectiveSource === "soundcloud") {
-        wsManager.send({ type: "scVolumeUpdate", volume: volumeToSend });
-      } else {
-        wsManager.send({ type: "volumeUpdate", volume: volumeToSend });
-      }
+      wsManager.sendCommand(effectiveSource, "setVolume", { volume: volumeToSend });
     }
 
     private updateDisplay(action: KeyAction<SetVolumeSettings>, settings: SetVolumeSettings): void {

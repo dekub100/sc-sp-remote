@@ -25,11 +25,12 @@ export class PlayPause extends SingletonAction<PlayPauseSettings> {
       return;
     }
 
+    const state = data.state || {};
     this.actionInstances.forEach((action, id) => {
       const source = this.actionSources.get(id) || "spotify";
       const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-      if (data.source === effectiveSource && typeof data.isPlaying === "boolean") {
-        action.setState(data.isPlaying ? 1 : 0);
+      if (data.source === effectiveSource && typeof state.isPlaying === "boolean") {
+        action.setState(state.isPlaying ? 1 : 0);
       }
     });
   };
@@ -76,10 +77,6 @@ export class PlayPause extends SingletonAction<PlayPauseSettings> {
     this.lastPressTime = Date.now();
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "togglePlay" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "togglePlay" });
-    }
+    wsManager.sendCommand(effectiveSource, "togglePlay");
   }
 }

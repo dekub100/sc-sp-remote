@@ -12,7 +12,7 @@
       MAX_RECONNECT_ATTEMPTS: 10,
       PROGRESS_DELTA_THRESHOLD_MS: 2000,
       COMMAND_FEEDBACK_DELAY_MS: 150,
-      PROTOCOL_VERSION: 1,
+      PROTOCOL_VERSION: 2,
       STALE_CONNECTION_WINDOW_MS: 2000,
     },
 
@@ -207,17 +207,12 @@
           case "config":
             this.applyClientConfig(data);
             break;
-          case "stateUpdate":
-          case "volumeUpdate":
-          case "playbackUpdate":
-          case "shuffleUpdate":
-          case "repeatUpdate":
-          case "likeUpdate":
-            if (data.source === "spotify" || !data.source) {
-              this.applyServerState(data);
+          case "nowPlaying":
+            if (data.source === "spotify") {
+              this.applyServerState(data.state || {});
             }
             break;
-          case "playbackControl":
+          case "command":
             this.handleCommand(data);
             break;
         }
@@ -336,25 +331,27 @@
       const artUrl = this.getAlbumArtUrl(track);
 
       const snapshot = {
-        type: "stateUpdate",
+        type: "nowPlaying",
         source: "spotify",
-        volume: this._safeGet(() => Spicetify.Player.getVolume(), 0.5),
-        isPlaying: this._safeGet(() => Spicetify.Player.isPlaying(), false),
-        isShuffling: this._safeGet(() => Spicetify.Player.getShuffle(), false),
-        repeatStatus: this._safeGet(() => Spicetify.Player.getRepeat(), 0),
-        isLiked: this._safeGet(() => Spicetify.Player.getHeart(), false),
-        trackName: track.name || meta.title || "Unknown Track",
-        artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
-        albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
-        trackUri: track.uri || meta.uri || "",
-        albumUri: (track.album && track.album.uri) || meta.album_uri || "",
-        artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
-        albumArtUrl: artUrl,
-        duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
-        progress: this._safeGet(() => Spicetify.Player.getProgress(), 0)
+        state: {
+          volume: this._safeGet(() => Spicetify.Player.getVolume(), 0.5),
+          isPlaying: this._safeGet(() => Spicetify.Player.isPlaying(), false),
+          isShuffling: this._safeGet(() => Spicetify.Player.getShuffle(), false),
+          repeatStatus: this._safeGet(() => Spicetify.Player.getRepeat(), 0),
+          isLiked: this._safeGet(() => Spicetify.Player.getHeart(), false),
+          trackName: track.name || meta.title || "Unknown Track",
+          artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
+          albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
+          trackUri: track.uri || meta.uri || "",
+          albumUri: (track.album && track.album.uri) || meta.album_uri || "",
+          artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
+          albumArtUrl: artUrl,
+          duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+          progress: this._safeGet(() => Spicetify.Player.getProgress(), 0)
+        }
       };
 
-      this.state = { ...snapshot };
+      this.state = { ...snapshot.state };
       this.send(snapshot);
     },
 
@@ -362,7 +359,7 @@
       const vol = this._safeGet(() => Spicetify.Player.getVolume(), this.state.volume);
       if (force || Math.abs(vol - this.state.volume) > 0.001) {
         this.state.volume = vol;
-        this.send({ type: "volumeUpdate", source: "spotify", volume: vol });
+        this.send({ type: "volume", source: "spotify", state: { volume: vol } });
       }
     },
 
@@ -370,7 +367,7 @@
       const isPlaying = this._safeGet(() => Spicetify.Player.isPlaying(), this.state.isPlaying);
       if (force || isPlaying !== this.state.isPlaying) {
         this.state.isPlaying = isPlaying;
-        this.send({ type: "playbackUpdate", source: "spotify", isPlaying: isPlaying, progress: this._safeGet(() => Spicetify.Player.getProgress(), 0) });
+        this.send({ type: "playback", source: "spotify", state: { isPlaying: isPlaying, progress: this._safeGet(() => Spicetify.Player.getProgress(), 0) } });
       }
     },
 
@@ -378,7 +375,7 @@
       const isShuffling = this._safeGet(() => Spicetify.Player.getShuffle(), this.state.isShuffling);
       if (force || isShuffling !== this.state.isShuffling) {
         this.state.isShuffling = isShuffling;
-        this.send({ type: "shuffleUpdate", source: "spotify", isShuffling: isShuffling });
+        this.send({ type: "shuffle", source: "spotify", state: { isShuffling: isShuffling } });
       }
     },
 
@@ -386,7 +383,7 @@
       const repeat = this._safeGet(() => Spicetify.Player.getRepeat(), this.state.repeatStatus);
       if (force || repeat !== this.state.repeatStatus) {
         this.state.repeatStatus = repeat;
-        this.send({ type: "repeatUpdate", source: "spotify", repeatStatus: repeat });
+        this.send({ type: "repeat", source: "spotify", state: { repeatStatus: repeat } });
       }
     },
 
@@ -394,7 +391,7 @@
       const isLiked = this._safeGet(() => Spicetify.Player.getHeart(), this.state.isLiked);
       if (force || isLiked !== this.state.isLiked) {
         this.state.isLiked = isLiked;
-        this.send({ type: "likeUpdate", source: "spotify", isLiked: isLiked });
+        this.send({ type: "like", source: "spotify", state: { isLiked: isLiked } });
       }
     },
 
@@ -409,17 +406,19 @@
         const artUrl = this.getAlbumArtUrl(track);
 
         const metadata = {
-          type: "trackUpdate",
+          type: "nowPlaying",
           source: "spotify",
-          trackName: track.name || meta.title || "Unknown Track",
-          artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
-          albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
-          trackUri: track.uri || meta.uri || "",
-          albumUri: (track.album && track.album.uri) || meta.album_uri || "",
-          artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
-          albumArtUrl: artUrl,
-          duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
-          progress: 0
+          state: {
+            trackName: track.name || meta.title || "Unknown Track",
+            artistName: (track.artists && track.artists[0] && track.artists[0].name) || meta.artist_name || "Unknown Artist",
+            albumName: (track.album && track.album.name) || meta.album_title || "Unknown Album",
+            trackUri: track.uri || meta.uri || "",
+            albumUri: (track.album && track.album.uri) || meta.album_uri || "",
+            artistUri: (track.artists && track.artists[0] && track.artists[0].uri) || "",
+            albumArtUrl: artUrl,
+            duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+            progress: 0
+          }
         };
 
         this.send(metadata);
@@ -431,10 +430,12 @@
       if (force || Math.abs(progress - this.state.progress) > this.config.PROGRESS_DELTA_THRESHOLD_MS) {
         this.state.progress = progress;
         this.send({
-          type: "progressUpdate",
+          type: "progress",
           source: "spotify",
-          progress: progress,
-          duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+          state: {
+            progress: progress,
+            duration: this._safeGet(() => Spicetify.Player.getDuration(), 0),
+          },
         });
       }
     },
@@ -531,10 +532,17 @@
           Spicetify.Player.toggleHeart();
           break;
         case "volumeUp":
-          Spicetify.Player.increaseVolume();
+        case "volumeDown": {
+          const step = data.step || 0.05;
+          const current = this._safeGet(() => Spicetify.Player.getVolume(), 0.5);
+          const next = data.command === "volumeUp"
+            ? Math.min(1, current + step)
+            : Math.max(0, current - step);
+          Spicetify.Player.setVolume(next);
           break;
-        case "volumeDown":
-          Spicetify.Player.decreaseVolume();
+        }
+        case "setVolume":
+          if (data.volume !== undefined) Spicetify.Player.setVolume(data.volume);
           break;
       }
 
@@ -544,7 +552,7 @@
         else if (data.command === "toggleShuffle") this.checkShuffle();
         else if (data.command === "toggleRepeat") this.checkRepeat();
         else if (data.command === "like") this.checkLikeStatus();
-        else if (["volumeUp", "volumeDown"].includes(data.command)) this.checkVolume();
+        else if (["volumeUp", "volumeDown", "setVolume"].includes(data.command)) this.checkVolume();
         else if (["seekForward", "seekBack"].includes(data.command)) this.checkProgressChange(true);
       }, this.config.COMMAND_FEEDBACK_DELAY_MS);
     },

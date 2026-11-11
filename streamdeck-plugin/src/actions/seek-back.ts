@@ -20,10 +20,6 @@ export class SeekBack extends SingletonAction<SeekBackSettings> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
     const offset = (ev.payload.settings.seconds || 10) * 1000;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "seekBack", offset });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "seekBack", offset });
-    }
+    wsManager.sendCommand(effectiveSource, "seekBack", { offset });
   }
 }

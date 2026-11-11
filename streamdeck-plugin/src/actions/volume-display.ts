@@ -15,12 +15,13 @@ export class VolumeDisplay extends SingletonAction<VolumeDisplaySettings> {
   private pollingInterval: NodeJS.Timeout | null = null;
 
   private handleMessage = (data: any) => {
+    const state = data.state || {};
     this.actionInstances.forEach((action, id) => {
       const source = this.actionSources.get(id) || "spotify";
       const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-      if (data.source === effectiveSource && typeof data.volume === "number") {
-        this._volume = Math.round(data.volume * 100);
-        if (this._isMuted && data.volume > 0) {
+      if (data.source === effectiveSource && typeof state.volume === "number") {
+        this._volume = Math.round(state.volume * 100);
+        if (this._isMuted && state.volume > 0) {
           this._isMuted = false;
         }
         this.updateButtonAppearance();
@@ -33,7 +34,11 @@ export class VolumeDisplay extends SingletonAction<VolumeDisplaySettings> {
     const settings = await ev.action.getSettings();
     this.actionSources.set(ev.action.id, settings.source || "spotify");
 
-    wsManager.connect();
+    // connect() increments refCount, so only the first visible instance may
+    // call it; onWillDisappear disconnects once when the last one goes away.
+    if (this.actionInstances.size === 1) {
+      wsManager.connect();
+    }
     wsManager.off("message", this.handleMessage);
     wsManager.on("message", this.handleMessage);
 
@@ -80,21 +85,13 @@ export class VolumeDisplay extends SingletonAction<VolumeDisplaySettings> {
       const vol = this._previousVolume / 100;
       this._volume = this._previousVolume;
       this.updateButtonAppearance();
-      if (effectiveSource === "soundcloud") {
-        wsManager.send({ type: "scVolumeUpdate", volume: vol });
-      } else {
-        wsManager.send({ type: "volumeUpdate", volume: vol });
-      }
+      wsManager.sendCommand(effectiveSource, "setVolume", { volume: vol });
     } else {
       this._isMuted = true;
       this._previousVolume = this._volume > 0 ? this._volume : 50;
       this._volume = 0;
       this.updateButtonAppearance();
-      if (effectiveSource === "soundcloud") {
-        wsManager.send({ type: "scVolumeUpdate", volume: 0 });
-      } else {
-        wsManager.send({ type: "volumeUpdate", volume: 0 });
-      }
+      wsManager.sendCommand(effectiveSource, "setVolume", { volume: 0 });
     }
   }
 

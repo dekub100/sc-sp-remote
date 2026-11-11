@@ -283,103 +283,77 @@ function animate() {
   requestAnimationFrame(animate);
 }
 
+function applySpotifyNowPlaying(s) {
+  if (s.trackUri) spotifyState.trackUri = s.trackUri;
+  if (s.trackName !== undefined) spotifyState.trackName = s.trackName;
+  if (s.artistName !== undefined) spotifyState.artistName = s.artistName;
+  if (s.albumName !== undefined) spotifyState.albumName = s.albumName;
+  if (s.albumArtUrl !== undefined) spotifyState.albumArtUrl = s.albumArtUrl;
+  if (s.albumUri !== undefined) spotifyState.albumUri = s.albumUri;
+  if (s.progress !== undefined) spotifyState.progress = s.progress;
+  if (s.duration !== undefined) spotifyState.duration = s.duration;
+  if (s.isPlaying !== undefined) spotifyState.isPlaying = s.isPlaying;
+  if (s.volume !== undefined) spotifyState.volume = s.volume;
+  if (s.isLiked !== undefined) spotifyState.isLiked = s.isLiked;
+  spotifyState.timestamp = s.timestamp || Date.now();
+  spotifyState.clientTimestamp = Date.now();
+  if (s.isPlaying) lastActiveSource = 'spotify';
+  updateDisplay();
+  setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
+}
+
+function applySoundCloudNowPlaying(s) {
+  if (s.track !== undefined) soundcloudState.track = s.track;
+  if (s.artist !== undefined) soundcloudState.artist = s.artist;
+  if (s.album !== undefined) soundcloudState.album = s.album;
+  if (s.coverUrl !== undefined) soundcloudState.coverUrl = s.coverUrl;
+  if (s.id !== undefined) soundcloudState.id = s.id;
+  if (s.isPlaying !== undefined) soundcloudState.isPlaying = s.isPlaying;
+  if (s.progress !== undefined) soundcloudState.progressMs = s.progress;
+  if (s.duration !== undefined) soundcloudState.durationMs = s.duration;
+  if (s.volume !== undefined) soundcloudState.volume = s.volume;
+  if (s.isLiked !== undefined) soundcloudState.isLiked = s.isLiked;
+  soundcloudState.timestamp = s.timestamp || Date.now();
+  soundcloudState.clientTimestamp = Date.now();
+  if (s.isPlaying) lastActiveSource = 'soundcloud';
+  updateDisplay();
+  setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
+}
+
+function applyProgress(source, s) {
+  // Periodic corrected anchors from the server — keeps interpolation honest
+  // after page refresh (initial snapshot can carry a stale raw progress).
+  if (source === 'spotify') {
+    if (s.progress !== undefined) spotifyState.progress = s.progress;
+    if (s.duration !== undefined) spotifyState.duration = s.duration;
+    if (s.isPlaying !== undefined) spotifyState.isPlaying = s.isPlaying;
+    spotifyState.timestamp = s.timestamp || Date.now();
+    spotifyState.clientTimestamp = Date.now();
+  } else if (source === 'soundcloud') {
+    if (s.progress !== undefined) soundcloudState.progressMs = s.progress;
+    if (s.duration !== undefined) soundcloudState.durationMs = s.duration;
+    if (s.isPlaying !== undefined) soundcloudState.isPlaying = s.isPlaying;
+    soundcloudState.timestamp = s.timestamp || Date.now();
+    soundcloudState.clientTimestamp = Date.now();
+  }
+}
+
 function handleMessage(data) {
-  if (data.type === 'config') {
+  const state = data.state || {};
+
+  if (data.type === 'nowPlaying') {
+    if (data.source === 'spotify') applySpotifyNowPlaying(state);
+    else if (data.source === 'soundcloud') applySoundCloudNowPlaying(state);
     return;
   }
 
-  if (data.type === 'stateUpdate' || (data.type === 'trackUpdate' && data.source === 'spotify')) {
-    if (data.trackUri) spotifyState.trackUri = data.trackUri;
-    if (data.trackName !== undefined) spotifyState.trackName = data.trackName;
-    if (data.artistName !== undefined) spotifyState.artistName = data.artistName;
-    if (data.albumName !== undefined) spotifyState.albumName = data.albumName;
-    if (data.albumArtUrl !== undefined) spotifyState.albumArtUrl = data.albumArtUrl;
-    if (data.albumUri !== undefined) spotifyState.albumUri = data.albumUri;
-    if (data.trackUri !== undefined) spotifyState.trackUri = data.trackUri;
-    if (data.progress !== undefined) spotifyState.progress = data.progress;
-    if (data.duration !== undefined) spotifyState.duration = data.duration;
-    if (data.isPlaying !== undefined) spotifyState.isPlaying = data.isPlaying;
-    if (data.volume !== undefined) spotifyState.volume = data.volume;
-    if (data.isLiked !== undefined) spotifyState.isLiked = data.isLiked;
-    spotifyState.timestamp = data.timestamp || Date.now();
-    spotifyState.clientTimestamp = Date.now();
-    if (data.isPlaying) lastActiveSource = 'spotify'
-    updateDisplay();
-    setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
+  if (data.type === 'progress') {
+    applyProgress(data.source, state);
     return;
   }
 
-  if (data.type === 'scStateUpdate') {
-    if (data.track !== undefined) soundcloudState.track = data.track;
-    if (data.artist !== undefined) soundcloudState.artist = data.artist;
-    if (data.album !== undefined) soundcloudState.album = data.album;
-    if (data.coverUrl !== undefined) soundcloudState.coverUrl = data.coverUrl;
-    if (data.id !== undefined) soundcloudState.id = data.id;
-    if (data.isPlaying !== undefined) soundcloudState.isPlaying = data.isPlaying;
-    if (data.progressMs !== undefined) soundcloudState.progressMs = data.progressMs;
-    if (data.durationMs !== undefined) soundcloudState.durationMs = data.durationMs;
-    if (data.volume !== undefined) soundcloudState.volume = data.volume;
-    if (data.isLiked !== undefined) soundcloudState.isLiked = data.isLiked;
-    soundcloudState.timestamp = data.timestamp || Date.now();
-    soundcloudState.clientTimestamp = Date.now();
-    if (data.isPlaying) lastActiveSource = 'soundcloud';
-    updateDisplay();
-    setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
-    return;
-  }
-
-  if (data.type === 'playbackUpdate' && data.source === 'spotify') {
-    if (data.isPlaying !== undefined) spotifyState.isPlaying = data.isPlaying;
-    if (data.progress !== undefined) spotifyState.progress = data.progress;
-    spotifyState.timestamp = data.timestamp || Date.now();
-    spotifyState.clientTimestamp = Date.now();
-    if (data.isPlaying) lastActiveSource = 'spotify';
-    updateDisplay();
-    setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
-    return;
-  }
-
-  if (data.type === 'scPlaybackUpdate') {
-    if (data.isPlaying !== undefined) soundcloudState.isPlaying = data.isPlaying;
-    if (data.progressMs !== undefined) soundcloudState.progressMs = data.progressMs;
-    soundcloudState.timestamp = data.timestamp || Date.now();
-    soundcloudState.clientTimestamp = Date.now();
-    if (data.isPlaying) lastActiveSource = 'soundcloud';
-    updateDisplay();
-    setWidgetVisibility(spotifyState.isPlaying || soundcloudState.isPlaying);
-    return;
-  }
-
-  if (data.type === 'lyricsUpdate') {
-    handleLyricsUpdate(data);
-    return;
-  }
-
-  if (data.type === 'progressUpdate' && data.source === 'spotify') {
-    // Periodic corrected anchors from the server — keeps interpolation honest
-    // after page refresh (initial snapshot can carry a stale raw progress).
-    if (data.progress !== undefined) spotifyState.progress = data.progress;
-    if (data.duration !== undefined) spotifyState.duration = data.duration;
-    spotifyState.timestamp = data.timestamp || Date.now();
-    spotifyState.clientTimestamp = Date.now();
-    return;
-  }
-
-  if (data.type === 'scProgressUpdate') {
-    if (data.progressMs !== undefined) soundcloudState.progressMs = data.progressMs;
-    if (data.durationMs !== undefined) soundcloudState.durationMs = data.durationMs;
-    soundcloudState.timestamp = data.timestamp || Date.now();
-    soundcloudState.clientTimestamp = Date.now();
-    return;
-  }
-
-  if (data.type === 'volumeUpdate' && data.source === 'spotify') {
-    if (data.volume !== undefined) spotifyState.volume = data.volume;
-    return;
-  }
-
-  if (data.type === 'scVolumeUpdate') {
-    if (data.volume !== undefined) soundcloudState.volume = data.volume;
+  if (data.type === 'lyrics') {
+    handleLyricsUpdate(state);
     return;
   }
 
@@ -389,7 +363,7 @@ function handleMessage(data) {
 }
 
 function connect() {
-  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs&protocolVersion=1`);
+  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs&protocolVersion=2`);
 
   ws.onmessage = (event) => {
     let data;

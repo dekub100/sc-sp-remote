@@ -340,8 +340,157 @@ function animate() {
 }
 
 // --- WebSocket ---
+function applySpotifyNowPlaying(s) {
+    if (s.trackName) updateMarquee(ui.songTitle, s.trackName);
+    if (s.artistName) updateMarquee(ui.artistName, s.artistName);
+    if (s.albumName) updateMarquee(ui.albumName, s.albumName);
+
+    if (s.trackUri) ui.songLink.href = spotifyUriToUrl(s.trackUri);
+    if (s.albumUri) ui.albumLink.href = spotifyUriToUrl(s.albumUri);
+    if (s.artistUri) ui.artistLink.href = spotifyUriToUrl(s.artistUri);
+
+    if (s.volume !== undefined) {
+        ui.volumeSlider.value = s.volume;
+        ui.volumeValue.textContent = `${Math.round(s.volume * 100)}%`;
+    }
+    if (s.isLiked !== undefined) {
+        ui.likeBtn.classList.toggle('liked', s.isLiked);
+    }
+    if (s.isShuffling !== undefined) {
+        ui.shuffleBtn.classList.toggle('active', s.isShuffling);
+    }
+    if (s.repeatStatus !== undefined) {
+        const repeatIcon = ui.repeatBtn.querySelector('i');
+        ui.repeatBtn.classList.toggle('active', s.repeatStatus > 0);
+        if (s.repeatStatus === 2) {
+            repeatIcon.className = 'fas fa-redo-alt';
+            ui.repeatBtn.setAttribute('data-mode', 'track');
+        } else {
+            repeatIcon.className = 'fas fa-repeat';
+            ui.repeatBtn.removeAttribute('data-mode');
+        }
+    }
+
+    if (s.albumArtUrl && ui.albumArt.src !== s.albumArtUrl) {
+        ui.albumArt.crossOrigin = "Anonymous";
+        ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
+        ui.albumArt.src = s.albumArtUrl;
+        ui.albumArt.style.display = '';
+    } else if (!s.albumArtUrl) {
+        ui.albumArt.style.display = 'none';
+    }
+
+    if (s.isPlaying !== undefined) {
+        spotifyState.isPlaying = s.isPlaying;
+        ui.playPauseBtn.querySelector('.fa-play').style.display = s.isPlaying ? 'none' : 'inline-block';
+        ui.playPauseBtn.querySelector('.fa-pause').style.display = s.isPlaying ? 'inline-block' : 'none';
+    }
+
+    if (s.progress !== undefined) {
+        const prevProgress = spotifyState.progress;
+        spotifyState.progress = s.progress;
+        spotifyState.duration = s.duration ?? spotifyState.duration;
+        spotifyState.timestamp = Date.now();
+
+        const jump = Math.abs(s.progress - prevProgress);
+        if (jump > 5000 && prevProgress > 0) {
+            console.warn(`[SP-DEBUG] Large progress jump: ${formatTime(prevProgress)} -> ${formatTime(s.progress)} (delta: ${jump}ms)`);
+        }
+
+        if (!isSeeking) {
+            ui.progressBar.max = spotifyState.duration;
+            ui.durationTime.textContent = formatTime(spotifyState.duration);
+        }
+    }
+}
+
+function applySoundCloudNowPlaying(s) {
+    if (s.track) updateMarquee(ui.scSongTitle, s.track);
+    if (s.artist) updateMarquee(ui.scArtistName, s.artist);
+
+    if (s.coverUrl && ui.scAlbumArt.src !== s.coverUrl) {
+        ui.scAlbumArt.crossOrigin = "Anonymous";
+        ui.scAlbumArt.onload = () => updateDynamicColors(ui.scAlbumArt);
+        ui.scAlbumArt.src = s.coverUrl;
+    }
+
+    if (s.isPlaying !== undefined) {
+        scState.isPlaying = s.isPlaying;
+        ui.scPlayPauseBtn.querySelector('.fa-play').style.display = s.isPlaying ? 'none' : 'inline-block';
+        ui.scPlayPauseBtn.querySelector('.fa-pause').style.display = s.isPlaying ? 'inline-block' : 'none';
+    }
+    if (s.progress !== undefined) {
+        scState.progressMs = s.progress;
+        scState.timestamp = Date.now();
+        scState.clientTimestamp = Date.now();
+    }
+    if (s.duration !== undefined) {
+        scState.durationMs = s.duration;
+    }
+
+    if (!isSeeking) {
+        ui.scProgressBar.max = scState.durationMs;
+        ui.scProgressBar.value = scState.progressMs;
+        ui.scCurrentTime.textContent = formatTime(scState.progressMs);
+        ui.scDurationTime.textContent = formatTime(scState.durationMs);
+    }
+
+    if (s.isLiked !== undefined) {
+        ui.scLikeBtn.classList.toggle('liked', s.isLiked);
+    }
+    if (s.volume !== undefined) {
+        ui.scVolumeSlider.value = s.volume;
+        ui.scVolumeValue.textContent = `${Math.round(s.volume * 100)}%`;
+    }
+    if (s.isShuffling !== undefined) {
+        ui.scShuffleBtn.classList.toggle('active', s.isShuffling);
+    }
+    if (s.repeatStatus !== undefined) {
+        const repeatIcon = ui.scRepeatBtn.querySelector('i');
+        ui.scRepeatBtn.classList.toggle('active', s.repeatStatus > 0);
+        if (s.repeatStatus === 2) {
+            repeatIcon.className = 'fas fa-redo-alt';
+            ui.scRepeatBtn.setAttribute('data-mode', 'track');
+        } else {
+            repeatIcon.className = 'fas fa-repeat';
+            ui.scRepeatBtn.removeAttribute('data-mode');
+        }
+    }
+}
+
+function applyProgress(source, s) {
+    if (source === 'spotify') {
+        if (s.progress !== undefined) spotifyState.progress = s.progress;
+        if (s.duration !== undefined) spotifyState.duration = s.duration;
+        if (s.isPlaying !== undefined) {
+            spotifyState.isPlaying = s.isPlaying;
+            ui.playPauseBtn.querySelector('.fa-play').style.display = s.isPlaying ? 'none' : 'inline-block';
+            ui.playPauseBtn.querySelector('.fa-pause').style.display = s.isPlaying ? 'inline-block' : 'none';
+        }
+        spotifyState.timestamp = Date.now();
+        if (!isSeeking) {
+            ui.progressBar.max = spotifyState.duration;
+            ui.durationTime.textContent = formatTime(spotifyState.duration);
+        }
+    } else if (source === 'soundcloud') {
+        if (s.progress !== undefined) scState.progressMs = s.progress;
+        if (s.duration !== undefined) scState.durationMs = s.duration;
+        if (s.isPlaying !== undefined) {
+            scState.isPlaying = s.isPlaying;
+            ui.scPlayPauseBtn.querySelector('.fa-play').style.display = s.isPlaying ? 'none' : 'inline-block';
+            ui.scPlayPauseBtn.querySelector('.fa-pause').style.display = s.isPlaying ? 'inline-block' : 'none';
+        }
+        scState.timestamp = Date.now();
+        scState.clientTimestamp = Date.now();
+        if (!isSeeking) {
+            ui.scProgressBar.max = scState.durationMs;
+            ui.scDurationTime.textContent = formatTime(scState.durationMs);
+        }
+    }
+}
+
 function connect() {
-    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website&protocolVersion=1`);
+    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website&protocolVersion=2`);
 
     ws.onopen = () => {
         ui.container.classList.remove('hidden');
@@ -351,170 +500,30 @@ function connect() {
     ws.onmessage = (event) => {
         let data;
         try { data = JSON.parse(event.data); } catch (e) { return; }
+        const state = data.state || {};
 
-        // --- Spotify messages ---
-        if ((data.type === 'stateUpdate' || data.type === 'trackUpdate') && data.source === 'spotify') {
-            if (data.trackName) updateMarquee(ui.songTitle, data.trackName);
-            if (data.artistName) updateMarquee(ui.artistName, data.artistName);
-            if (data.albumName) updateMarquee(ui.albumName, data.albumName);
-
-            if (data.trackUri) ui.songLink.href = spotifyUriToUrl(data.trackUri);
-            if (data.albumUri) ui.albumLink.href = spotifyUriToUrl(data.albumUri);
-            if (data.artistUri) ui.artistLink.href = spotifyUriToUrl(data.artistUri);
-
-            if (data.volume !== undefined) {
-                ui.volumeSlider.value = data.volume;
-                ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
-            }
-            if (data.isLiked !== undefined) {
-                ui.likeBtn.classList.toggle('liked', data.isLiked);
-            }
-
-            if (data.albumArtUrl && ui.albumArt.src !== data.albumArtUrl) {
-                ui.albumArt.crossOrigin = "Anonymous";
-                ui.albumArt.onload = () => updateDynamicColors(ui.albumArt);
-                ui.albumArt.src = data.albumArtUrl;
-                ui.albumArt.style.display = '';
-            } else if (!data.albumArtUrl) {
-                ui.albumArt.style.display = 'none';
-            }
-
+        if (data.type === 'nowPlaying') {
+            if (data.source === 'spotify') applySpotifyNowPlaying(state);
+            else if (data.source === 'soundcloud') applySoundCloudNowPlaying(state);
+            return;
         }
 
-        if (data.type === 'volumeUpdate' && data.source === 'spotify') {
-            ui.volumeSlider.value = data.volume;
-            ui.volumeValue.textContent = `${Math.round(data.volume * 100)}%`;
-        }
-
-        // stateUpdate/trackUpdate (initial sync) also carry isPlaying — without
-        // this the client free-runs thinking it's paused until a play/pause event.
-        if ((data.type === 'playbackUpdate' || data.type === 'stateUpdate' || data.type === 'trackUpdate') && data.source === 'spotify') {
-            spotifyState.isPlaying = data.isPlaying;
-            ui.playPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
-            ui.playPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
-        }
-
-        if (data.type === 'shuffleUpdate' && data.source === 'spotify') {
-            ui.shuffleBtn.classList.toggle('active', data.isShuffling);
-        }
-
-        if (data.type === 'repeatUpdate' && data.source === 'spotify') {
-            const repeatIcon = ui.repeatBtn.querySelector('i');
-            ui.repeatBtn.classList.toggle('active', data.repeatStatus > 0);
-            if (data.repeatStatus === 2) {
-                repeatIcon.className = 'fas fa-redo-alt';
-                ui.repeatBtn.setAttribute('data-mode', 'track');
-            } else {
-                repeatIcon.className = 'fas fa-repeat';
-                ui.repeatBtn.removeAttribute('data-mode');
+        if (data.type === 'progress') {
+            if (data.source === 'spotify') {
+                applyProgress('spotify', state);
+            } else if (data.source === 'soundcloud') {
+                applyProgress('soundcloud', state);
             }
+            return;
         }
 
-        if (data.type === 'likeUpdate' && data.source === 'spotify') {
-            ui.likeBtn.classList.toggle('liked', data.isLiked);
+        if (data.type === 'lyrics') {
+            handleLyricsUpdate(state);
+            return;
         }
 
-        if ((data.type === 'progressUpdate' || data.type === 'playbackUpdate' || data.type === 'stateUpdate' || data.type === 'trackUpdate') && data.source === 'spotify') {
-            if (data.progress !== undefined) {
-                const prevProgress = spotifyState.progress;
-                spotifyState.progress = data.progress;
-                spotifyState.duration = data.duration ?? spotifyState.duration;
-                spotifyState.timestamp = Date.now();
-
-                // Log progress jumps for debugging
-                const jump = Math.abs(data.progress - prevProgress);
-                if (jump > 5000 && prevProgress > 0) {
-                    console.warn(`[SP-DEBUG] Large progress jump: ${formatTime(prevProgress)} -> ${formatTime(data.progress)} (delta: ${jump}ms)`);
-                }
-
-                if (!isSeeking) {
-                    ui.progressBar.max = spotifyState.duration;
-                    ui.durationTime.textContent = formatTime(spotifyState.duration);
-                }
-            }
-        }
-
-        // --- SoundCloud messages ---
-        if (data.type === 'scStateUpdate') {
-            if (data.track) updateMarquee(ui.scSongTitle, data.track);
-            if (data.artist) updateMarquee(ui.scArtistName, data.artist);
-
-            if (data.coverUrl && ui.scAlbumArt.src !== data.coverUrl) {
-                ui.scAlbumArt.crossOrigin = "Anonymous";
-                ui.scAlbumArt.onload = () => updateDynamicColors(ui.scAlbumArt);
-                ui.scAlbumArt.src = data.coverUrl;
-            }
-
-            scState.isPlaying = data.isPlaying;
-            scState.progressMs = data.progressMs || 0;
-            scState.durationMs = data.durationMs || 0;
-            scState.timestamp = data.timestamp || Date.now();
-            scState.clientTimestamp = Date.now();
-
-            ui.scPlayPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
-            ui.scPlayPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
-
-            ui.scProgressBar.max = scState.durationMs;
-            ui.scProgressBar.value = scState.progressMs;
-            ui.scCurrentTime.textContent = formatTime(scState.progressMs);
-            ui.scDurationTime.textContent = formatTime(scState.durationMs);
-
-            if (data.isLiked !== undefined) {
-                ui.scLikeBtn.classList.toggle('liked', data.isLiked);
-            }
-
-            if (data.volume !== undefined) {
-                ui.scVolumeSlider.value = data.volume;
-                ui.scVolumeValue.textContent = `${Math.round(data.volume * 100)}%`;
-            }
-
-            if (data.isShuffling !== undefined) {
-                ui.scShuffleBtn.classList.toggle('active', data.isShuffling);
-            }
-            if (data.repeatStatus !== undefined) {
-                const repeatIcon = ui.scRepeatBtn.querySelector('i');
-                ui.scRepeatBtn.classList.toggle('active', data.repeatStatus > 0);
-                if (data.repeatStatus === 2) {
-                    repeatIcon.className = 'fas fa-redo-alt';
-                    ui.scRepeatBtn.setAttribute('data-mode', 'track');
-                } else {
-                    repeatIcon.className = 'fas fa-repeat';
-                    ui.scRepeatBtn.removeAttribute('data-mode');
-                }
-            }
-        }
-
-        if (data.type === 'scVolumeUpdate') {
-            ui.scVolumeSlider.value = data.volume;
-            ui.scVolumeValue.textContent = `${Math.round(data.volume * 100)}%`;
-        }
-
-        if (data.type === 'scPlaybackUpdate') {
-            scState.isPlaying = data.isPlaying;
-            scState.progressMs = data.progressMs || 0;
-            scState.timestamp = Date.now();
-            scState.clientTimestamp = Date.now();
-
-            ui.scPlayPauseBtn.querySelector('.fa-play').style.display = data.isPlaying ? 'none' : 'inline-block';
-            ui.scPlayPauseBtn.querySelector('.fa-pause').style.display = data.isPlaying ? 'inline-block' : 'none';
-        }
-
-        if (data.type === 'scProgressUpdate') {
-            scState.progressMs = data.progressMs || 0;
-            scState.durationMs = data.durationMs || 0;
-            scState.timestamp = Date.now();
-            scState.clientTimestamp = Date.now();
-
-            if (!isSeeking) {
-                ui.scProgressBar.max = scState.durationMs;
-                ui.scDurationTime.textContent = formatTime(scState.durationMs);
-            }
-        }
-
-        // --- Shared messages ---
-
-        if (data.type === 'lyricsUpdate') {
-            handleLyricsUpdate(data);
+        if (data.type === 'sourceStatus') {
+            return;
         }
 
         if (data.type === 'error') {
@@ -535,21 +544,21 @@ ui.lyricsContent.addEventListener('click', (e) => {
     if (line) {
         const time = parseInt(line.dataset.time);
         if (!isNaN(time)) {
-            send({type: 'playbackControl', command: 'seek', position: time});
+            send({type: 'command', source: 'spotify', command: 'seek', position: time});
         }
     }
 });
 
 // --- Spotify Event Listeners ---
-ui.playPauseBtn.onclick = () => send({type: 'playbackControl', command: 'togglePlay'});
-document.getElementById('previousBtn').onclick = () => send({type: 'playbackControl', command: 'previous'});
-document.getElementById('nextBtn').onclick = () => send({type: 'playbackControl', command: 'next'});
-ui.shuffleBtn.onclick = () => send({type: 'playbackControl', command: 'toggleShuffle'});
-ui.repeatBtn.onclick = () => send({type: 'playbackControl', command: 'toggleRepeat'});
-ui.likeBtn.onclick = () => send({type: 'like', source: 'spotify'});
+ui.playPauseBtn.onclick = () => send({type: 'command', source: 'spotify', command: 'togglePlay'});
+document.getElementById('previousBtn').onclick = () => send({type: 'command', source: 'spotify', command: 'previous'});
+document.getElementById('nextBtn').onclick = () => send({type: 'command', source: 'spotify', command: 'next'});
+ui.shuffleBtn.onclick = () => send({type: 'command', source: 'spotify', command: 'toggleShuffle'});
+ui.repeatBtn.onclick = () => send({type: 'command', source: 'spotify', command: 'toggleRepeat'});
+ui.likeBtn.onclick = () => send({type: 'command', source: 'spotify', command: 'like'});
 ui.lyricsBtn.onclick = () => toggleLyrics();
 
-const sendSpotifyVolume = debounce((val) => send({type: 'volumeUpdate', volume: val}), 150);
+const sendSpotifyVolume = debounce((val) => send({type: 'command', source: 'spotify', command: 'setVolume', volume: val}), 150);
 ui.volumeSlider.oninput = (e) => {
     const val = parseFloat(e.target.value);
     ui.volumeValue.textContent = `${Math.round(val * 100)}%`;
@@ -562,19 +571,19 @@ ui.progressBar.onmouseup = (e) => {
     const newPos = parseInt(e.target.value);
     spotifyState.progress = newPos;
     spotifyState.timestamp = Date.now();
-    send({type: 'playbackControl', command: 'seek', position: newPos});
+    send({type: 'command', source: 'spotify', command: 'seek', position: newPos});
 };
 ui.progressBar.oninput = (e) => ui.currentTime.textContent = formatTime(e.target.value);
 
 // --- SoundCloud Event Listeners ---
-ui.scPlayPauseBtn.onclick = () => send({type: 'scPlaybackControl', command: 'togglePlay'});
-document.getElementById('scPreviousBtn').onclick = () => send({type: 'scPlaybackControl', command: 'previous'});
-document.getElementById('scNextBtn').onclick = () => send({type: 'scPlaybackControl', command: 'next'});
-ui.scLikeBtn.onclick = () => send({type: 'scPlaybackControl', command: 'like'});
-ui.scShuffleBtn.onclick = () => send({type: 'scPlaybackControl', command: 'toggleShuffle'});
-ui.scRepeatBtn.onclick = () => send({type: 'scPlaybackControl', command: 'toggleRepeat'});
+ui.scPlayPauseBtn.onclick = () => send({type: 'command', source: 'soundcloud', command: 'togglePlay'});
+document.getElementById('scPreviousBtn').onclick = () => send({type: 'command', source: 'soundcloud', command: 'previous'});
+document.getElementById('scNextBtn').onclick = () => send({type: 'command', source: 'soundcloud', command: 'next'});
+ui.scLikeBtn.onclick = () => send({type: 'command', source: 'soundcloud', command: 'like'});
+ui.scShuffleBtn.onclick = () => send({type: 'command', source: 'soundcloud', command: 'toggleShuffle'});
+ui.scRepeatBtn.onclick = () => send({type: 'command', source: 'soundcloud', command: 'toggleRepeat'});
 
-const sendScVolume = debounce((val) => send({type: 'scVolumeUpdate', volume: val}), 150);
+const sendScVolume = debounce((val) => send({type: 'command', source: 'soundcloud', command: 'setVolume', volume: val}), 150);
 ui.scVolumeSlider.oninput = (e) => {
     const val = parseFloat(e.target.value);
     ui.scVolumeValue.textContent = `${Math.round(val * 100)}%`;
@@ -587,7 +596,7 @@ ui.scProgressBar.onmouseup = (e) => {
     const newPos = parseInt(e.target.value);
     scState.progressMs = newPos;
     scState.timestamp = Date.now();
-    send({type: 'scPlaybackControl', command: 'seek', position_ms: newPos});
+    send({type: 'command', source: 'soundcloud', command: 'seek', position: newPos});
 };
 ui.scProgressBar.oninput = (e) => ui.scCurrentTime.textContent = formatTime(e.target.value);
 

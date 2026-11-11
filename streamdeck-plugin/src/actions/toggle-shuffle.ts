@@ -24,8 +24,9 @@ export class ToggleShuffle extends SingletonAction<ToggleShuffleSettings> {
     const source = this.currentSource;
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
 
-    if (data.source === effectiveSource && typeof data.isShuffling === "boolean") {
-      const newState = data.isShuffling ? 1 : 0;
+    const state = data.state || {};
+    if (data.source === effectiveSource && typeof state.isShuffling === "boolean") {
+      const newState = state.isShuffling ? 1 : 0;
       this.actionContext.setState(newState);
       this.actionContext.setSettings({ state: newState, source });
     }
@@ -65,10 +66,6 @@ export class ToggleShuffle extends SingletonAction<ToggleShuffleSettings> {
   ): Promise<void> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "toggleShuffle" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "toggleShuffle" });
-    }
+    wsManager.sendCommand(effectiveSource, "toggleShuffle");
   }
 }

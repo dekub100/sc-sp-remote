@@ -24,8 +24,9 @@ export class ToggleLike extends SingletonAction<ToggleLikeSettings> {
     const source = this.currentSource;
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
 
-    if (data.source === effectiveSource && typeof data.isLiked === "boolean") {
-      const newState = data.isLiked ? 1 : 0;
+    const state = data.state || {};
+    if (data.source === effectiveSource && typeof state.isLiked === "boolean") {
+      const newState = state.isLiked ? 1 : 0;
       this.actionContext.setState(newState);
       this.actionContext.setSettings({ state: newState, source });
     }
@@ -65,10 +66,6 @@ export class ToggleLike extends SingletonAction<ToggleLikeSettings> {
   ): Promise<void> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "like" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "like" });
-    }
+    wsManager.sendCommand(effectiveSource, "like");
   }
 }

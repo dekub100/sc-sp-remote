@@ -60,7 +60,7 @@ export class WebSocketManager extends EventEmitter {
 
         this.isConnecting = true;
 
-        this.websocket = new WebSocket(`ws://localhost:${this._port}/?client=streamdeck`);
+        this.websocket = new WebSocket(`ws://localhost:${this._port}/?client=streamdeck&protocolVersion=2`);
 
         this.websocket.onopen = () => {
             this.isConnecting = false;
@@ -126,6 +126,11 @@ export class WebSocketManager extends EventEmitter {
         }
     }
 
+    /** v2: controllers send one `command` message for both sources. */
+    public sendCommand(source: string, command: string, args: Record<string, unknown> = {}) {
+        this.send({ type: "command", source, command, ...args });
+    }
+
     public get readyState(): number {
         return this.websocket ? this.websocket.readyState : WebSocket.CLOSED;
     }
@@ -140,14 +145,16 @@ export class WebSocketManager extends EventEmitter {
     private lastActiveSource: string = "spotify";
 
     private trackActiveSource(data: any) {
-        if (data.source === "spotify" && typeof data.isPlaying === "boolean") {
-            this._spotifyPlaying = data.isPlaying;
-            if (data.isPlaying) this.lastActiveSource = "spotify";
+        const state = data && data.state;
+        if (!state || typeof state.isPlaying !== "boolean") return;
+        if (data.source === "spotify") {
+            this._spotifyPlaying = state.isPlaying;
+            if (state.isPlaying) this.lastActiveSource = "spotify";
             this.activeSource = this.computeActiveSource();
         }
-        if (data.source === "soundcloud" && typeof data.isPlaying === "boolean") {
-            this._soundcloudPlaying = data.isPlaying;
-            if (data.isPlaying) this.lastActiveSource = "soundcloud";
+        if (data.source === "soundcloud") {
+            this._soundcloudPlaying = state.isPlaying;
+            if (state.isPlaying) this.lastActiveSource = "soundcloud";
             this.activeSource = this.computeActiveSource();
         }
     }

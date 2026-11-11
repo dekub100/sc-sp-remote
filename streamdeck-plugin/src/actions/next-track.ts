@@ -18,10 +18,6 @@ export class NextTrack extends SingletonAction<NextTrackSettings> {
   override async onKeyUp(ev: KeyUpEvent<NextTrackSettings>): Promise<void> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "next" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "next" });
-    }
+    wsManager.sendCommand(effectiveSource, "next");
   }
 }

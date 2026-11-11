@@ -52,11 +52,6 @@ class SourceSpec:
     duration_key: str
     anchor_key: str
     volume_key: str
-    volume_msg_type: str
-    playback_msg_type: str
-    progress_msg_type: str
-    progress_field: str
-    duration_field: str
     cover_path: tuple[str, ...]
     update_fields: tuple[tuple[str, str, str], ...]
     track_fields: tuple[str, ...] = ()
@@ -125,11 +120,6 @@ SOURCES: dict[str, SourceSpec] = {
         duration_key="trackDuration",
         anchor_key="trackProgressStartTimestamp",
         volume_key="volume",
-        volume_msg_type="volumeUpdate",
-        playback_msg_type="playbackUpdate",
-        progress_msg_type="progressUpdate",
-        progress_field="progress",
-        duration_field="duration",
         cover_path=("currentTrack", "albumArtUrl"),
         update_fields=(
             ("volume", "volume", "volume"),
@@ -160,20 +150,17 @@ SOURCES: dict[str, SourceSpec] = {
         duration_key="scDurationMs",
         anchor_key="scProgressStartTimestamp",
         volume_key="scVolume",
-        volume_msg_type="scVolumeUpdate",
-        playback_msg_type="scPlaybackUpdate",
-        progress_msg_type="scProgressUpdate",
-        progress_field="progressMs",
-        duration_field="durationMs",
         cover_path=("scCoverUrl",),
+        # Wire keys are canonical in v2 (`progress`/`duration` for both
+        # sources); only the internal state keys keep the `sc*` prefix.
         update_fields=(
             ("track", "scTrack", "text"),
             ("artist", "scArtist", "text"),
             ("album", "scAlbum", "text"),
             ("id", "scId", "text"),
             ("isPlaying", "scIsPlaying", "bool"),
-            ("progressMs", "scProgressMs", "ms"),
-            ("durationMs", "scDurationMs", "ms"),
+            ("progress", "scProgressMs", "ms"),
+            ("duration", "scDurationMs", "ms"),
             ("volume", "scVolume", "volume"),
             ("isLiked", "scIsLiked", "bool"),
             ("isShuffling", "scIsShuffling", "bool"),

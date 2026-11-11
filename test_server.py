@@ -12,11 +12,18 @@ import broadcast
 import config as cfg
 import handlers
 import lyrics
+import protocol
 import pytest
 import routes
 import state as st
 
 import server
+
+
+def register_client(ws: AsyncMock, client_type: str) -> AsyncMock:
+    """Make a mock socket look like a connected client to handlers/broadcast."""
+    broadcast.CLIENTS[ws] = {"type": client_type, "remote_ip": "127.0.0.1", "protocolVersion": 2}
+    return ws
 
 
 @pytest.fixture(autouse=True)
@@ -187,203 +194,306 @@ class TestLyricsSession:
 
 
 class TestMessageHandlers:
-    async def test_handle_spotify_volume_update_absolute(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_volume_absolute(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
         st.state["volume"] = 0.3
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 0.8})
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "source": "spotify", "state": {"volume": 0.8}}
+            )
         assert st.state["volume"] == 0.8
 
-    async def test_handle_spotify_volume_update_up(self, mock_ws: AsyncMock) -> None:
-        st.state["volume"] = 0.5
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
-        assert st.state["volume"] == pytest.approx(0.55)
+    async def test_handle_volume_clamps(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "state": {"volume": 5.0}}
+            )
+            assert st.state["volume"] == 1.0
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "state": {"volume": -10.0}}
+            )
+            assert st.state["volume"] == 0.0
 
-    async def test_handle_spotify_volume_update_down(self, mock_ws: AsyncMock) -> None:
-        st.state["volume"] = 0.5
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
-        assert st.state["volume"] == pytest.approx(0.45)
+    async def test_volume_rejects_mismatched_source(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        st.state["volume"] = 0.3
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "source": "soundcloud", "state": {"volume": 0.9}}
+            )
+        assert st.state["volume"] == 0.3
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "forbidden"
 
-    async def test_handle_spotify_volume_update_clamp_max(self, mock_ws: AsyncMock) -> None:
-        st.state["volume"] = 0.98
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeUp"})
-        assert st.state["volume"] == 1.0
-
-    async def test_handle_spotify_volume_update_clamp_min(self, mock_ws: AsyncMock) -> None:
-        st.state["volume"] = 0.02
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "command": "volumeDown"})
-        assert st.state["volume"] == 0.0
-
-    async def test_handle_spotify_volume_update_absolute_clamp_max(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "volume": 5.0})
-        assert st.state["volume"] == 1.0
-
-    async def test_handle_spotify_volume_update_absolute_clamp_min(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_volume_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_volume_update(mock_ws, {"type": "volumeUpdate", "volume": -10.0})
-        assert st.state["volume"] == 0.0
-
-    async def test_handle_spotify_playback_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_playback_update", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_playback_update(mock_ws, {"type": "playbackUpdate", "isPlaying": True, "progress": 5000})
+    async def test_handle_playback(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_playback(
+                mock_ws,
+                {"type": "playback", "state": {"isPlaying": True, "progress": 5000}},
+            )
         assert st.state["isPlaying"] is True
         assert st.state["trackProgress"] == 5000
+        assert st.state["trackProgressStartTimestamp"] > 0
 
-    async def test_handle_spotify_shuffle_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_shuffle_update(mock_ws, {"type": "shuffleUpdate", "isShuffling": True})
+    async def test_handle_shuffle(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_shuffle(
+                mock_ws, {"type": "shuffle", "state": {"isShuffling": True}}
+            )
         assert st.state["isShuffling"] is True
 
-    async def test_handle_spotify_repeat_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_repeat_update(mock_ws, {"type": "repeatUpdate", "repeatStatus": 2})
+    async def test_handle_repeat(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_repeat(
+                mock_ws, {"type": "repeat", "state": {"repeatStatus": 2}}
+            )
         assert st.state["repeatStatus"] == 2
 
-    async def test_handle_spotify_like_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast", new_callable=AsyncMock):
-            with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_spotify_like_update(mock_ws, {"type": "likeUpdate", "isLiked": True})
+    async def test_handle_like(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_like(
+                mock_ws, {"type": "like", "state": {"isLiked": True}}
+            )
         assert st.state["isLiked"] is True
 
-    async def test_handle_spotify_state_update_new_track(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_spotify_state", new_callable=AsyncMock):
-            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock):
-                with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                    await handlers.handle_spotify_state_update(mock_ws, {
-                        "type": "trackUpdate",
-                        "trackName": "New Song",
-                        "artistName": "New Artist",
-                        "trackUri": "spotify:track:new",
-                        "duration": 200000,
-                        "progress": 0
-                    })
+    async def test_handle_now_playing_new_track(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch.object(handlers, "fetch_and_broadcast_lyrics", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "spotify",
+                "state": {
+                    "trackName": "New Song",
+                    "artistName": "New Artist",
+                    "trackUri": "spotify:track:new",
+                    "duration": 200000,
+                    "progress": 0,
+                },
+            })
+            await asyncio.sleep(0)
         assert st.state["currentTrack"]["trackName"] == "New Song"
         assert st.state["currentTrack"]["artistName"] == "New Artist"
         assert st.state["currentTrack"]["trackUri"] == "spotify:track:new"
         assert st.state["trackDuration"] == 200000
         assert st.state["lyrics"]["loading"] is True
 
-    async def test_handle_spotify_state_update_same_track_no_lyrics_fetch(self, mock_ws: AsyncMock) -> None:
+    async def test_handle_now_playing_same_track_no_lyrics_fetch(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
         st.state["currentTrack"]["trackUri"] = "spotify:track:existing"
         st.state["lyrics"]["loading"] = False
-        with patch.object(broadcast, "broadcast_spotify_state", new_callable=AsyncMock):
-            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_lyrics:
-                with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                    await handlers.handle_spotify_state_update(mock_ws, {
-                        "type": "trackUpdate",
-                        "trackName": "Updated",
-                        "artistName": "Artist",
-                        "trackUri": "spotify:track:existing",
-                        "duration": 180000,
-                        "progress": 10000
-                    })
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "broadcast_lyrics_update", new_callable=AsyncMock) as mock_lyrics, \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "spotify",
+                "state": {
+                    "trackName": "Updated",
+                    "artistName": "Artist",
+                    "trackUri": "spotify:track:existing",
+                    "duration": 180000,
+                    "progress": 10000,
+                },
+            })
         mock_lyrics.assert_not_called()
         assert st.state["lyrics"]["loading"] is False
 
-    async def test_handle_spotify_state_update_batched_fields(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_spotify_state", new_callable=AsyncMock):
-            with patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock):
-                with patch.object(st, "save_spotify_state_debounced", new_callable=AsyncMock):
-                    await handlers.handle_spotify_state_update(mock_ws, {
-                        "type": "stateUpdate",
-                        "trackUri": "spotify:track:batch",
-                        "trackName": "Batch",
-                        "volume": 0.9,
-                        "isShuffling": True,
-                        "repeatStatus": 1,
-                        "isLiked": True,
-                        "duration": 150000
-                    })
+    async def test_handle_now_playing_batched_fields(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "spotify",
+                "state": {
+                    "trackUri": "spotify:track:batch",
+                    "trackName": "Batch",
+                    "volume": 0.9,
+                    "isShuffling": True,
+                    "repeatStatus": 1,
+                    "isLiked": True,
+                    "duration": 150000,
+                },
+            })
         assert st.state["volume"] == 0.9
         assert st.state["isShuffling"] is True
         assert st.state["repeatStatus"] == 1
         assert st.state["isLiked"] is True
 
-    async def test_handle_sc_state_update_shuffle_repeat(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_soundcloud_state", new_callable=AsyncMock):
-            with patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-                await handlers.handle_sc_state_update(mock_ws, {"type": "scStateUpdate", "isShuffling": True, "repeatStatus": 2})
+    async def test_soundcloud_now_playing_shuffle_repeat(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "soundcloud")
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "soundcloud",
+                "state": {"isShuffling": True, "repeatStatus": 2},
+            })
         assert st.state["scIsShuffling"] is True
         assert st.state["scRepeatStatus"] == 2
 
-    async def test_sc_state_update_suppresses_duplicate_broadcast(self, mock_ws: AsyncMock) -> None:
-        # handlers imports these by name, so patch them where it looks them up.
-        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast:
-            with patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock) as mock_save:
-                payload: dict[str, Any] = {"type": "scStateUpdate", "track": "Song", "isPlaying": True}
-                await handlers.handle_sc_state_update(mock_ws, dict(payload, progressMs=1000))
-                await handlers.handle_sc_state_update(mock_ws, dict(payload, progressMs=2500))
+    async def test_soundcloud_now_playing_suppresses_duplicate_broadcast(
+        self, mock_ws: AsyncMock
+    ) -> None:
+        register_client(mock_ws, "soundcloud")
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast, \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock) as mock_save:
+            first: dict[str, Any] = {
+                "type": "nowPlaying",
+                "source": "soundcloud",
+                "state": {"track": "Song", "isPlaying": True},
+            }
+            await handlers.handle_now_playing(mock_ws, dict(first, state={"track": "Song", "isPlaying": True, "progress": 1000}))
+            await handlers.handle_now_playing(mock_ws, dict(first, state={"track": "Song", "isPlaying": True, "progress": 2500}))
         mock_broadcast.assert_called_once()
         mock_save.assert_called_once()
         # Progress still mutates server state — only the save/broadcast is gated.
         assert st.state["scProgressMs"] == 2500
 
-    async def test_sc_state_update_broadcasts_on_field_change(self, mock_ws: AsyncMock) -> None:
-        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast:
-            with patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock) as mock_save:
-                first: dict[str, Any] = {"type": "scStateUpdate", "track": "Song A", "isPlaying": True}
-                await handlers.handle_sc_state_update(mock_ws, first)
-                await handlers.handle_sc_state_update(mock_ws, first)
-                await handlers.handle_sc_state_update(mock_ws, {"type": "scStateUpdate", "track": "Song B", "isPlaying": True})
+    async def test_soundcloud_now_playing_broadcasts_on_field_change(
+        self, mock_ws: AsyncMock
+    ) -> None:
+        register_client(mock_ws, "soundcloud")
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock) as mock_broadcast, \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock) as mock_save:
+            first: dict[str, Any] = {
+                "type": "nowPlaying",
+                "source": "soundcloud",
+                "state": {"track": "Song A", "isPlaying": True},
+            }
+            await handlers.handle_now_playing(mock_ws, first)
+            await handlers.handle_now_playing(mock_ws, first)
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "soundcloud",
+                "state": {"track": "Song B", "isPlaying": True},
+            })
         assert mock_broadcast.call_count == 2
         assert mock_save.call_count == 2
 
-    async def test_handle_spotify_progress_update(self, mock_ws: AsyncMock) -> None:
-        with patch.object(broadcast, "broadcast_progress_update", new_callable=AsyncMock):
-            await handlers.handle_spotify_progress_update(mock_ws, {"type": "progressUpdate", "progress": 30000, "duration": 240000})
+    async def test_handle_progress(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await handlers.handle_progress(
+                mock_ws, {"type": "progress", "state": {"progress": 30000, "duration": 240000}}
+            )
         assert st.state["trackProgress"] == 30000
         assert st.state["trackDuration"] == 240000
+        sent = mock_broadcast.call_args[0][0]
+        assert sent["type"] == "progress"
+        assert sent["state"]["progress"] == 30000
 
-    async def test_handle_playback_control_targets_spicetify(self, mock_ws: AsyncMock) -> None:
-        broadcast.CLIENTS[mock_ws] = {"type": "website", "remote_ip": "127.0.0.1"}
+    async def test_command_targets_spicetify(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
         spicetify_ws: AsyncMock = AsyncMock()
-        broadcast.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
-        await handlers.handle_playback_control(mock_ws, {"type": "playbackControl", "command": "next"})
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "source": "spotify", "command": "next"}
+        )
         spicetify_ws.send_str.assert_called_once()
         sent: dict[str, Any] = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert sent["type"] == "command"
+        assert sent["source"] == "spotify"
         assert sent["command"] == "next"
+        assert sent["v"] == 2
 
-    async def test_handle_like_command_targets_spotify_by_default(self, mock_ws: AsyncMock) -> None:
+    async def test_command_defaults_to_spotify(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
         spicetify_ws = AsyncMock()
-        broadcast.CLIENTS[spicetify_ws] = {"type": "spicetify", "remote_ip": "127.0.0.1"}
-        await handlers.handle_like_command(mock_ws, {"type": "like"})
-        spicetify_ws.send_str.assert_called_once()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(mock_ws, {"type": "command", "command": "like"})
         sent = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert sent["source"] == "spotify"
         assert sent["command"] == "like"
 
-    async def test_handle_like_command_targets_soundcloud(self, mock_ws: AsyncMock) -> None:
+    async def test_command_targets_soundcloud(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "streamdeck")
         sc_ws = AsyncMock()
-        broadcast.CLIENTS[sc_ws] = {"type": "soundcloud", "remote_ip": "127.0.0.1"}
-        await handlers.handle_like_command(mock_ws, {"type": "like", "source": "soundcloud"})
-        sc_ws.send_str.assert_called_once()
+        register_client(sc_ws, "soundcloud")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "source": "soundcloud", "command": "like"}
+        )
         sent = json.loads(sc_ws.send_str.call_args[0][0])
+        assert sent["source"] == "soundcloud"
         assert sent["command"] == "like"
+
+    async def test_command_drops_smuggled_fields(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        spicetify_ws = AsyncMock()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "command": "next", "volume": 0.1, "evil": True}
+        )
+        sent = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert "evil" not in sent
+        assert "volume" not in sent
+
+    async def test_command_rejects_unknown_command(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        await handlers.handle_command(mock_ws, {"type": "command", "command": "formatDisk"})
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "invalid_command"
+
+    async def test_command_rejects_missing_volume(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "command": "setVolume"}
+        )
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "invalid_command"
+
+    async def test_command_set_volume_clamped(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        spicetify_ws = AsyncMock()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "command": "setVolume", "volume": 5.0}
+        )
+        sent = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert sent["volume"] == 1.0
+
+    async def test_command_volume_step_default(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        spicetify_ws = AsyncMock()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "command": "volumeUp"}
+        )
+        sent = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert sent["step"] == 0.05
 
     async def test_handle_error_broadcasts_message(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch.object(handlers.logger, "warning"):
                 await handlers.handle_error(mock_ws, {"type": "error", "message": "Something broke"})
-        mock_broadcast.assert_called_once_with({"type": "error", "message": "Something broke"})
+        mock_broadcast.assert_called_once_with({
+            "v": 2,
+            "type": "error",
+            "code": "client_error",
+            "message": "Something broke",
+        })
 
     async def test_handle_error_defaults_message(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock) as mock_broadcast:
             with patch.object(handlers.logger, "warning"):
                 await handlers.handle_error(mock_ws, {"type": "error"})
-        mock_broadcast.assert_called_once_with({"type": "error", "message": "Unknown error"})
+        assert mock_broadcast.call_args[0][0]["message"] == "Unknown error"
 
     async def test_handle_error_logs_warning(self, mock_ws: AsyncMock) -> None:
         with patch("handlers.broadcast", new_callable=AsyncMock):
@@ -418,20 +528,86 @@ class TestHandleMessage:
         assert "invalid type field" in mock_warn.call_args[0][0]
 
     async def test_unknown_type(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
         with patch.object(handlers.logger, "warning") as mock_warn:
             await handlers.handle_message(mock_ws, json.dumps({"type": "fooBar"}))
-        mock_warn.assert_called_once()
         assert "fooBar" in mock_warn.call_args[0][0]
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "unknown_type"
+
+    async def test_wrong_protocol_version(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        with patch.object(handlers.logger, "warning"):
+            await handlers.handle_message(
+                mock_ws, json.dumps({"v": 1, "type": "command", "command": "next"})
+            )
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "protocol_version"
 
     async def test_valid_message_dispatches_handler(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
         mock_handler: AsyncMock = AsyncMock()
-        original: Any = handlers.MESSAGE_HANDLERS["volumeUpdate"]
-        handlers.MESSAGE_HANDLERS["volumeUpdate"] = mock_handler
+        original: Any = handlers.MESSAGE_HANDLERS["command"]
+        handlers.MESSAGE_HANDLERS["command"] = mock_handler
         try:
-            await handlers.handle_message(mock_ws, json.dumps({"type": "volumeUpdate", "volume": 0.7}))
+            await handlers.handle_message(
+                mock_ws, json.dumps({"type": "command", "command": "next"})
+            )
             mock_handler.assert_called_once()
         finally:
-            handlers.MESSAGE_HANDLERS["volumeUpdate"] = original
+            handlers.MESSAGE_HANDLERS["command"] = original
+
+    async def test_source_cannot_send_command(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+        with patch.object(handlers, "broadcast", new_callable=AsyncMock) as mock_broadcast, \
+             patch.object(handlers.logger, "warning"):
+            await handlers.handle_message(
+                mock_ws, json.dumps({"type": "command", "command": "next"})
+            )
+        mock_broadcast.assert_not_called()
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "forbidden"
+
+    async def test_controller_cannot_send_source_state(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "website")
+        with patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock) as mock_save, \
+             patch.object(handlers.logger, "warning"):
+            await handlers.handle_message(
+                mock_ws, json.dumps({"type": "volume", "state": {"volume": 0.9}})
+            )
+        mock_save.assert_not_called()
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "forbidden"
+
+    async def test_unknown_client_type_is_log_only(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "random-site")
+        with patch.object(handlers.logger, "warning"):
+            await handlers.handle_message(
+                mock_ws, json.dumps({"type": "command", "command": "next"})
+            )
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "forbidden"
+
+
+class TestProtocolPermissions:
+    def test_source_and_controller_permissions_are_disjoint(self) -> None:
+        source = protocol.permissions_for("spicetify")
+        controller = protocol.permissions_for("streamdeck")
+        assert "nowPlaying" in source and "command" not in source
+        assert "command" in controller and "nowPlaying" not in controller
+
+    def test_unknown_type_gets_logging_only(self) -> None:
+        assert protocol.permissions_for("mystery") == protocol.DEFAULT_PERMISSIONS
+
+    def test_check_and_draw_commands_are_valid(self) -> None:
+        for command in ("like", "togglePlay", "next", "setVolume", "volumeUp"):
+            assert command in protocol.COMMANDS
+
+    def test_error_envelope_is_versioned(self) -> None:
+        message = protocol.error_message("forbidden", "nope")
+        assert message["v"] == protocol.PROTOCOL_VERSION
+        assert message["type"] == "error"
+        assert message["code"] == "forbidden"
 
 
 class TestBroadcast:
@@ -485,8 +661,9 @@ class TestBroadcast:
             await broadcast.broadcast_volume_update()
         assert mock_broadcast.call_count == 2
         msg = mock_broadcast.call_args_list[0][0][0]
-        assert msg["type"] == "volumeUpdate"
+        assert msg["type"] == "nowPlaying"
         assert msg["source"] == "spotify"
+        assert msg["state"]["volume"] == 0.42
 
     async def test_broadcast_playback_update_shape(self) -> None:
         st.state["isPlaying"] = True
@@ -495,8 +672,9 @@ class TestBroadcast:
             await broadcast.broadcast_playback_update()
         assert mock_broadcast.call_count == 2
         msg = mock_broadcast.call_args_list[0][0][0]
-        assert msg["type"] == "playbackUpdate"
+        assert msg["type"] == "nowPlaying"
         assert msg["source"] == "spotify"
+        assert msg["state"]["isPlaying"] is True
 
     async def test_broadcast_progress_update_shape(self) -> None:
         st.state["trackProgress"] = 45000
@@ -506,8 +684,9 @@ class TestBroadcast:
             await broadcast.broadcast_progress_update()
         assert mock_broadcast.call_count == 2
         msg = mock_broadcast.call_args_list[0][0][0]
-        assert msg["type"] == "progressUpdate"
+        assert msg["type"] == "progress"
         assert msg["source"] == "spotify"
+        assert msg["state"]["progress"] == 45000
 
     async def test_progress_tick_skips_paused_spotify(self) -> None:
         st.state["isPlaying"] = False
@@ -546,15 +725,19 @@ class TestBroadcast:
         with patch("broadcast.broadcast", new_callable=AsyncMock) as mock_broadcast:
             await broadcast.broadcast_lyrics_update()
         mock_broadcast.assert_called_once_with({
-            "type": "lyricsUpdate",
-            "available": True,
-            "instrumental": False,
-            "synced": [{"time": 1000, "text": "hello"}],
-            "plain": "hello",
-            "karaoke": [],
-            "provider": "",
-            "loading": False
+            "v": 2,
+            "type": "lyrics",
+            "state": {
+                "available": True,
+                "instrumental": False,
+                "synced": [{"time": 1000, "text": "hello"}],
+                "plain": "hello",
+                "karaoke": [],
+                "provider": "",
+                "loading": False,
+            },
         })
+
 
 class TestConfigLayering:
     def test_default_file_matches_code_defaults(self) -> None:
@@ -1166,53 +1349,55 @@ class TestAlbumArtToggle:
         assert st.get_sc_cover_url() == ""
 
 
-class TestScVolumeUpdate:
+class TestSoundCloudState:
     async def test_sc_volume_update_absolute(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "soundcloud")
         st.state["scVolume"] = 0.3
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": 0.8})
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "source": "soundcloud", "state": {"volume": 0.8}}
+            )
         assert st.state["scVolume"] == 0.8
 
-    async def test_sc_volume_update_up(self, mock_ws: AsyncMock) -> None:
-        st.state["scVolume"] = 0.5
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeUp"})
-        assert st.state["scVolume"] == pytest.approx(0.55)
+    async def test_sc_volume_is_clamped(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "soundcloud")
+        with patch.object(handlers, "broadcast_now_playing", new_callable=AsyncMock), \
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "state": {"volume": 5.0}}
+            )
+            assert st.state["scVolume"] == 1.0
+            await handlers.handle_volume(
+                mock_ws, {"type": "volume", "state": {"volume": -10.0}}
+            )
+            assert st.state["scVolume"] == 0.0
 
-    async def test_sc_volume_update_down(self, mock_ws: AsyncMock) -> None:
-        st.state["scVolume"] = 0.5
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeDown"})
-        assert st.state["scVolume"] == pytest.approx(0.45)
+    async def test_volume_command_routes_to_soundcloud_as_absolute(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "streamdeck")
+        sc_ws: AsyncMock = AsyncMock()
+        register_client(sc_ws, "soundcloud")
+        st.state["scVolume"] = 0.4
+        await handlers.handle_command(
+            mock_ws,
+            {"type": "command", "source": "soundcloud", "command": "volumeUp", "step": 0.1},
+        )
+        sent = json.loads(sc_ws.send_str.call_args[0][0])
+        # The SC bridge only implements setVolume, so the server converts.
+        assert sent["command"] == "setVolume"
+        assert sent["volume"] == pytest.approx(0.5)
 
-    async def test_sc_volume_update_clamp_max(self, mock_ws: AsyncMock) -> None:
-        st.state["scVolume"] = 0.98
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeUp"})
-        assert st.state["scVolume"] == 1.0
-
-    async def test_sc_volume_update_clamp_min(self, mock_ws: AsyncMock) -> None:
-        st.state["scVolume"] = 0.02
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "command": "volumeDown"})
-        assert st.state["scVolume"] == 0.0
-
-    async def test_sc_volume_update_absolute_clamp_max(self, mock_ws: AsyncMock) -> None:
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": 5.0})
-        assert st.state["scVolume"] == 1.0
-
-    async def test_sc_volume_update_absolute_clamp_min(self, mock_ws: AsyncMock) -> None:
-        with patch.object(handlers, "broadcast", new_callable=AsyncMock), \
-             patch.object(st, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_volume_update(mock_ws, {"type": "scVolumeUpdate", "volume": -10.0})
-        assert st.state["scVolume"] == 0.0
+    async def test_relative_volume_for_spotify_is_forwarded(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "streamdeck")
+        spicetify_ws: AsyncMock = AsyncMock()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws,
+            {"type": "command", "source": "spotify", "command": "volumeUp", "step": 0.1},
+        )
+        sent = json.loads(spicetify_ws.send_str.call_args[0][0])
+        assert sent["command"] == "volumeUp"
+        assert sent["step"] == 0.1
 
 
 class TestDebouncedSave:
@@ -1384,25 +1569,28 @@ class TestLyricsCacheHit:
 
 
 class TestGetInitialState:
-    async def test_sends_three_messages(self, mock_ws: AsyncMock) -> None:
-        await handlers.handle_get_initial_state(mock_ws, {})
-        assert mock_ws.send_str.call_count == 3
-        types = [json.loads(mock_ws.send_str.call_args_list[i][0][0])["type"] for i in range(3)]
-        assert types == ["stateUpdate", "scStateUpdate", "lyricsUpdate"]
-
-    async def test_spotify_state_includes_artist_uri(self, mock_ws: AsyncMock) -> None:
+    async def test_sends_state_lyrics_and_status_snapshot(self, mock_ws: AsyncMock) -> None:
         st.state["currentTrack"]["artistUri"] = "spotify:artist:xyz"
-        await handlers.handle_get_initial_state(mock_ws, {})
-        spotify_msg = json.loads(mock_ws.send_str.call_args_list[0][0][0])
-        assert spotify_msg["artistUri"] == "spotify:artist:xyz"
-
-    async def test_lyrics_message_has_provider(self, mock_ws: AsyncMock) -> None:
         st.state["lyrics"]["provider"] = "lrclib"
         st.state["lyrics"]["karaoke"] = [{"startTime": 1000}]
         await handlers.handle_get_initial_state(mock_ws, {})
-        lyrics_msg = json.loads(mock_ws.send_str.call_args_list[2][0][0])
-        assert lyrics_msg["provider"] == "lrclib"
-        assert lyrics_msg["karaoke"] == [{"startTime": 1000}]
+        payloads = [json.loads(call[0][0]) for call in mock_ws.send_str.call_args_list]
+        assert [p["type"] for p in payloads] == [
+            "nowPlaying", "nowPlaying", "lyrics", "sourceStatus", "sourceStatus",
+        ]
+        assert [p["source"] for p in payloads[:2]] == ["spotify", "soundcloud"]
+        assert all(p["v"] == 2 for p in payloads)
+        assert payloads[0]["state"]["artistUri"] == "spotify:artist:xyz"
+        assert payloads[2]["state"]["provider"] == "lrclib"
+        assert payloads[2]["state"]["karaoke"] == [{"startTime": 1000}]
+
+    async def test_status_reflects_attached_sources(self, mock_ws: AsyncMock) -> None:
+        source_ws: AsyncMock = AsyncMock()
+        register_client(source_ws, "soundcloud")
+        await handlers.handle_get_initial_state(mock_ws, {})
+        payloads = [json.loads(call[0][0]) for call in mock_ws.send_str.call_args_list]
+        status = {p["source"]: p["state"]["connected"] for p in payloads if p["type"] == "sourceStatus"}
+        assert status == {"spotify": False, "soundcloud": True}
 
 
 class TestFormatMs:
@@ -1438,7 +1626,7 @@ class TestBuildClientConfig:
 
     def test_unknown_only_type(self) -> None:
         result = routes._build_client_config("website")
-        assert result == {"type": "config"}
+        assert result == {"v": 2, "type": "config"}
 
 
 class TestHandleClientLog:
@@ -1499,57 +1687,74 @@ class TestBuildStateMessages:
     def test_spotify_message_has_artist_uri(self) -> None:
         st.state["currentTrack"]["artistUri"] = "spotify:artist:abc"
         msg = broadcast.build_spotify_state_message(0)
-        assert msg["artistUri"] == "spotify:artist:abc"
+        assert msg["state"]["artistUri"] == "spotify:artist:abc"
         for key in ("volume", "isPlaying", "trackName", "artistName", "albumName",
                     "trackUri", "albumUri", "isLiked", "isShuffling", "repeatStatus"):
-            assert key in msg
+            assert key in msg["state"]
 
     def test_spotify_message_missing_artist_uri_defaults_empty(self) -> None:
         st.state["currentTrack"].pop("artistUri", None)
         msg = broadcast.build_spotify_state_message(0)
-        assert msg["artistUri"] == ""
+        assert msg["state"]["artistUri"] == ""
 
     def test_sc_message_has_volume_and_isLiked(self) -> None:
         st.state["scVolume"] = 0.42
         st.state["scIsLiked"] = True
         msg = broadcast.build_sc_state_message(0)
-        assert msg["volume"] == 0.42
-        assert msg["isLiked"] is True
+        assert msg["state"]["volume"] == 0.42
+        assert msg["state"]["isLiked"] is True
         for key in ("track", "artist", "coverUrl", "isPlaying", "isShuffling", "repeatStatus"):
-            assert key in msg
+            assert key in msg["state"]
 
 
 class TestWireContract:
-    """Pin the exact payload shapes so the Phase 5 refactor cannot change the wire."""
+    """Pin the exact v2 payload shapes; clients depend on these key names."""
 
-    SPOTIFY_KEYS = {
-        "type", "source", "volume", "isPlaying", "trackName", "artistName",
-        "albumName", "trackUri", "albumUri", "artistUri", "albumArtUrl",
-        "progress", "duration", "isShuffling", "repeatStatus", "isLiked", "timestamp",
+    ENVELOPE_KEYS = {"v", "type", "source", "state"}
+    SPOTIFY_STATE_KEYS = {
+        "volume", "isPlaying", "trackName", "artistName", "albumName", "trackUri",
+        "albumUri", "artistUri", "albumArtUrl", "progress", "duration",
+        "isShuffling", "repeatStatus", "isLiked", "timestamp",
     }
-    SC_KEYS = {
-        "type", "source", "track", "artist", "album", "id", "coverUrl", "isPlaying",
-        "progressMs", "durationMs", "volume", "isLiked", "isShuffling", "repeatStatus",
-        "timestamp",
+    SC_STATE_KEYS = {
+        "track", "artist", "album", "id", "coverUrl", "isPlaying", "progress",
+        "duration", "volume", "isLiked", "isShuffling", "repeatStatus", "timestamp",
     }
-    LYRICS_KEYS = {"type", "available", "instrumental", "synced", "plain", "karaoke", "provider", "loading"}
+    LYRICS_STATE_KEYS = {
+        "available", "instrumental", "synced", "plain", "karaoke", "provider", "loading",
+    }
+    PROGRESS_STATE_KEYS = {"progress", "duration", "isPlaying", "timestamp"}
 
-    def test_spotify_state_message(self) -> None:
+    def test_spotify_now_playing(self) -> None:
         msg = broadcast.build_spotify_state_message(1234)
-        assert set(msg) == self.SPOTIFY_KEYS
-        assert msg["type"] == "stateUpdate" and msg["source"] == "spotify"
-        assert msg["progress"] == 1234
+        assert set(msg) == self.ENVELOPE_KEYS
+        assert set(msg["state"]) == self.SPOTIFY_STATE_KEYS
+        assert msg["v"] == 2
+        assert msg["type"] == "nowPlaying" and msg["source"] == "spotify"
+        assert msg["state"]["progress"] == 1234
 
-    def test_sc_state_message(self) -> None:
+    def test_sc_now_playing(self) -> None:
         msg = broadcast.build_sc_state_message(5678)
-        assert set(msg) == self.SC_KEYS
-        assert msg["type"] == "scStateUpdate" and msg["source"] == "soundcloud"
-        assert msg["progressMs"] == 5678
+        assert set(msg) == self.ENVELOPE_KEYS
+        assert set(msg["state"]) == self.SC_STATE_KEYS
+        assert msg["v"] == 2
+        assert msg["type"] == "nowPlaying" and msg["source"] == "soundcloud"
+        assert msg["state"]["progress"] == 5678
 
     def test_lyrics_message(self) -> None:
-        assert set(broadcast.build_lyrics_message()) == self.LYRICS_KEYS
+        msg = broadcast.build_lyrics_message()
+        assert set(msg) == {"v", "type", "state"}
+        assert msg["type"] == "lyrics"
+        assert set(msg["state"]) == self.LYRICS_STATE_KEYS
 
-    async def test_volume_messages(self) -> None:
+    def test_source_status_message(self) -> None:
+        msg = broadcast.build_source_status_message("spotify", True)
+        assert msg == {
+            "v": 2, "type": "sourceStatus", "source": "spotify",
+            "state": {"connected": True},
+        }
+
+    async def test_now_playing_broadcasts_for_both_sources(self) -> None:
         sent: list[dict[str, Any]] = []
 
         async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
@@ -1557,12 +1762,11 @@ class TestWireContract:
 
         with patch.object(broadcast, "broadcast", capture):
             await broadcast.broadcast_volume_update()
-        assert [m["type"] for m in sent] == ["volumeUpdate", "scVolumeUpdate"]
-        assert set(sent[0]) == {"type", "source", "volume"}
-        assert set(sent[1]) == {"type", "source", "volume"}
-        assert sent[1]["source"] == "soundcloud"
+        assert [m["type"] for m in sent] == ["nowPlaying", "nowPlaying"]
+        assert [m["source"] for m in sent] == ["spotify", "soundcloud"]
+        assert all(set(m) == self.ENVELOPE_KEYS for m in sent)
 
-    async def test_playback_messages(self) -> None:
+    async def test_playback_broadcasts_full_snapshots(self) -> None:
         sent: list[dict[str, Any]] = []
 
         async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
@@ -1570,9 +1774,9 @@ class TestWireContract:
 
         with patch.object(broadcast, "broadcast", capture):
             await broadcast.broadcast_playback_update()
-        assert [m["type"] for m in sent] == ["playbackUpdate", "scPlaybackUpdate"]
-        assert set(sent[0]) == {"type", "source", "isPlaying", "progress", "timestamp"}
-        assert set(sent[1]) == {"type", "source", "isPlaying", "progressMs", "timestamp"}
+        assert [m["type"] for m in sent] == ["nowPlaying", "nowPlaying"]
+        assert set(sent[0]["state"]) == self.SPOTIFY_STATE_KEYS
+        assert set(sent[1]["state"]) == self.SC_STATE_KEYS
 
     async def test_progress_messages(self) -> None:
         sent: list[dict[str, Any]] = []
@@ -1582,9 +1786,10 @@ class TestWireContract:
 
         with patch.object(broadcast, "broadcast", capture):
             await broadcast.broadcast_progress_update()
-        assert [m["type"] for m in sent] == ["progressUpdate", "scProgressUpdate"]
-        assert set(sent[0]) == {"type", "source", "progress", "duration", "isPlaying", "timestamp"}
-        assert set(sent[1]) == {"type", "source", "progressMs", "durationMs", "isPlaying", "timestamp"}
+        assert [m["type"] for m in sent] == ["progress", "progress"]
+        assert [m["source"] for m in sent] == ["spotify", "soundcloud"]
+        for message in sent:
+            assert set(message["state"]) == self.PROGRESS_STATE_KEYS
 
     async def test_progress_loop_messages(self) -> None:
         st.state["isPlaying"] = True
@@ -1598,9 +1803,8 @@ class TestWireContract:
 
         with patch.object(broadcast, "broadcast", capture):
             await broadcast._compute_and_broadcast_progress()
-        assert [m["type"] for m in sent] == ["progressUpdate", "scProgressUpdate"]
-        assert set(sent[0]) == {"type", "source", "progress", "duration", "isPlaying", "timestamp"}
-        assert set(sent[1]) == {"type", "source", "progressMs", "durationMs", "isPlaying", "timestamp"}
+        assert [m["type"] for m in sent] == ["progress", "progress"]
+        assert all(set(m["state"]) == self.PROGRESS_STATE_KEYS for m in sent)
 
     async def test_api_state_shape_is_stable(self) -> None:
         st.state["isPlaying"] = False
@@ -1677,48 +1881,60 @@ class TestCoverSizeNormalization:
         url = "https://i1.sndcdn.com/artworks-abc-large.jpg"
         assert handlers._COVER_SIZE_RE.sub("-t500x500", url) == url
 
-    async def test_sc_state_update_normalizes_cover(self, mock_ws: AsyncMock) -> None:
+    async def test_sc_now_playing_normalizes_cover(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "soundcloud")
         with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock), \
-             patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_state_update(mock_ws, {
-                "type": "scStateUpdate", "coverUrl": "https://i1.sndcdn.com/artworks-x-t100x100.jpg"
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "source": "soundcloud",
+                "state": {"coverUrl": "https://i1.sndcdn.com/artworks-x-t100x100.jpg"},
             })
         assert "-t500x500" in st.state["scCoverUrl"]
 
 
 class TestHandleMessageCrash:
     async def test_handler_exception_is_caught(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
+
         async def boom(ws, data):
             raise RuntimeError("crash")
-        original = handlers.MESSAGE_HANDLERS["volumeUpdate"]
-        handlers.MESSAGE_HANDLERS["volumeUpdate"] = boom
+
+        original = handlers.MESSAGE_HANDLERS["volume"]
+        handlers.MESSAGE_HANDLERS["volume"] = boom
         try:
             with patch.object(handlers.logger, "exception") as mock_exc:
-                await handlers.handle_message(mock_ws, json.dumps({"type": "volumeUpdate", "volume": 0.5}))
+                await handlers.handle_message(
+                    mock_ws, json.dumps({"type": "volume", "state": {"volume": 0.5}})
+                )
             mock_exc.assert_called_once()
         finally:
-            handlers.MESSAGE_HANDLERS["volumeUpdate"] = original
+            handlers.MESSAGE_HANDLERS["volume"] = original
+
 
 class TestInboundValidation:
     """State is fed by WebSocket clients; bad types must be ignored, not stored."""
 
     async def test_wrong_types_are_ignored(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
         st.state["currentTrack"]["trackUri"] = "spotify:track:keep"
         st.state["currentTrack"]["trackName"] = "Keep"
         with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
-             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_spotify_state_update(mock_ws, {
-                "type": "stateUpdate",
-                "isPlaying": "yes",
-                "isShuffling": 1,
-                "isLiked": "true",
-                "repeatStatus": 99,
-                "progress": "lol",
-                "duration": None,
-                "volume": [1],
-                "trackName": 5,
-                "trackUri": 7,
-                "artistName": "Artist",
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "state": {
+                    "isPlaying": "yes",
+                    "isShuffling": 1,
+                    "isLiked": "true",
+                    "repeatStatus": 99,
+                    "progress": "lol",
+                    "duration": None,
+                    "volume": [1],
+                    "trackName": 5,
+                    "trackUri": 7,
+                    "artistName": "Artist",
+                },
             })
         assert st.state["isPlaying"] is False
         assert st.state["isShuffling"] is False
@@ -1732,36 +1948,48 @@ class TestInboundValidation:
         assert st.state["currentTrack"]["artistName"] == "Artist"
 
     async def test_nan_and_infinity_are_ignored(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
         with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
-             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_spotify_state_update(mock_ws, {
-                "type": "stateUpdate",
-                "progress": float("nan"),
-                "duration": float("inf"),
-                "volume": float("nan"),
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "state": {
+                    "progress": float("nan"),
+                    "duration": float("inf"),
+                    "volume": float("nan"),
+                },
             })
         assert st.state["trackProgress"] == 0
         assert st.state["trackDuration"] == 0
         assert st.state["volume"] == 0.5
 
     async def test_values_are_clamped(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "spicetify")
         with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
-             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_spotify_state_update(mock_ws, {
-                "type": "stateUpdate", "volume": 5, "progress": -100, "duration": 10 ** 12,
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "state": {"volume": 5, "progress": -100, "duration": 10 ** 12},
             })
         assert st.state["volume"] == 1.0
         assert st.state["trackProgress"] == 0
         assert st.state["trackDuration"] == handlers._MAX_MS
 
     async def test_sc_wrong_types_are_ignored(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "soundcloud")
         with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock), \
-             patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_sc_state_update(mock_ws, {
-                "type": "scStateUpdate",
-                "track": 1, "progressMs": "x", "durationMs": None,
-                "volume": "loud", "isPlaying": "yes", "repeatStatus": 7,
-                "coverUrl": {"a": 1},
+             patch.object(handlers, "save_source_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_now_playing(mock_ws, {
+                "type": "nowPlaying",
+                "state": {
+                    "track": 1,
+                    "progress": "x",
+                    "duration": None,
+                    "volume": "loud",
+                    "isPlaying": "yes",
+                    "repeatStatus": 7,
+                    "coverUrl": {"a": 1},
+                },
             })
         assert st.state["scTrack"] == "No song playing"
         assert st.state["scProgressMs"] == 0
@@ -1782,12 +2010,16 @@ class TestInboundValidation:
         assert body["spotify"]["progress"] == 0
         assert body["spotify"]["duration"] == 0
 
-    async def test_volume_step_rejects_non_numeric(self, mock_ws: AsyncMock) -> None:
-        st.state["volume"] = 0.5
-        with patch.object(handlers, "broadcast_volume_update", new_callable=AsyncMock), \
-             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
-            await handlers.handle_spotify_volume_update(mock_ws, {"command": "volumeUp", "step": "huge"})
-        assert st.state["volume"] == pytest.approx(0.55)
+    async def test_command_rejects_non_numeric_step(self, mock_ws: AsyncMock) -> None:
+        register_client(mock_ws, "streamdeck")
+        spicetify_ws: AsyncMock = AsyncMock()
+        register_client(spicetify_ws, "spicetify")
+        await handlers.handle_command(
+            mock_ws, {"type": "command", "command": "volumeUp", "step": "huge"}
+        )
+        spicetify_ws.send_str.assert_not_called()
+        sent = json.loads(mock_ws.send_str.call_args[0][0])
+        assert sent["code"] == "invalid_command"
 
 
 class TestProgressAnchor:
@@ -1824,15 +2056,15 @@ class TestLyricsMessageShape:
         }
         await handlers.handle_get_initial_state(mock_ws, {})
         messages = [json.loads(call.args[0]) for call in mock_ws.send_str.await_args_list]
-        lyrics = next(m for m in messages if m["type"] == "lyricsUpdate")
-        assert lyrics["loading"] is True
+        lyrics = next(m for m in messages if m["type"] == "lyrics")
+        assert lyrics["state"]["loading"] is True
 
     async def test_broadcast_and_initial_payloads_match(self, mock_ws: AsyncMock) -> None:
         with patch.object(broadcast, "broadcast", new_callable=AsyncMock) as mock_broadcast:
             await broadcast.broadcast_lyrics_update()
         await handlers.handle_get_initial_state(mock_ws, {})
         messages = [json.loads(call.args[0]) for call in mock_ws.send_str.await_args_list]
-        initial = next(m for m in messages if m["type"] == "lyricsUpdate")
+        initial = next(m for m in messages if m["type"] == "lyrics")
         assert mock_broadcast.await_args.args[0] == initial
 
 
@@ -1853,7 +2085,7 @@ class TestBroadcastBackpressure:
         broadcast.CLIENTS[stalled] = {"type": "obs"}  # type: ignore[index]
         broadcast.CLIENTS[fast] = {"type": "website"}  # type: ignore[index]
         with patch.object(broadcast, "BROADCAST_SEND_TIMEOUT_SECONDS", 0.05):
-            await asyncio.wait_for(broadcast.broadcast({"type": "progressUpdate"}), timeout=1.0)
+            await asyncio.wait_for(broadcast.broadcast({"type": "progress"}), timeout=1.0)
         assert stalled not in broadcast.CLIENTS
         assert fast in broadcast.CLIENTS
         assert len(fast.messages) == 1
@@ -1887,6 +2119,8 @@ class TestBroadcastBackpressure:
 
 
 class TestWebSocketLifecycle:
+    V2 = "&protocolVersion=2"
+
     @pytest.fixture
     async def tc(self):
         from aiohttp import web
@@ -1904,10 +2138,11 @@ class TestWebSocketLifecycle:
     async def test_reconnect_does_not_pause_while_another_controller_is_attached(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
              patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
-            old = await tc.ws_connect('/?client=spicetify')
-            new = await tc.ws_connect('/?client=spicetify')
-            await old.send_json({"type": "stateUpdate", "isPlaying": True,
-                                 "trackName": "Song", "progress": 1000, "duration": 200000})
+            old = await tc.ws_connect('/?client=spicetify' + self.V2)
+            new = await tc.ws_connect('/?client=spicetify' + self.V2)
+            await old.send_json({"type": "nowPlaying", "state": {
+                "isPlaying": True, "trackName": "Song", "progress": 1000, "duration": 200000,
+            }})
             await asyncio.sleep(0.05)
             await old.close()
             await asyncio.sleep(0.2)
@@ -1917,9 +2152,10 @@ class TestWebSocketLifecycle:
     async def test_last_controller_disconnect_pauses(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
              patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
-            ws = await tc.ws_connect('/?client=spicetify')
-            await ws.send_json({"type": "stateUpdate", "isPlaying": True,
-                                "trackName": "Song", "progress": 1000, "duration": 200000})
+            ws = await tc.ws_connect('/?client=spicetify' + self.V2)
+            await ws.send_json({"type": "nowPlaying", "state": {
+                "isPlaying": True, "trackName": "Song", "progress": 1000, "duration": 200000,
+            }})
             await asyncio.sleep(0.05)
             await ws.close()
             await asyncio.sleep(0.2)
@@ -1928,18 +2164,29 @@ class TestWebSocketLifecycle:
     async def test_source_status_is_broadcast(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
              patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
-            observer = await tc.ws_connect('/?client=obs')
-            source = await tc.ws_connect('/?client=spicetify')
+            observer = await tc.ws_connect('/?client=obs' + self.V2)
+            source = await tc.ws_connect('/?client=spicetify' + self.V2)
             messages = []
             for _ in range(10):
                 try:
                     messages.append(await asyncio.wait_for(observer.receive_json(), timeout=1.0))
                 except asyncio.TimeoutError:
                     break
-            connected = [m for m in messages if m["type"] == "sourceStatus" and m.get("connected")]
+            connected = [
+                m for m in messages
+                if m["type"] == "sourceStatus" and m["state"]["connected"]
+            ]
             assert connected and connected[0]["source"] == "spotify"
             await source.close()
             await observer.close()
+
+    async def test_v1_client_is_rejected(self, tc) -> None:
+        ws = await tc.ws_connect('/?client=website&protocolVersion=1')
+        message = await asyncio.wait_for(ws.receive_json(), timeout=1.0)
+        assert message["type"] == "error"
+        assert message["code"] == "protocol_version"
+        await ws.close()
+
 
 class TestSecurityMiddleware:
     @pytest.fixture
@@ -2041,6 +2288,8 @@ class TestStreamDeckClient:
     """The Stream Deck plugin is the primary client: no Origin header, commands
     must reach only the source client, and the sender must not get an echo."""
 
+    V2 = "&protocolVersion=2"
+
     @pytest.fixture
     async def tc(self):
         from aiohttp import web
@@ -2058,38 +2307,49 @@ class TestStreamDeckClient:
             if message.get("type") == wanted:
                 return message
 
+    @staticmethod
+    async def _drain(ws) -> None:
+        while True:
+            try:
+                await asyncio.wait_for(ws.receive_json(), timeout=0.05)
+            except asyncio.TimeoutError:
+                return
+
     async def test_connect_without_origin_gets_config_and_state(self, tc) -> None:
-        deck = await tc.ws_connect('/?client=streamdeck')
+        deck = await tc.ws_connect('/?client=streamdeck' + self.V2)
         config_msg = await self._next_type(deck, "config")
-        assert config_msg["type"] == "config"
-        await deck.send_json({"type": "getInitialState"})
-        state = await self._next_type(deck, "stateUpdate")
-        assert state["source"] == "spotify"
-        await self._next_type(deck, "scStateUpdate")
-        await self._next_type(deck, "lyricsUpdate")
+        assert config_msg["v"] == 2
+        state = await self._next_type(deck, "nowPlaying")
+        assert state["source"] == "spotify" and "state" in state
+        sc_state = await self._next_type(deck, "nowPlaying")
+        assert sc_state["source"] == "soundcloud"
+        await self._next_type(deck, "lyrics")
+        await self._next_type(deck, "sourceStatus")
         await deck.close()
 
     async def test_command_reaches_source_and_not_sender(self, tc) -> None:
-        deck = await tc.ws_connect('/?client=streamdeck')
-        ext = await tc.ws_connect('/?client=spicetify')
-        # Drain the sourceStatus(connected) broadcast the extension receives and
-        # the Stream Deck's initial snapshot before asserting on new traffic.
-        await self._next_type(ext, "sourceStatus")
-        await self._next_type(deck, "sourceStatus")
-        await deck.send_json({"type": "playbackControl", "command": "togglePlay"})
-        command = await self._next_type(ext, "playbackControl")
+        deck = await tc.ws_connect('/?client=streamdeck' + self.V2)
+        ext = await tc.ws_connect('/?client=spicetify' + self.V2)
+        # Drain the sourceStatus(connected) broadcast and the initial snapshots
+        # before asserting on new traffic.
+        await self._drain(ext)
+        await self._drain(deck)
+        await deck.send_json({"type": "command", "source": "spotify", "command": "togglePlay"})
+        command = await self._next_type(ext, "command")
         assert command["command"] == "togglePlay"
+        assert command["source"] == "spotify"
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(deck.receive_json(), timeout=0.3)
         await deck.close()
         await ext.close()
 
     async def test_soundcloud_command_routes_to_soundcloud_only(self, tc) -> None:
-        deck = await tc.ws_connect('/?client=streamdeck')
-        sc = await tc.ws_connect('/?client=soundcloud')
+        deck = await tc.ws_connect('/?client=streamdeck' + self.V2)
+        sc = await tc.ws_connect('/?client=soundcloud' + self.V2)
         await self._next_type(sc, "sourceStatus")
-        await deck.send_json({"type": "scPlaybackControl", "command": "next"})
-        command = await self._next_type(sc, "scPlaybackControl")
+        await deck.send_json({"type": "command", "source": "soundcloud", "command": "next"})
+        command = await self._next_type(sc, "command")
         assert command["command"] == "next"
+        assert command["source"] == "soundcloud"
         await deck.close()
         await sc.close()

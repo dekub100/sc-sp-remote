@@ -5,18 +5,19 @@ import ipaddress
 import json
 import os
 import time
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 from aiohttp import web
 from broadcast import (
     CLIENTS,
-    broadcast_playback_update,
+    broadcast_now_playing,
     broadcast_source_status,
 )
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
+from protocol import PROTOCOL_VERSION, error_message
 from state import (
     SOURCE_BY_CLIENT_TYPE,
     as_ms,
@@ -37,6 +38,7 @@ def _write_config_to_disk() -> None:
 
 def _build_client_config(client_type: str) -> dict[str, Any]:
     base: dict[str, Any] = {
+        "v": PROTOCOL_VERSION,
         "type": "config",
     }
     if client_type == "spicetify":
@@ -173,17 +175,22 @@ DISCONNECT_PAUSE_GRACE_SECONDS: float = 1.5
 _SOURCE_CLIENT_TYPES: tuple[str, ...] = ("spicetify", "soundcloud")
 
 
-async def _pause_source_if_alone(client_type: str) -> None:
-    """Mark a source paused once its last controller is really gone."""
+async def _pause_source_if_alone(client_type: str) -> Optional[str]:
+    """Mark a source paused once its last controller is really gone.
+
+    Returns the paused source key, or None when a controller reconnected
+    inside the grace window (nothing should be broadcast in that case).
+    """
     await asyncio.sleep(DISCONNECT_PAUSE_GRACE_SECONDS)
     if any(info.get("type") == client_type for info in CLIENTS.values()):
         logger.info(f"Source {client_type}: controller reconnected within grace, not pausing")
-        return
+        return None
     logger.info(f"Source {client_type}: controller gone, marking paused")
     spec = SOURCE_BY_CLIENT_TYPE[client_type]
     state[spec.playing_key] = False
     state[spec.anchor_key] = time.time() * 1000
     await save_source_state_debounced(spec.key)
+    return spec.key
 
 
 # Awaiting inside the websocket handler's `finally` is unsafe: aiohttp cancels the
@@ -193,9 +200,11 @@ _disconnect_tasks: set[asyncio.Task[None]] = set()
 
 
 async def _handle_source_disconnect(client_type: str) -> None:
-    await _pause_source_if_alone(client_type)
-    await broadcast_playback_update()
-    await broadcast_source_status(SOURCE_BY_CLIENT_TYPE[client_type].key, False)
+    paused_source = await _pause_source_if_alone(client_type)
+    if paused_source is None:
+        return
+    await broadcast_now_playing(paused_source)
+    await broadcast_source_status(paused_source, False)
 
 
 def _spawn_source_disconnect(client_type: str) -> None:
@@ -232,6 +241,17 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         client_version: int = int(request.query.get("protocolVersion", 0))
     except ValueError:
         client_version = 0
+    if client_version < PROTOCOL_VERSION:
+        logger.warning(
+            f"Rejected {client_type or 'unknown'} client: protocol v{client_version} "
+            f"(v{PROTOCOL_VERSION} required)"
+        )
+        await ws.send_json(error_message(
+            "protocol_version",
+            f"protocol v{PROTOCOL_VERSION} required (client sent v{client_version})",
+        ))
+        await ws.close(code=1002, message=b"protocol v2 required")
+        return ws
     CLIENTS[ws] = {"type": client_type, "remote_ip": request.remote, "protocolVersion": client_version}
 
     logger.info(f"New connection: {client_type} (protocol v{client_version}, {request.remote})")

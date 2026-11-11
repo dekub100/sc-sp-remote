@@ -20,10 +20,6 @@ export class VolumeDown extends SingletonAction<VolumeDownSettings> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
     const step = ev.payload.settings.step || 0.05;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scVolumeUpdate", command: "volumeDown", step });
-    } else {
-      wsManager.send({ type: "volumeUpdate", command: "volumeDown", step });
-    }
+    wsManager.sendCommand(effectiveSource, "volumeDown", { step });
   }
 }

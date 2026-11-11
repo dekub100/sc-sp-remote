@@ -24,9 +24,10 @@ export class ToggleRepeat extends SingletonAction<ToggleRepeatSettings> {
     const source = this.currentSource;
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
 
-    if (data.source === effectiveSource && typeof data.repeatStatus === "number") {
-      this.actionContext.setState(data.repeatStatus);
-      this.actionContext.setSettings({ state: data.repeatStatus, source });
+    const state = data.state || {};
+    if (data.source === effectiveSource && typeof state.repeatStatus === "number") {
+      this.actionContext.setState(state.repeatStatus);
+      this.actionContext.setSettings({ state: state.repeatStatus, source });
     }
   };
 
@@ -64,10 +65,6 @@ export class ToggleRepeat extends SingletonAction<ToggleRepeatSettings> {
   ): Promise<void> {
     const source = ev.payload.settings.source || "spotify";
     const effectiveSource = source === "auto" ? wsManager.activeSource : source;
-    if (effectiveSource === "soundcloud") {
-      wsManager.send({ type: "scPlaybackControl", command: "toggleRepeat" });
-    } else {
-      wsManager.send({ type: "playbackControl", command: "toggleRepeat" });
-    }
+    wsManager.sendCommand(effectiveSource, "toggleRepeat");
   }
 }

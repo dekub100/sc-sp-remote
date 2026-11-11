@@ -12,24 +12,29 @@ from broadcast import (
     CLIENTS,
     broadcast,
     broadcast_lyrics_update,
-    broadcast_playback_update,
-    broadcast_progress_update,
+    broadcast_now_playing,
     broadcast_soundcloud_state,
     broadcast_spotify_state,
-    broadcast_volume_update,
     build_lyrics_message,
-    build_sc_state_message,
-    build_spotify_state_message,
+    build_now_playing_message,
+    build_progress_message,
+    build_source_status_message,
 )
 from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
+from protocol import (
+    COMMAND_ARGS,
+    COMMANDS,
+    PROTOCOL_VERSION,
+    error_message,
+    message_allowed,
+)
 from state import (
+    SOURCE_BY_CLIENT_TYPE,
     SOURCES,
-    get_interpolated_sc_progress,
-    get_interpolated_track_progress,
-    save_sc_state_debounced,
-    save_spotify_state_debounced,
+    as_volume,
+    save_source_state_debounced,
     state,
 )
 
@@ -90,39 +95,79 @@ def _apply_fields(data: dict[str, Any], fields: tuple[tuple[str, str, str], ...]
             state[state_key] = value
 
 
-def _next_volume(current: float, data: dict[str, Any]) -> float:
-    step: Optional[float] = _volume(data.get("step"))
-    volume_step: float = step if step is not None else 0.05
-    if data.get("command") == "volumeUp":
-        return min(1.0, current + volume_step)
-    if data.get("command") == "volumeDown":
-        return max(0.0, current - volume_step)
-    volume: Optional[float] = _volume(data.get("volume"))
-    return volume if volume is not None else current
+def _now_ms() -> float:
+    return time.time() * 1000
+
+
+def _state_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """v2 nests per-source state; reject anything that is not an object."""
+    payload = data.get("state")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _source_of(ws: web.WebSocketResponse) -> Optional[str]:
+    client_type = CLIENTS.get(ws, {}).get("type")
+    if not isinstance(client_type, str):
+        return None
+    spec = SOURCE_BY_CLIENT_TYPE.get(client_type)
+    return spec.key if spec else None
+
+
+async def _send_error(ws: web.WebSocketResponse, code: str, message: str) -> None:
+    logger.warning(f"Server: {code}: {message}")
+    try:
+        await ws.send_str(json.dumps(error_message(code, message)))
+    except Exception:
+        # The socket may already be gone; the log line is the useful part.
+        pass
+
+
+async def _require_source(ws: web.WebSocketResponse, data: dict[str, Any]) -> Optional[str]:
+    """A source controller may only push state for the source it owns."""
+    source = _source_of(ws)
+    declared = data.get("source")
+    if source is None or (declared is not None and declared != source):
+        await _send_error(ws, "forbidden", "source state must come from that source's controller")
+        return None
+    return source
+
+
+def _source_connected(source: str) -> bool:
+    client_type = SOURCES[source].client_type
+    return any(info.get("type") == client_type for info in CLIENTS.values())
+
+
+def _state_key_for(source: str, wire_key: str) -> Optional[str]:
+    for wire, state_key, _kind in SOURCES[source].update_fields:
+        if wire == wire_key:
+            return state_key
+    return None
 
 
 async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    await ws.send_str(json.dumps(build_spotify_state_message(get_interpolated_track_progress())))
-    await ws.send_str(json.dumps(build_sc_state_message(get_interpolated_sc_progress())))
+    for spec in SOURCES.values():
+        await ws.send_str(json.dumps(build_now_playing_message(spec.key)))
     await ws.send_str(json.dumps(build_lyrics_message()))
+    for spec in SOURCES.values():
+        await ws.send_str(json.dumps(build_source_status_message(spec.key, _source_connected(spec.key))))
 
 
-# --- Spotify handlers ---
+# --- Source state (Spotify) ---
 
-async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+async def _apply_spotify_now_playing(ws: web.WebSocketResponse, payload: dict[str, Any]) -> None:
     spotify = SOURCES["spotify"]
-    _apply_fields(data, spotify.update_fields)
+    _apply_fields(payload, spotify.update_fields)
 
     track: dict[str, Any] = state["currentTrack"]
     prev_uri: str = track["trackUri"]
-    new_uri: str = _text(data.get("trackUri")) or prev_uri
+    new_uri: str = _text(payload.get("trackUri")) or prev_uri
 
     for key in spotify.track_fields:
-        value: Optional[str] = _text(data.get(key))
+        value: Optional[str] = _text(payload.get(key))
         if value is not None:
             track[key] = value
     track["trackUri"] = new_uri
-    state["trackProgressStartTimestamp"] = time.time() * 1000
+    state["trackProgressStartTimestamp"] = _now_ms()
 
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
         if config["enableLyrics"]:
@@ -140,7 +185,7 @@ async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str,
             state["lyrics"] = {"trackUri": new_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "karaoke": [], "provider": "", "loading": False}
             await broadcast_lyrics_update()
 
-    await save_spotify_state_debounced()
+    await save_source_state_debounced("spotify")
     await broadcast_spotify_state(exclude_ws=ws)
 
 
@@ -153,59 +198,15 @@ def _lyrics_task_done(task: asyncio.Task[None]) -> None:
         pass
 
 
-async def handle_spotify_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["volume"] = _next_volume(state["volume"], data)
-    await save_spotify_state_debounced()
-    await broadcast_volume_update()
-
-
-async def handle_spotify_playback_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    is_playing: Optional[bool] = _bool(data.get("isPlaying"))
-    if is_playing is not None:
-        state["isPlaying"] = is_playing
-    progress: Optional[int] = _ms(data.get("progress"))
-    if progress is not None:
-        state["trackProgress"] = progress
-    state["trackProgressStartTimestamp"] = time.time() * 1000
-    await save_spotify_state_debounced()
-    await broadcast_playback_update(exclude_ws=ws)
-
-
-async def handle_spotify_shuffle_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["isShuffling"] = _bool(data.get("isShuffling")) or False
-    await save_spotify_state_debounced()
-    await broadcast({"type": "shuffleUpdate", "source": "spotify", "isShuffling": state["isShuffling"]}, exclude_ws=ws)
-
-
-async def handle_spotify_repeat_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    repeat_status: Optional[int] = _repeat(data.get("repeatStatus"))
-    state["repeatStatus"] = repeat_status if repeat_status is not None else 0
-    await save_spotify_state_debounced()
-    await broadcast({"type": "repeatUpdate", "source": "spotify", "repeatStatus": state["repeatStatus"]}, exclude_ws=ws)
-
-
-async def handle_spotify_like_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["isLiked"] = _bool(data.get("isLiked")) or False
-    await save_spotify_state_debounced()
-    await broadcast({"type": "likeUpdate", "source": "spotify", "isLiked": state["isLiked"]}, exclude_ws=ws)
-
-
-async def handle_spotify_progress_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["trackProgress"] = _ms(data.get("progress")) or 0
-    state["trackDuration"] = _ms(data.get("duration")) or 0
-    state["trackProgressStartTimestamp"] = time.time() * 1000
-    await broadcast_progress_update(exclude_ws=ws)
-
-
-# --- SoundCloud handlers ---
+# --- Source state (SoundCloud) ---
 
 _COVER_SIZE_RE = re.compile(r"-t\d+x\d+")
 
 # Fields that are actually persisted and broadcast to clients. Compared against
 # the previous fingerprint so the 500ms SC heartbeat only saves/broadcasts on
-# real changes. progressMs / scProgressStartTimestamp are deliberately excluded:
+# real changes. progress / scProgressStartTimestamp are deliberately excluded:
 # server state keeps updating every heartbeat (interpolation stays fresh) and
-# clients re-anchor via the 1 Hz scProgressUpdate.
+# clients re-anchor via the 1 Hz progress message.
 _SC_FP_KEYS = (
     "scTrack", "scArtist", "scAlbum", "scId", "scCoverUrl", "scIsPlaying",
     "scDurationMs", "scIsLiked", "scIsShuffling", "scRepeatStatus",
@@ -219,60 +220,179 @@ def _sc_fingerprint() -> tuple:
     return (*[state[key] for key in _SC_FP_KEYS], round(state["scVolume"], 3))
 
 
-async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+async def _apply_soundcloud_now_playing(ws: web.WebSocketResponse, payload: dict[str, Any]) -> None:
     global _last_sc_fingerprint
 
     soundcloud = SOURCES["soundcloud"]
-    progress_ms: Optional[int] = _ms(data.get("progressMs"))
-    is_playing: Optional[bool] = _bool(data.get("isPlaying"))
-    _apply_fields(data, soundcloud.update_fields)
+    _apply_fields(payload, soundcloud.update_fields)
 
-    cover_url: Optional[str] = _text(data.get(soundcloud.cover_field or "coverUrl"))
+    cover_url: Optional[str] = _text(payload.get(soundcloud.cover_field or "coverUrl"))
     if cover_url is not None:
         state["scCoverUrl"] = _COVER_SIZE_RE.sub("-t500x500", cover_url)
-    if progress_ms is not None or is_playing is not None:
-        state["scProgressStartTimestamp"] = time.time() * 1000
+    if "progress" in payload or "isPlaying" in payload:
+        state["scProgressStartTimestamp"] = _now_ms()
 
     fingerprint: tuple = _sc_fingerprint()
     if fingerprint != _last_sc_fingerprint:
         _last_sc_fingerprint = fingerprint
-        await save_sc_state_debounced()
+        await save_source_state_debounced("soundcloud")
         await broadcast_soundcloud_state(exclude_ws=ws)
 
 
-async def handle_sc_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    state["scVolume"] = _next_volume(state["scVolume"], data)
-    await save_sc_state_debounced()
-    await broadcast({
-        "type": "scVolumeUpdate",
-        "source": "soundcloud",
-        "volume": state["scVolume"]
-    }, exclude_ws=ws)
-    logger.debug(f"SC volume updated to {state['scVolume']:.3f}")
+# --- Source state dispatch ---
 
-
-# --- Cross-source control ---
-
-async def handle_playback_control(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    await broadcast(data, target_type="spicetify", exclude_ws=ws)
-
-
-async def handle_sc_playback_control(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    await broadcast(data, target_type="soundcloud", exclude_ws=ws)
-
-
-async def handle_like_command(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    source = data.get("source", "spotify")
-    if source == "soundcloud":
-        await broadcast({"type": "scPlaybackControl", "command": "like"}, target_type="soundcloud", exclude_ws=ws)
+async def handle_now_playing(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    source = await _require_source(ws, data)
+    if source is None:
+        return
+    payload = _state_payload(data)
+    if source == "spotify":
+        await _apply_spotify_now_playing(ws, payload)
     else:
-        await broadcast({"type": "playbackControl", "command": "like"}, target_type="spicetify", exclude_ws=ws)
+        await _apply_soundcloud_now_playing(ws, payload)
 
+
+async def handle_volume(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    source = await _require_source(ws, data)
+    if source is None:
+        return
+    state_key = _state_key_for(source, "volume")
+    if state_key is None:
+        return
+    _apply_fields(_state_payload(data), (("volume", state_key, "volume"),))
+    await save_source_state_debounced(source)
+    await broadcast_now_playing(source, exclude_ws=ws)
+
+
+async def handle_playback(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    source = await _require_source(ws, data)
+    if source is None:
+        return
+    spec = SOURCES[source]
+    _apply_fields(_state_payload(data), (
+        ("isPlaying", spec.playing_key, "bool"),
+        ("progress", spec.progress_key, "ms"),
+    ))
+    state[spec.anchor_key] = _now_ms()
+    await save_source_state_debounced(source)
+    await broadcast_now_playing(source, exclude_ws=ws)
+
+
+async def handle_progress(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    source = await _require_source(ws, data)
+    if source is None:
+        return
+    spec = SOURCES[source]
+    _apply_fields(_state_payload(data), (
+        ("progress", spec.progress_key, "ms"),
+        ("duration", spec.duration_key, "ms"),
+    ))
+    state[spec.anchor_key] = _now_ms()
+    await broadcast(build_progress_message(source), exclude_ws=ws)
+
+
+async def _handle_single_field(
+    ws: web.WebSocketResponse,
+    data: dict[str, Any],
+    wire_key: str,
+    kind: str,
+) -> None:
+    source = await _require_source(ws, data)
+    if source is None:
+        return
+    state_key = _state_key_for(source, wire_key)
+    if state_key is None:
+        return
+    _apply_fields(_state_payload(data), ((wire_key, state_key, kind),))
+    await save_source_state_debounced(source)
+    await broadcast_now_playing(source, exclude_ws=ws)
+
+
+async def handle_shuffle(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    await _handle_single_field(ws, data, "isShuffling", "bool")
+
+
+async def handle_repeat(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    await _handle_single_field(ws, data, "repeatStatus", "repeat")
+
+
+async def handle_like(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    await _handle_single_field(ws, data, "isLiked", "bool")
+
+
+# --- Controller commands ---
+
+def _command_args(command: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Validate and whitelist a command's arguments; None means reject it."""
+    args: dict[str, Any] = {}
+    for key in COMMAND_ARGS.get(command, ()):
+        raw = data.get(key)
+        if key == "volume":
+            volume = _volume(raw)
+            if volume is None:
+                return None
+            args["volume"] = volume
+        elif key == "position":
+            position = _ms(raw)
+            if position is None:
+                return None
+            args["position"] = position
+        elif key == "offset":
+            offset = _ms(raw)
+            if not offset:
+                return None
+            args["offset"] = offset
+        elif key == "step":
+            if raw is None:
+                args["step"] = 0.05
+            else:
+                step = _volume(raw)
+                if not step:
+                    return None
+                args["step"] = step
+    return args
+
+
+async def handle_command(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    command = data.get("command")
+    if not isinstance(command, str) or command not in COMMANDS:
+        await _send_error(ws, "invalid_command", f"unknown command: {command!r}")
+        return
+    source = data.get("source", "spotify")
+    if not isinstance(source, str) or source not in SOURCES:
+        await _send_error(ws, "invalid_source", f"unknown source: {source!r}")
+        return
+    args = _command_args(command, data)
+    if args is None:
+        await _send_error(ws, "invalid_command", f"missing or invalid arguments for '{command}'")
+        return
+    if source == "soundcloud" and command in ("volumeUp", "volumeDown"):
+        # The SC bridge has no native step API, so translate the relative
+        # command into an absolute setVolume using the volume it last reported.
+        step = float(args.get("step", 0.05))
+        current = as_volume(state[SOURCES["soundcloud"].volume_key])
+        volume = min(1.0, current + step) if command == "volumeUp" else max(0.0, current - step)
+        command = "setVolume"
+        args = {"volume": volume}
+    await broadcast(
+        {
+            "v": PROTOCOL_VERSION,
+            "type": "command",
+            "source": source,
+            "command": command,
+            **args,
+        },
+        target_type=SOURCES[source].client_type,
+        exclude_ws=ws,
+    )
+
+
+# --- Error and logging ---
 
 async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     message = data.get("message", "Unknown error")
     logger.warning(f"Extension error: {message}")
-    await broadcast({"type": "error", "message": message})
+    await broadcast(error_message("client_error", str(message)))
 
 
 async def handle_client_log(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
@@ -292,25 +412,19 @@ async def handle_client_log(ws: web.WebSocketResponse, data: dict[str, Any]) -> 
 
 MESSAGE_HANDLERS: dict[str, Any] = {
     "getInitialState": handle_get_initial_state,
-    # Spotify messages
-    "stateUpdate": handle_spotify_state_update,
-    "trackUpdate": handle_spotify_state_update,
-    "volumeUpdate": handle_spotify_volume_update,
-    "playbackUpdate": handle_spotify_playback_update,
-    "shuffleUpdate": handle_spotify_shuffle_update,
-    "repeatUpdate": handle_spotify_repeat_update,
-    "likeUpdate": handle_spotify_like_update,
-    "progressUpdate": handle_spotify_progress_update,
-    "playbackControl": handle_playback_control,
-    "like": handle_like_command,
-    # SoundCloud messages
-    "scStateUpdate": handle_sc_state_update,
-    "scVolumeUpdate": handle_sc_volume_update,
-    "scPlaybackControl": handle_sc_playback_control,
-    # Error
+    # Source -> server state
+    "nowPlaying": handle_now_playing,
+    "volume": handle_volume,
+    "playback": handle_playback,
+    "progress": handle_progress,
+    "shuffle": handle_shuffle,
+    "repeat": handle_repeat,
+    "like": handle_like,
+    # Controller -> server -> source
+    "command": handle_command,
+    # Diagnostics
     "error": handle_error,
-    # Logging
-    "clientLog": handle_client_log
+    "clientLog": handle_client_log,
 }
 
 
@@ -330,11 +444,26 @@ async def handle_message(ws: web.WebSocketResponse, message: str) -> None:
         logger.warning(f"Server: Received message with invalid type field: {type(msg_type)}")
         return
 
+    version: Any = data.get("v")
+    if version is not None and version != PROTOCOL_VERSION:
+        await _send_error(ws, "protocol_version", f"protocol v{PROTOCOL_VERSION} required")
+        return
+
     handler: Any = MESSAGE_HANDLERS.get(msg_type)
-    if handler:
-        try:
-            await handler(ws, data)
-        except Exception:
-            logger.exception(f"Server: Handler for '{msg_type}' crashed")
-    else:
-        logger.warning(f"Server: Received unknown message type: {msg_type}")
+    if handler is None:
+        await _send_error(ws, "unknown_type", f"unknown message type: '{msg_type}'")
+        return
+
+    client_type: str = str(CLIENTS.get(ws, {}).get("type", "unknown"))
+    if not message_allowed(client_type, msg_type):
+        await _send_error(
+            ws,
+            "forbidden",
+            f"'{msg_type}' is not allowed for client type '{client_type}'",
+        )
+        return
+
+    try:
+        await handler(ws, data)
+    except Exception:
+        logger.exception(f"Server: Handler for '{msg_type}' crashed")
