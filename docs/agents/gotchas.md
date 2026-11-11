@@ -44,3 +44,8 @@
 42. **Admin UI never displays musixmatchToken** — its Refresh button hits `/api/admin/lyrics/musixmatch-token` (preview only). `GET /api/admin/config` deliberately redacts the token; don't "fix" it back to returning full config.
 43. **Host fallback is `127.0.0.1`, not `0.0.0.0`** — server.py's fallback when config can't be read must stay localhost-only.
 44. **Third-party lyric text → always `escapeHtml()` before innerHTML** — lyrics come from Musixmatch/LRCLIB over the network; a malicious API response is an XSS vector. `filterText()` is the profanity filter, NOT a sanitizer.
+45. **`await` in the WebSocket handler's `finally` is cancelled** — aiohttp tears down the handler when the client disconnects, so the sleep/broadcast never completes. Disconnect bookkeeping runs in a detached task (`_spawn_source_disconnect`), kept alive by `routes._disconnect_tasks`.
+46. **A slow WS client must not block a broadcast** — `broadcast.py` wraps every `send_str` in `asyncio.wait_for(BROADCAST_SEND_TIMEOUT_SECONDS)` and drops the client; without it one paused OBS source stalls the 1 Hz progress loop.
+47. **Disconnect ≠ paused** — reconnects close the old socket after the new one registers. Pausing immediately stomps the fresh `syncFullState` and pauses the music, so the pause is delayed by `DISCONNECT_PAUSE_GRACE_SECONDS` and re-checked against `CLIENTS`.
+48. **`Host` and `Origin` are checked in one middleware** (`security_middleware`), not per-route — the WS upgrade is a plain GET, so route-level checks would miss it. `/api/admin/*` additionally requires a loopback peer.
+49. **`"*"` in `allowedOrigins` opens CORS only, never the WebSocket gate** — otherwise any website could drive playback.

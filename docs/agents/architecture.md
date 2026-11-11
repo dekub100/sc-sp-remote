@@ -31,16 +31,18 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Single port** (8888) for HTTP + WebSocket
 - **Server split into modules** — `server.py` is a thin coordinator
 - **No discovery** — clients connect directly to main port
-- **Delta-based sync** — only changed fields sent
-- **Client types** via query param (`?client=spicetify|soundcloud|website|obs`)
-- **Targeted broadcast** — commands from web go ONLY to target client type
+- **Full-snapshot broadcasts** — state/progress messages carry the whole source snapshot (the SoundCloud 500 ms heartbeat is change-gated by a fingerprint, so unchanged heartbeats are not rebroadcast)
+- **Client types** via query param (`?client=spicetify|soundcloud|website|obs|streamdeck`)
+- **Targeted broadcast** — playback commands go ONLY to the target client type (`target_type` in `broadcast()`); the sender is always excluded
 - **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows)
 - **`SC_SP_REMOTE_CONFIG` env var** — overrides config path
 - **Debounced state saves** (2s inactivity)
+- **Disconnect is not "paused"** — a source controller disconnect broadcasts `sourceStatus{connected:false}` and only pauses playback after a 1.5 s grace, re-checked against the client list, so reconnects don't pause the music
+- **Bounded broadcast** — every WebSocket send has a 1 s timeout; an unresponsive client is dropped instead of stalling the 1 Hz progress loop
 - **Client-side color extraction** from album art via Canvas API
 - **Profanity filter** — base64-encoded word list (GitHub moderation safety)
 - **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
-- **Security gates** — CORS allowlist (explicit localhost default), WebSocket origin allowlist (`_is_foreign_web_origin`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
+- **Security gates** — `security_middleware` (Host allowlist against DNS rebinding, same-origin check for state-changing requests, `/api/admin` loopback-only), CORS allowlist (explicit localhost default), WebSocket origin allowlist (`_is_foreign_web_origin`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
 
 
 ## State Shape (state.py)
@@ -83,7 +85,8 @@ state = {
 | `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
 | `like` | Web→Server | Like current track (source-aware) |
 | **Server→All** | | |
-| `lyricsUpdate` | Server→All | Lyrics data (`synced`/`plain`/`karaoke`, `provider` attribution) |
+| `lyricsUpdate` | Server→All | Lyrics data (`synced`/`plain`/`karaoke`, `provider` attribution, `loading`) |
+| `sourceStatus` | Server→All | `{source, connected}` — a playback source's controller attached/detached (never means "paused") |
 | `error` | Any | Error relay |
 
 

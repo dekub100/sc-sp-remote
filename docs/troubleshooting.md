@@ -14,6 +14,8 @@ Check that the port in `data/config.json` isn't already in use. Change the port 
 
 By default the server binds to `127.0.0.1` (localhost only). Set `"host": "0.0.0.0"` in `data/config.json` for LAN access.
 
+In LAN mode the web UI, OBS widget and playback commands work from other devices, but **the admin panel stays loopback-only** — open it on the machine running the server. If you reach the server through a hostname instead of an IP (e.g. `myrig.local`), add it to `allowedHosts`; the Host-header gate blocks unknown names (that's what stops DNS-rebinding attacks).
+
 ## Web UI not loading
 
 The website at `http://localhost:8888/` shows a dual-source remote with Spotify and SoundCloud panels.
@@ -25,7 +27,7 @@ The website at `http://localhost:8888/` shows a dual-source remote with Spotify 
 
 ## Admin panel
 
-Open `http://localhost:8888/admin` for a web-based config editor and log viewer.
+Open `http://localhost:8888/admin` for a web-based config editor and log viewer. The admin API is loopback-only, so it must be opened on the machine running the server.
 
 - **Server Config** tab — edit all settings live (changes apply immediately, reconnect clients after saving).
 - **Log Viewer** tab — browse and view server log files.
@@ -96,7 +98,8 @@ All settings live in `data/config.json` or can be edited live via the admin pane
 |---|---|---|---|
 | `port` | int | `8888` | HTTP/WebSocket server port |
 | `host` | string | `"127.0.0.1"` | Bind address (`"0.0.0.0"` for LAN) |
-| `allowedOrigins` | list | `["http://localhost:8888", "http://127.0.0.1:8888"]` | CORS allowed origins (`"*"` = allow all, not recommended) |
+| `allowedOrigins` | list | `["http://localhost:8888", "http://127.0.0.1:8888"]` | CORS allowed origins (`"*"` = allow all for CORS, not recommended; never opens the WebSocket gate) |
+| `allowedHosts` | list | `[]` | Extra `Host` names accepted by the anti-rebinding gate (needed for hostname access like `myrig.local`) |
 | `defaultVolume` | float | `0.5` | Initial volume (0.0–1.0) |
 | `enableOBS` | bool | `true` | Enable OBS widget at `/obs/` |
 | `enableWebsite` | bool | `true` | Enable web UI at `/` |

@@ -31,20 +31,25 @@ Dev tool uses isolated `config.dev.json` so it doesn't interfere with a producti
 
 ## Testing Strategy
 
-- Don't test frontend (browser/Spotify, painful to mock)
-- Don't test full server lifecycle
-- DO test: message handlers, input validation, broadcasting, config, lyrics cache, rate limiting, HTTP endpoints, pure functions
-- `reset_state` fixture runs before every test
-- Mock `broadcast_*` functions to avoid real WebSocket connections
+- Don't test DOM rendering (browser/Spotify, painful to mock) — but DO test pure JS helpers if they get extracted
+- DO test: message handlers, inbound validation, broadcasting/backpressure, config, lyrics cache, HTTP endpoints, the WS lifecycle (`TestWebSocketLifecycle`, `TestStreamDeckClient`)
+- `reset_state` fixture runs before every test — it must list every state key, including `artistUri` and the `sc*` fields
+- Mock `broadcast_*` functions to avoid real WebSocket connections; use real `TestClient`/`TestServer` sockets for lifecycle tests
+- Prefer real sockets over mocks for anything that depends on connect/disconnect ordering
+- Beware: `await` inside the websocket handler's `finally` is cancelled when the client disconnects — use a detached task (see `_spawn_source_disconnect`)
 
 ## Security Model
 
-- **No authentication** — by design, localhost-only. No user accounts, no PII, no cloud secrets.
-- **Threat model** — LAN attacker sees now-playing and can skip/pause. Annoying but not sensitive. Admin API (`/api/admin/config`) has NO host gate — it's only as private as the bind address (localhost by default; if you set `"host": "0.0.0.0"`, anyone on the LAN can edit config and read logs). `GET` redacts `musixmatchToken`.
-- **CORS** — configurable via `allowedOrigins`, default explicit localhost origins (`http://localhost:8888`, `http://127.0.0.1:8888`). `"*"` still honored if explicitly set.
-- **WebSocket origin gate** — WS handshakes ignore CORS entirely, so a malicious website could open `ws://localhost:8888` from the visitor's browser. `_is_foreign_web_origin()` in `routes.py` allowlists browser origins (localhost, `xpui.app.spotify.com`, `soundcloud.com`); anything else gets 403. Native clients that send no Origin header pass.
-- **XSS** — lyric text comes from third-party APIs (Musixmatch/LRCLIB) and MUST go through `escapeHtml` before any `innerHTML` interpolation. OBS widget already does this; keep it that way.
-- **Bind fallback** — `server.py` falls back to `127.0.0.1` when `host` can't be read from config (previously fell back to `0.0.0.0`).
-- **Input validation** — JSON parse errors, type checks, unknown message types all handled gracefully.
-- **Auth not worth implementing** for localhost use case. Chat-driven actions are handled via Streamer.bot → localhost HTTP API.
+- **No authentication** — by design, localhost-only. No user accounts, no PII.
+- **Threat model** — LAN attacker sees now-playing and can skip/pause. Annoying but not sensitive. Everything is gated by `security_middleware` in `routes.py`:
+  - **Host allowlist** — `Host` must be `localhost`, a loopback/private IP literal, the configured `host`, or an entry in `allowedHosts`. This blocks DNS rebinding (a rebound attacker domain arrives with its own name in `Host`).
+  - **CSRF** — state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`) are refused when `Origin` is cross-origin or `Sec-Fetch-Site: cross-site`. Native clients send no `Origin` and are allowed.
+  - **Admin is loopback-only** — `/api/admin/*` refuses peers whose `request.remote` is not a loopback address, even when the server is bound to a LAN address. LAN users get the web UI, OBS widget and WS commands; config editing stays on the machine.
+  - `GET /api/admin/config` still redacts `musixmatchToken`.
+- **CORS** — configurable via `allowedOrigins`, default explicit localhost origins (`http://localhost:8888`, `http://127.0.0.1:8888`). `"*"` still honored for CORS if explicitly set, but **never** for the WebSocket gate.
+- **WebSocket origin gate** — WS handshakes ignore CORS entirely, so a malicious website could open `ws://localhost:8888` from the visitor's browser. `_is_foreign_web_origin()` allowlists browser origins (localhost, `xpui.app.spotify.com`, `soundcloud.com`) plus same-origin (netloc vs `Host`, so a LAN IP works); anything else gets 403. Native clients that send no Origin header pass.
+- **XSS** — lyric text comes from third-party APIs (Musixmatch/LRCLIB) and MUST go through `escapeHtml` before any `innerHTML` interpolation. The OBS widget defines its own `escapeHtml` (no quote escaping, text nodes only) — don't interpolate into attributes with it.
+- **Input validation** — `handlers.py` coerces every inbound state field (`_ms`, `_volume`, `_bool`, `_repeat`, `_text`) and ignores invalid values. `get_interpolated_*` / `as_ms` / `as_volume` in `state.py` are the last line of defence so one bad payload can't 500 `/api/state`.
+- **Bind fallback** — `server.py` falls back to `127.0.0.1` when `host` can't be read from config.
+- **Auth not worth implementing** for the localhost use case. Chat-driven actions are handled via Streamer.bot → localhost HTTP API.
 - Do not expose to internet without a reverse proxy with auth.
