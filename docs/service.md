@@ -20,7 +20,7 @@ python manage.py service remove
 
 ## Linux
 
-> **Untested.** This project is developed on Windows and the maintainer has no Linux environment to verify this against — treat it as a starting point, not a guaranteed-working recipe. PRs that fix it up are welcome.
+> **Untested.** This project is developed on Windows and the maintainer has no Linux environment to verify this against; treat it as a starting point, not a guaranteed-working recipe. PRs that fix it up are welcome.
 
 Use `systemd` to run the server in the background. The unit runs `server/server.py` directly rather than `python manage.py run`, so systemd tracks the server process itself instead of a wrapper subprocess.
 

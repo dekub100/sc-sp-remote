@@ -156,7 +156,7 @@ module.exports = {
                 }
 
                 function _getVolume() {
-                    // Read the slider height ratio — reflects what SoundCloud's UI shows.
+                    // Read the slider height ratio: it reflects what SoundCloud's UI shows.
                     // NOTE: When the slider is collapsed (not hovered), getBoundingClientRect()
                     // may still return its real layout dimensions since SC hides via opacity/transform.
                     // If it returns 0 we fall back to the audio element.
@@ -202,10 +202,10 @@ module.exports = {
                 function getState() {
                     var ms = navigator.mediaSession;
 
-                    // Play state — mediaSession is the authority
+                    // Play state: mediaSession is the authority
                     var isPlaying = ms ? ms.playbackState === 'playing' : false;
 
-                    // Metadata — mediaSession first, DOM fallback
+                    // Metadata: mediaSession first, DOM fallback
                     var title = (ms && ms.metadata && ms.metadata.title) || '';
                     var artist = (ms && ms.metadata && ms.metadata.artist) || '';
 

@@ -22,7 +22,7 @@ No C# code or WebSocket setup needed. Each command uses native Streamer.bot sub-
 | 2   | **Logic / If**   | Conditional branches to detect which source is active                                                                                                       |
 | 3   | **Send Message** | Chat response using the parsed variables                                                                                                                    |
 
-> Port `8888` is the default — adjust if your `data/config.json` overrides it.
+> Port `8888` is the default; adjust if your `data/config.json` overrides it.
 
 ## Available Variables
 
@@ -63,16 +63,16 @@ No C# code or WebSocket setup needed. Each command uses native Streamer.bot sub-
 
 ## Command Templates
 
-### `!song` / `!np` — Now Playing
+### `!song` / `!np`: Now Playing
 
 Both triggers run the same action. Set both as triggers in Streamer.bot.
 
 | #   | Sub-action                           | Settings                                                                                                                                                                   |
 | --- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | **HTTP Request**                     | `GET http://localhost:8888/api/state` → Variable: `stateJson`                                                                                                              |
-| 2   | **Logic — If/Else**                  | If `%stateJson.spotify.isPlaying%` equals `"True"`                                                                                                                         |
+| 2   | **Logic / If/Else**                  | If `%stateJson.spotify.isPlaying%` equals `"True"`                                                                                                                         |
 |     | → **True**                           | **Send Message:** `[Spotify] "%stateJson.spotify.trackName%" by %stateJson.spotify.artistName% [%stateJson.spotify.progressFmt% / %stateJson.spotify.durationFmt%]`        |
 |     | → **False**                          | _(add another Logic sub-action inside the False branch)_                                                                                                                   |
-| 3   | **Logic — If/Else** _(inside False)_ | If `%stateJson.soundcloud.isPlaying%` equals `"True"`                                                                                                                      |
+| 3   | **Logic / If/Else** _(inside False)_ | If `%stateJson.soundcloud.isPlaying%` equals `"True"`                                                                                                                      |
 |     | → **True**                           | **Send Message:** `[SoundCloud] "%stateJson.soundcloud.track%" by %stateJson.soundcloud.artist% [%stateJson.soundcloud.progressFmt% / %stateJson.soundcloud.durationFmt%]` |
 |     | → **False**                          | **Send Message:** `Nothing is playing at the moment.`                                                                                                                      |

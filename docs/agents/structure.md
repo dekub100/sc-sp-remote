@@ -35,7 +35,7 @@
 │   ├── dev/                  # dev-server config/state/logs/cache (gitignored)
 │   ├── state_spotify.json    # Spotify state (runtime, gitignored)
 │   ├── state_soundcloud.json # SoundCloud state (runtime, gitignored)
-│   └── (logs/, lyrics_cache.db — runtime, gitignored)
+│   └── (logs/, lyrics_cache.db; runtime, gitignored)
 ├── server/
 │   ├── server.py             # Entry point, app wiring, startup/shutdown (routes live in routes.py)
 │   ├── config.py             # Paths, defaults, layered config loading, atomic JSON writes

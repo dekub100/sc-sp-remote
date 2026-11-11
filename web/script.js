@@ -185,7 +185,7 @@ function renderLyrics() {
         ui.lyricsContent.innerHTML = '<p class="lyrics-unavailable">No lyrics available</p>';
     }
 
-    // Cache the line nodes once — the rAF highlight loops read these every frame.
+    // Cache the line nodes once: the rAF highlight loops read these every frame.
     lyricsState.lineEls = Array.from(ui.lyricsContent.querySelectorAll('.lyric-line'));
     lyricsState.currentIndex = -1;
     lyricsState.activeWordSpans = null;
@@ -278,7 +278,7 @@ function handleLyricsUpdate(data) {
         });
         return { startTime: l.startTime, endTime: l.endTime, words };
     });
-    // Karaoke renders first, then synced, then plain — only filter what is shown.
+    // Karaoke renders first, then synced, then plain; only filter what is shown.
     lyricsState.synced = rawKaraoke.length
         ? rawSynced
         : rawSynced.map(l => ({ ...l, text: filterText(l.text) }));

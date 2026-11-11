@@ -183,7 +183,7 @@ class TestMessageHandlers:
             await handlers.handle_now_playing(mock_ws, dict(first, state={"track": "Song", "isPlaying": True, "progress": 2500}))
         mock_broadcast.assert_called_once()
         mock_save.assert_called_once()
-        # Progress still mutates server state — only the save/broadcast is gated.
+        # Progress still mutates server state; only the save/broadcast is gated.
         assert st.state["scProgressMs"] == 2500
 
     async def test_soundcloud_now_playing_broadcasts_on_field_change(

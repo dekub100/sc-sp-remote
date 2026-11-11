@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo   sc-sp-remote — Setup
+echo   sc-sp-remote: Setup
 echo ============================================
 echo.
 

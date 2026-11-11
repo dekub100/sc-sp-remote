@@ -29,23 +29,23 @@ OBS Widget (obs-script.js) ─────────────────�
 ## Key Design Decisions
 
 - **Single port** (8888) for HTTP + WebSocket
-- **Server split into modules** — `server.py` is a thin coordinator
-- **No discovery** — clients connect directly to main port
-- **Full-snapshot state** — every `nowPlaying` carries the whole source snapshot (the SoundCloud 500 ms heartbeat is change-gated by a fingerprint, so unchanged heartbeats are not rebroadcast); the 1 Hz `progress` message carries only position/duration/playing/timestamp
+- **Server split into modules**: `server.py` is a thin coordinator
+- **No discovery**: clients connect directly to main port
+- **Full-snapshot state**: every `nowPlaying` carries the whole source snapshot (the SoundCloud 500 ms heartbeat is change-gated by a fingerprint, so unchanged heartbeats are not rebroadcast); the 1 Hz `progress` message carries only position/duration/playing/timestamp
 - **Client types** via query param (`?client=spicetify|soundcloud|website|obs|streamdeck`) + required `protocolVersion=2`
-- **Protocol v2** — every message is `{"v":2,"type":...,"source":...,"state":{...}}`; source clients push `nowPlaying`/`volume`/`playback`/`progress`/`shuffle`/`repeat`/`like`, controllers send one `command`, and `protocol.py` enforces the per-role allowlist before a handler runs
-- **Targeted broadcast** — commands go ONLY to the target source client type (`target_type` in `broadcast()`); the sender is always excluded
-- **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows driven by the `SOURCES` descriptor; flat `state` keys stay unchanged)
-- **Layered config** — code defaults ← tracked `data/config.default.json` ← gitignored user `data/config.json` (created on first run). `SC_SP_REMOTE_CONFIG` overrides the user-config path; `SC_SP_REMOTE_DATA_DIR` redirects all runtime data (state, logs, cache) for dev/tests.
+- **Protocol v2**: every message is `{"v":2,"type":...,"source":...,"state":{...}}`; source clients push `nowPlaying`/`volume`/`playback`/`progress`/`shuffle`/`repeat`/`like`, controllers send one `command`, and `protocol.py` enforces the per-role allowlist before a handler runs
+- **Targeted broadcast**: commands go ONLY to the target source client type (`target_type` in `broadcast()`); the sender is always excluded
+- **Dual-file state**: `state_spotify.json` + `state_soundcloud.json` (separate save flows driven by the `SOURCES` descriptor; flat `state` keys stay unchanged)
+- **Layered config**: code defaults ← tracked `data/config.default.json` ← gitignored user `data/config.json` (created on first run). `SC_SP_REMOTE_CONFIG` overrides the user-config path; `SC_SP_REMOTE_DATA_DIR` redirects all runtime data (state, logs, cache) for dev/tests.
 - **Debounced state saves** (2s inactivity, read from config at save time) written atomically (`tmp` + `os.replace`)
-- **Disconnect is not "paused"** — a source controller disconnect broadcasts `sourceStatus{connected:false}` and only pauses playback after a 1.5 s grace, re-checked against the client list, so reconnects don't pause the music
-- **Restored state never claims to be playing** — `isPlaying` is persisted but its progress anchor is not, so a restored source with no anchor is reported paused until the source client reconnects
-- **Bounded broadcast** — every WebSocket send has a 1 s timeout; an unresponsive client is dropped instead of stalling the 1 Hz progress loop
+- **Disconnect is not "paused"**: a source controller disconnect broadcasts `sourceStatus{connected:false}` and only pauses playback after a 1.5 s grace, re-checked against the client list, so reconnects don't pause the music
+- **Restored state never claims to be playing**: `isPlaying` is persisted but its progress anchor is not, so a restored source with no anchor is reported paused until the source client reconnects
+- **Bounded broadcast**: every WebSocket send has a 1 s timeout; an unresponsive client is dropped instead of stalling the 1 Hz progress loop
 - **Client-side color extraction** from album art via Canvas API
-- **Profanity filter** — base64-encoded word list (GitHub moderation safety)
-- **`/api/state` HTTP endpoint** — returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
-- **Security gates** — `security_middleware` (Host allowlist against DNS rebinding, same-origin check for state-changing requests, `/api/admin` loopback-only), WebSocket origin allowlist (`_is_foreign_web_origin`), 256 KB inbound WS frame cap (`MAX_WS_MESSAGE_BYTES`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
-- **CORS is browser read permission, not a security gate** — `allowedOrigins` only adds `Access-Control-Allow-Origin` to `/api/config` and the admin responses. `/api/state` sends no CORS header, so it stays same-origin-only; `"*"` never opens the WebSocket gate
+- **Profanity filter**: base64-encoded word list (GitHub moderation safety)
+- **`/api/state` HTTP endpoint**: returns dual-source state (`spotify` + `soundcloud` blocks) with pre-formatted `progressFmt`/`durationFmt`
+- **Security gates**: `security_middleware` (Host allowlist against DNS rebinding, same-origin check for state-changing requests, `/api/admin` loopback-only), WebSocket origin allowlist (`_is_foreign_web_origin`), 256 KB inbound WS frame cap (`MAX_WS_MESSAGE_BYTES`), `musixmatchToken` redacted from admin config GET, lyric text HTML-escaped before innerHTML
+- **CORS is browser read permission, not a security gate**: `allowedOrigins` only adds `Access-Control-Allow-Origin` to `/api/config` and the admin responses. `/api/state` sends no CORS header, so it stays same-origin-only; `"*"` never opens the WebSocket gate
 
 
 ## State Shape (state.py)
@@ -79,7 +79,7 @@ and closed with 1002.
 
 | Type | Direction | Allowed sender | Purpose |
 |---|---|---|---|
-| `config` | Server→Client | — | Per-client intervals, sent once on connect |
+| `config` | Server→Client | n/a | Per-client intervals, sent once on connect |
 | `nowPlaying` | Source→Server | `spicetify`, `soundcloud` | Partial/full source snapshot (`track*`, `isPlaying`, `progress`, `duration`, `volume`, `isLiked`, `isShuffling`, `repeatStatus`) |
 | `volume` | Source→Server | `spicetify`, `soundcloud` | `state:{volume}` |
 | `playback` | Source→Server | `spicetify`, `soundcloud` | `state:{isPlaying, progress}` |
@@ -87,12 +87,12 @@ and closed with 1002.
 | `shuffle` / `repeat` / `like` | Source→Server | `spicetify`, `soundcloud` | `state:{isShuffling}` / `{repeatStatus}` / `{isLiked}` |
 | `command` | Controller→Server→Source | `website`, `obs`, `streamdeck` | `command` + `source`; server whitelists args and forwards to that source only |
 | `getInitialState` | Controller→Server | `website`, `obs`, `streamdeck` | Ask for the full snapshot (also sent automatically on connect) |
-| `nowPlaying` | Server→Controllers | — | Full snapshot for one source |
-| `progress` | Server→All | — | `state:{progress, duration, isPlaying, timestamp}` (1 Hz while playing) |
-| `lyrics` | Server→All | — | `state:{synced, plain, karaoke, provider, loading, ...}` |
-| `sourceStatus` | Server→All | — | `state:{connected}` — a source controller attached/detached (never means "paused") |
+| `nowPlaying` | Server→Controllers | n/a | Full snapshot for one source |
+| `progress` | Server→All | n/a | `state:{progress, duration, isPlaying, timestamp}` (1 Hz while playing) |
+| `lyrics` | Server→All | n/a | `state:{synced, plain, karaoke, provider, loading, ...}` |
+| `sourceStatus` | Server→All | n/a | `state:{connected}`: a source controller attached/detached (never means "paused") |
 | `clientLog` | Any→Server | all | Client-side log line (useful for SC, which has no DevTools) |
-| `error` | Both | — | `{code, message}`; violations never mutate state |
+| `error` | Both | n/a | `{code, message}`; violations never mutate state |
 
 Commands: `play`, `pause`, `togglePlay`, `next`, `previous`, `seek` (`position`),
 `seekForward`/`seekBack` (`offset`), `toggleShuffle`, `toggleRepeat`, `like`,

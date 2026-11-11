@@ -46,13 +46,13 @@ npm run build
 cd ..
 npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.sc-sp-remote.sdPlugin --output . --force
 ```
-The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — only included in GitHub releases.
+The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo; it is only included in GitHub releases.
 
 ### Config Files
 
 `data/config.default.json` is tracked and holds the shipped defaults. `data/config.json` is the user config: it is created on first run from the defaults and is gitignored. Runtime values such as the auto-fetched Musixmatch token (and any admin-panel edit) are written only to the user config.
 
-- To change a shipped default, edit both `server/config.py` (`CODE_DEFAULTS`) and `data/config.default.json` — `tests/test_config.py::TestConfigLayering` asserts they match.
+- To change a shipped default, edit both `server/config.py` (`CODE_DEFAULTS`) and `data/config.default.json`; `tests/test_config.py::TestConfigLayering` asserts they match.
 - Never force-add `data/config.json`; it is already ignored and may contain a token.
 
 ---
@@ -100,7 +100,7 @@ Closes #42"
 
 ## Release Workflow
 
-Releases are automated via CI/CD — just push a tag:
+Releases are automated via CI/CD. Just push a tag:
 
 ```bash
 git tag v2.0.0
@@ -118,10 +118,10 @@ GitHub Actions will:
 #### 1. Bump Version
 
 Update version in these files:
-- `README.md` — badge URL (`version-X.X.X-blue`)
-- `AGENTS.md` — `**Version:** X.X.X`
+- `README.md`: badge URL (`version-X.X.X-blue`)
+- `AGENTS.md`: `**Version:** X.X.X`
 
-`pyproject.toml` has no `[project]` table and no version field — it only carries tool
+`pyproject.toml` has no `[project]` table and no version field; it only carries tool
 config. The release version comes from the git tag (`vX.X.X`), which CI passes to the
 zip name and git-cliff.
 
@@ -139,7 +139,7 @@ git push
 
 #### 3. Create GitHub Release
 
-The CI workflow builds both assets and generates release notes automatically — assets are not committed. If CI failed, push a tag and let CI retry.
+The CI workflow builds both assets and generates release notes automatically; assets are not committed. If CI failed, push a tag and let CI retry.
 
 For a manual release (CI unavailable), push the tag first so it resolves, generate notes with git-cliff, then create:
 

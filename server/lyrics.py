@@ -112,7 +112,7 @@ async def _get_mxm_token(force: bool = False) -> str:
 
 async def _mxm_get(path: str, params: dict[str, Any]) -> Optional[dict[str, Any]]:
     """GET a Musixmatch endpoint; auto-refreshes the token once on auth failure."""
-    # ponytail: reactive-only token refresh — add a proactive expiry check if
+    # ponytail: reactive-only token refresh; add a proactive expiry check if
     # tokens start expiring mid-session instead of at first 401.
     for attempt in range(2):
         try:
@@ -172,7 +172,7 @@ def _subtitle_to_lrc(subtitle_body: str) -> str:
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
-    """Musixmatch returns [] instead of {} for empty bodies — coerce so .get() chains are safe."""
+    """Musixmatch returns [] instead of {} for empty bodies; coerce so .get() chains are safe."""
     return value if isinstance(value, dict) else {}
 
 

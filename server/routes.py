@@ -213,7 +213,7 @@ def _spawn_source_disconnect(client_type: str) -> None:
 
 
 def _is_foreign_web_origin(request: web.Request) -> bool:
-    # WebSockets ignore CORS — any website you visit could open ws://localhost and send commands.
+    # WebSockets ignore CORS: any website you visit could open ws://localhost and send commands.
     # Allowlist known client origins (web UI, Spicetify/CEF, SoundCloud tab); everything else is blocked.
     # Native clients (streamdeck plugin etc.) send no Origin header at all.
     # `security_middleware` has already rejected non-local Host headers, so comparing

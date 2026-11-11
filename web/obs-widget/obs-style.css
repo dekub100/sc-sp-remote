@@ -227,7 +227,7 @@ body {
 }
 
 .lyric-word {
-  /* Fixed lyrics color scheme: bright sung / dim unsung — always readable on dark. */
+  /* Fixed lyrics color scheme: bright sung / dim unsung, always readable on dark. */
   background-image: linear-gradient(
     to right,
     #1ed760,

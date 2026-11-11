@@ -2,17 +2,17 @@
 
 ## Available Actions
 
-- **Play/Pause** — Toggle play/pause (configurable source: Spotify or SoundCloud).
-- **Next Track** — Skip to next track (configurable source).
-- **Previous Track** — Go to previous track (configurable source).
-- **Seek Forward** — Seek forward by a configurable number of seconds (configurable source).
-- **Seek Back** — Seek backward by a configurable number of seconds (configurable source).
-- **Volume Up/Down** — Adjust volume (configurable source).
-- **Set Volume** — Set exact percentage (configurable source).
-- **Volume Display** — Shows current volume dynamically on the button (configurable source).
-- **Toggle Shuffle** — Toggle shuffle mode.
-- **Toggle Repeat** — Cycle repeat: off → playlist → track/one.
-- **Toggle Like** — Like/unlike current track (configurable source).
+- **Play/Pause**: Toggle play/pause (configurable source: Spotify or SoundCloud).
+- **Next Track**: Skip to next track (configurable source).
+- **Previous Track**: Go to previous track (configurable source).
+- **Seek Forward**: Seek forward by a configurable number of seconds (configurable source).
+- **Seek Back**: Seek backward by a configurable number of seconds (configurable source).
+- **Volume Up/Down**: Adjust volume (configurable source).
+- **Set Volume**: Set exact percentage (configurable source).
+- **Volume Display**: Shows current volume dynamically on the button (configurable source).
+- **Toggle Shuffle**: Toggle shuffle mode.
+- **Toggle Repeat**: Cycle repeat: off → playlist → track/one.
+- **Toggle Like**: Like/unlike current track (configurable source).
 
 ## Source Configuration
 
@@ -42,7 +42,7 @@ cd ..
 npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.sc-sp-remote.sdPlugin --output . --force
 ```
 
-The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — CI auto-builds it and includes it in GitHub releases. Double-click the downloaded `.streamDeckPlugin` to install, or use `npx @elgato/cli install com.dekub.sc-sp-remote`.
+The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo; CI auto-builds it and includes it in GitHub releases. Double-click the downloaded `.streamDeckPlugin` to install, or use `npx @elgato/cli install com.dekub.sc-sp-remote`.
 
 ## Server Communication
 

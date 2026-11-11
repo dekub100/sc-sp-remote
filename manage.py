@@ -510,7 +510,7 @@ def main():
                 servicemanager.StartServiceCtrlDispatcher()
                 return
             except win32service.error:
-                pass  # not started by SCM — show help
+                pass  # not started by SCM; show help
 
     is_elevated = "--elevated" in argv
     if is_elevated:

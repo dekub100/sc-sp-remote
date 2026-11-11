@@ -1,6 +1,6 @@
-# AGENTS.md — Index
+# AGENTS.md: Index
 
-## sc-sp-remote — Overview
+## sc-sp-remote: Overview
 
 A dual-source remote control for Spotify (via Spicetify) and SoundCloud (via soundcloud-rpc). Port 8888. Dual-file state (`state_spotify.json` + `state_soundcloud.json`).
 

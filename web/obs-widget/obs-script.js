@@ -96,7 +96,7 @@ function updateDynamicColors(img) {
   const color = extractDominantColor(img);
   if (!color) return;
   let { r, g, b } = color;
-  // Dark album colors are unreadable on the dark background — brighten them.
+  // Dark album colors are unreadable on the dark background; brighten them.
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
   if (brightness < 60) {
     const scale = 60 / Math.max(brightness, 1);
@@ -317,7 +317,7 @@ function applySoundCloudNowPlaying(s) {
 }
 
 function applyProgress(source, s) {
-  // Periodic corrected anchors from the server — keeps interpolation honest
+  // Periodic corrected anchors from the server; keeps interpolation honest
   // after page refresh (initial snapshot can carry a stale raw progress).
   if (source === 'spotify') {
     if (s.progress !== undefined) spotifyState.progress = s.progress;

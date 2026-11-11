@@ -12,7 +12,7 @@ data/lyrics_cache.db
 data/config.json
 data/dev/
 
-# Runtime data (legacy root location — backward compat)
+# Runtime data (legacy root location, kept for backward compat)
 state.json
 logs/
 lyrics_cache.db

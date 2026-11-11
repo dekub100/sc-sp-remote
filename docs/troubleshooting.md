@@ -16,7 +16,7 @@ Check that the port in `data/config.json` isn't already in use. Change the port 
 
 By default the server binds to `127.0.0.1` (localhost only). Set `"host": "0.0.0.0"` in `data/config.json` for LAN access.
 
-In LAN mode the web UI, OBS widget and playback commands work from other devices, but **the admin panel stays loopback-only** — open it on the machine running the server. If you reach the server through a hostname instead of an IP (e.g. `myrig.local`), add it to `allowedHosts`; the Host-header gate blocks unknown names (that's what stops DNS-rebinding attacks).
+In LAN mode the web UI, OBS widget and playback commands work from other devices, but **the admin panel stays loopback-only**. Open it on the machine running the server. If you reach the server through a hostname instead of an IP (e.g. `myrig.local`), add it to `allowedHosts`; the Host-header gate blocks unknown names (that's what stops DNS-rebinding attacks).
 
 ## Web UI not loading
 
@@ -31,8 +31,8 @@ The website at `http://localhost:8888/` shows a dual-source remote with Spotify 
 
 Open `http://localhost:8888/admin` for a web-based config editor and log viewer. The admin API is loopback-only, so it must be opened on the machine running the server.
 
-- **Server Config** tab — most settings apply immediately (polling intervals, log level, lyrics options). `port`, `host` and `backupCount` need a server restart; the save confirmation names them.
-- **Log Viewer** tab — browse server log files. Large logs show the last 256 KB instead of the whole file.
+- **Server Config** tab: most settings apply immediately (polling intervals, log level, lyrics options). `port`, `host` and `backupCount` need a server restart; the save confirmation names them.
+- **Log Viewer** tab: browse server log files. Large logs show the last 256 KB instead of the whole file.
 
 ## Fixing / reinstalling the Spicetify extension & SoundCloud plugin
 
@@ -64,7 +64,7 @@ Both client scripts can go stale or break after a Spicetify/soundcloud-rpc updat
 SoundCloud support works by **scraping the SoundCloud website's DOM** via the [soundcloud-rpc](https://github.com/richardhbtz/soundcloud-rpc) Electron app. This is inherently fragile:
 
 - SoundCloud UI changes can break track/state detection at any time.
-- Metadata (album art, progress, like status) is read from DOM elements — delays and missed updates are expected.
+- Metadata (album art, progress, like status) is read from DOM elements; delays and missed updates are expected.
 - `soundcloud-rpc` must be running for any SoundCloud actions to work.
 - Track progress is polled on an interval, so it can drift slightly behind the player.
 
@@ -84,7 +84,7 @@ If SoundCloud actions stop working, first try [reinstalling the plugin](#fixing-
 - Ensure `enableLyrics` is `true` in `data/config.json` (or toggled on in the admin panel).
 - Clear the local cache: delete `data/lyrics_cache.db` and restart the server. Tracks known to have no lyrics are cached as "not found" for 6 hours before being retried.
 - Adjust `lyricsFetchTimeoutSeconds` in the admin panel if requests time out.
-- Check `lyricsProviderOrder` in the admin panel — remove `"musixmatch"` if Musixmatch is having issues; the server will use LRCLIB only.
+- Check `lyricsProviderOrder` in the admin panel; remove `"musixmatch"` if Musixmatch is having issues; the server will use LRCLIB only.
 - If Musixmatch lyrics suddenly stop but LRCLIB still works, force a token refresh: **Refresh Token** button in the admin panel, or `python manage.py musixmatch-token`.
 
 ## Port conflicts
@@ -110,7 +110,7 @@ All settings live in `data/config.json` (created on first run from the tracked `
 | `stateSaveDebounceSeconds` | float | `2.0` | Seconds of inactivity before saving state to disk |
 | `lyricsFetchTimeoutSeconds` | float | `30` | Lyrics request timeout (per provider) |
 | `lyricsProviderOrder` | list | `["musixmatch", "lrclib"]` | Provider priority order (`musixmatch`, `lrclib`) |
-| `musixmatchToken` | string | `""` | Musixmatch usertoken — auto-fetched, don't edit manually (use admin panel / `manage.py musixmatch-token`) |
+| `musixmatchToken` | string | `""` | Musixmatch usertoken; auto-fetched, don't edit manually (use admin panel / `manage.py musixmatch-token`) |
 | `spicetifyPollingIntervalMs` | int | `500` | Spotify polling interval (ms) |
 | `spicetifyReconnectBaseDelayMs` | int | `1000` | Initial reconnect backoff (ms) |
 | `spicetifyReconnectMaxDelayMs` | int | `10000` | Max reconnect backoff (ms) |
