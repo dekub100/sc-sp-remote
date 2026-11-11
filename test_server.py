@@ -596,6 +596,45 @@ class TestBroadcast:
             "loading": False
         })
 
+class TestConfigLayering:
+    def test_default_file_matches_code_defaults(self) -> None:
+        with open(cfg.DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
+            shipped = json.load(f)
+        assert shipped == cfg.CODE_DEFAULTS
+
+    def test_user_config_overlays_defaults(self, tmp_path: Any) -> None:
+        default = tmp_path / "config.default.json"
+        user = tmp_path / "config.json"
+        default.write_text(json.dumps({"port": 1111, "logLevel": "WARNING"}), encoding="utf-8")
+        user.write_text(json.dumps({"port": 2222}), encoding="utf-8")
+        merged = cfg.load_config(str(default), str(user))
+        assert merged["port"] == 2222
+        assert merged["logLevel"] == "WARNING"
+        assert merged["defaultVolume"] == cfg.CODE_DEFAULTS["defaultVolume"]
+
+    def test_invalid_user_config_falls_back_to_defaults(self, tmp_path: Any) -> None:
+        user = tmp_path / "config.json"
+        user.write_text("{ not json", encoding="utf-8")
+        merged = cfg.load_config(str(tmp_path / "missing.default.json"), str(user))
+        assert merged == cfg.CODE_DEFAULTS
+
+    def test_user_config_with_utf8_bom_is_read(self, tmp_path: Any) -> None:
+        # Notepad and PowerShell 5.1 write a BOM; ignore it instead of dropping the config.
+        user = tmp_path / "config.json"
+        user.write_bytes("\ufeff{\"port\": 3333}".encode("utf-8"))
+        merged = cfg.load_config(str(tmp_path / "missing.default.json"), str(user))
+        assert merged["port"] == 3333
+
+    def test_missing_user_config_is_created(self, tmp_path: Any) -> None:
+        target = tmp_path / "nested" / "config.json"
+        assert cfg.ensure_user_config(str(target)) is True
+        with open(target, encoding="utf-8") as f:
+            created = json.load(f)
+        assert set(created) == set(cfg.config)
+        assert created["port"] == cfg.config["port"]
+        assert cfg.ensure_user_config(str(target)) is False
+
+
 class TestConfigEndpoint:
     async def test_cors_with_wildcard_origin(self) -> None:
         req: MagicMock = MagicMock()
@@ -655,30 +694,22 @@ class TestConfigEndpoint:
 
 class TestAdminConfigPut:
     @pytest.fixture
-    async def client(self):
+    async def client(self, tmp_path: Any):
         from copy import deepcopy
 
-        import routes
-        from config import CONFIG_PATH
-        saved_config = deepcopy(cfg.config)
-        saved_file = None
-        try:
-            with open(CONFIG_PATH, "r") as f:
-                saved_file = f.read()
-        except FileNotFoundError:
-            pass
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
+        saved_config = deepcopy(cfg.config)
         app = web.Application()
         app.router.add_put('/api/admin/config', routes.handle_admin_config_put)
         app.router.add_get('/api/admin/config', routes.handle_admin_config_get)
-        async with TestClient(TestServer(app)) as tc:
-            yield tc
+        # The handler persists to routes.CONFIG_PATH; point it at tmp_path so a
+        # test run never rewrites the real user config.
+        with patch.object(routes, "CONFIG_PATH", str(tmp_path / "config.json")):
+            async with TestClient(TestServer(app)) as tc:
+                yield tc
         cfg.config.clear()
         cfg.config.update(saved_config)
-        if saved_file is not None:
-            with open(CONFIG_PATH, "w") as f:
-                f.write(saved_file)
 
     async def test_valid_port_update(self, client) -> None:
         resp = await client.put('/api/admin/config', json={"port": 9090})

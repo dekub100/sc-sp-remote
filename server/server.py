@@ -7,7 +7,7 @@ from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, start_progress_broadcasting
-from config import PROJECT_ROOT, SC_STATE_FILE, STATE_FILE, config
+from config import PROJECT_ROOT, SC_STATE_FILE, STATE_FILE, config, ensure_user_config
 from log import logger
 from lyrics import _close_connection, _close_session, get_cached_lyrics, init_lyrics_cache, parse_synced_lyrics
 from routes import (
@@ -84,6 +84,8 @@ if track_uri and track_duration > 0:
 
 
 async def main() -> None:
+    ensure_user_config()
+
     main_app: web.Application = web.Application(middlewares=[security_middleware])
 
     main_app.router.add_get('/', index_handler)

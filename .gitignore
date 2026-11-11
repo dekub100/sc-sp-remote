@@ -8,6 +8,9 @@ data/state_spotify.json
 data/state_soundcloud.json
 data/logs/
 data/lyrics_cache.db
+# User config is generated on first run from data/config.default.json (tracked).
+data/config.json
+data/dev/
 
 # Runtime data (legacy root location — backward compat)
 state.json

@@ -36,24 +36,13 @@ if not exist "data" (
 )
 
 if not exist "data\config.json" (
-    echo Creating default config.json...
-    (
-        echo {
-        echo   "port": 8888,
-        echo   "allowedOrigins": ["*"],
-        echo   "defaultVolume": 0.5,
-        echo   "enableOBS": true,
-        echo   "enableWebsite": true,
-        echo   "enableAlbumArt": true,
-
-        echo   "logLevel": "INFO",
-        echo   "backupCount": 3,
-        echo   "lyricsFetchTimeoutSeconds": 30,
-        echo   "lyricsProviderOrder": ["musixmatch", "lrclib"],
-        echo   "musixmatchToken": "",
-        echo }
-    ) > data\config.json
-    echo [OK] Default config created at data\config.json
+    if exist "data\config.default.json" (
+        echo Creating config.json from config.default.json...
+        copy /Y "data\config.default.json" "data\config.json" >nul
+        echo [OK] Default config created at data\config.json
+    ) else (
+        echo [WARN] data\config.default.json missing; the server will create config.json on first run.
+    )
 ) else (
     echo [OK] config.json already exists
 )

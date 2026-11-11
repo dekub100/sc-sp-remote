@@ -6,14 +6,20 @@ from typing import Any
 
 PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER_DIR: str = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
+REPO_DATA_DIR: str = os.path.join(PROJECT_ROOT, "data")
+# Runtime data (state, logs, lyrics cache). `SC_SP_REMOTE_DATA_DIR` lets the dev
+# server and the test suite use a private directory instead of the live one.
+DATA_DIR: str = os.environ.get("SC_SP_REMOTE_DATA_DIR", REPO_DATA_DIR)
+DEFAULT_CONFIG_PATH: str = os.path.join(REPO_DATA_DIR, "config.default.json")
 CONFIG_PATH: str = os.environ.get("SC_SP_REMOTE_CONFIG", os.path.join(DATA_DIR, "config.json"))
 STATE_FILE: str = os.path.join(DATA_DIR, "state_spotify.json")
 SC_STATE_FILE: str = os.path.join(DATA_DIR, "state_soundcloud.json")
 LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
-config: dict[str, Any] = {
+# Authoritative defaults. data/config.default.json must contain exactly this
+# dict (enforced by test_server.py::TestConfigLayering).
+CODE_DEFAULTS: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",
     "allowedOrigins": ["http://localhost:8888", "http://127.0.0.1:8888"],
@@ -40,12 +46,49 @@ config: dict[str, Any] = {
     "soundcloudPollingIntervalMs": 500,
 }
 
-if os.path.exists(CONFIG_PATH):
+
+def _read_json_object(path: str) -> dict[str, Any]:
+    """Read a JSON object, returning {} for a missing or invalid file."""
+    if not os.path.exists(path):
+        return {}
     try:
-        with open(CONFIG_PATH, "r") as f:
-            config.update(json.load(f))
+        # utf-8-sig also accepts plain UTF-8; Windows editors often add a BOM.
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data: Any = json.load(f)
+        if isinstance(data, dict):
+            return data
+        print(f"Ignoring {path}: expected a JSON object")
     except Exception as e:
-        print(f"Failed to read config.json, using defaults: {e}")
+        print(f"Failed to read {path}, keeping current values: {e}")
+    return {}
+
+
+def load_config(
+    default_path: str = DEFAULT_CONFIG_PATH,
+    user_path: str = CONFIG_PATH,
+) -> dict[str, Any]:
+    """Merge code defaults <- shipped defaults <- user config (later wins)."""
+    merged: dict[str, Any] = dict(CODE_DEFAULTS)
+    merged.update(_read_json_object(default_path))
+    merged.update(_read_json_object(user_path))
+    return merged
+
+
+def ensure_user_config(path: str | None = None) -> bool:
+    """Create the user config on first run. Returns True when it was created."""
+    target: str = path or CONFIG_PATH
+    if os.path.exists(target):
+        return False
+    parent: str = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    return True
+
+
+config: dict[str, Any] = load_config()
 
 # Derived from user config so admin docs stay truthful (applied at startup).
 STATE_SAVE_DEBOUNCE_SECONDS: float = float(config["stateSaveDebounceSeconds"])

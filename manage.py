@@ -28,8 +28,10 @@ import time
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DEV_PORT = 8888
 
-DEV_CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.dev.json")
+DEV_DATA_DIR = os.path.join(PROJECT_ROOT, "data", "dev")
+DEV_CONFIG_PATH = os.path.join(DEV_DATA_DIR, "config.dev.json")
 PROD_CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.json")
+DEFAULT_CONFIG_PATH = os.path.join(PROJECT_ROOT, "data", "config.default.json")
 WATCH_DIRS = [
     os.path.join(PROJECT_ROOT, "server"),
     os.path.join(PROJECT_ROOT, "web"),
@@ -80,13 +82,16 @@ def cmd_run(args):
 # --- dev ----------------------------------------------------------------------
 
 def _write_dev_config(port, host):
+    os.makedirs(DEV_DATA_DIR, exist_ok=True)
     base = {}
-    if os.path.exists(PROD_CONFIG_PATH):
-        try:
-            with open(PROD_CONFIG_PATH) as f:
-                base = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
+    for source in (PROD_CONFIG_PATH, DEFAULT_CONFIG_PATH):
+        if os.path.exists(source):
+            try:
+                with open(source) as f:
+                    base = json.load(f)
+                break
+            except (json.JSONDecodeError, OSError):
+                pass
     base["port"] = port
     base["host"] = host
     base["logLevel"] = "DEBUG"
@@ -98,6 +103,7 @@ def _write_dev_config(port, host):
 def _start_server(port, host, dev_config_path):
     env = os.environ.copy()
     env["SC_SP_REMOTE_CONFIG"] = dev_config_path
+    env["SC_SP_REMOTE_DATA_DIR"] = DEV_DATA_DIR
     proc = subprocess.Popen(
         [sys.executable, SERVER_SCRIPT],
         env=env, cwd=PROJECT_ROOT,
@@ -117,6 +123,7 @@ def _run_server_process(port, host, dev_config_path):
     import time
 
     os.environ["SC_SP_REMOTE_CONFIG"] = dev_config_path
+    os.environ["SC_SP_REMOTE_DATA_DIR"] = DEV_DATA_DIR
     server_dir = os.path.join(PROJECT_ROOT, "server")
     sys.path.insert(0, server_dir)
     import server
@@ -143,7 +150,7 @@ def cmd_dev(args):
     _write_dev_config(port, host)
     print(f"  Dev config: {DEV_CONFIG_PATH}")
     print(f"  Dev server: http://{host}:{port}/")
-    print(f"  Data dir:   {os.path.join(PROJECT_ROOT, 'data')}")
+    print(f"  Dev data:   {DEV_DATA_DIR}")
 
     def _cleanup():
         if os.path.exists(DEV_CONFIG_PATH):
@@ -274,12 +281,14 @@ def cmd_musixmatch_token(args):
     the server is down (picked up on next server start).
     """
     port, host = 8888, "127.0.0.1"
-    try:
-        with open(PROD_CONFIG_PATH) as f:
-            cfg = json.load(f)
-        port, host = cfg.get("port", port), cfg.get("host", host)
-    except (OSError, json.JSONDecodeError):
-        pass
+    for source in (PROD_CONFIG_PATH, DEFAULT_CONFIG_PATH):
+        try:
+            with open(source) as f:
+                cfg = json.load(f)
+            port, host = cfg.get("port", port), cfg.get("host", host)
+            break
+        except (OSError, json.JSONDecodeError):
+            continue
 
     url = f"http://{host}:{port}/api/admin/lyrics/musixmatch-token"
     print(f"Asking running server ({url})...")
@@ -307,7 +316,7 @@ def cmd_musixmatch_token(args):
                 await lyrics._close_session()
 
         token = asyncio.run(_refresh())
-        print(f"SUCCESS: New token fetched and saved to config.json ({token[:6]}...)")
+        print(f"SUCCESS: New token fetched and saved to the user config ({token[:6]}...)")
         print("Restart the server if it is currently running so it picks up the new token.")
     except Exception as e:
         sys.exit(f"ERROR: Could not refresh Musixmatch token: {type(e).__name__}: {e}")
