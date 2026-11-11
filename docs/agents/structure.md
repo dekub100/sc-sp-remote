@@ -9,7 +9,22 @@
 ├── .github/
 │   └── workflows/
 │       └── ci.yml             # GitHub Actions (Linux + Windows + Stream Deck + web tests, CD on tag)
-├── test_server.py            # Server test suite
+├── tests/                    # Server test suite (one file per server/ module)
+│   ├── conftest.py           # Shared fixtures (reset_state, mock_ws, temp_db, lyrics_cache_db)
+│   ├── helpers.py            # register_client + fake HTTP responses
+│   ├── test_lyrics.py        # lyrics.py: LRC parsing, cache, karaoke
+│   ├── test_lyrics_providers.py  # lyrics.py: Musixmatch/LRCLIB fetch, fallback order
+│   ├── test_handlers.py      # handlers.py: dispatch + per-type handlers
+│   ├── test_inbound_validation.py  # handlers.py: junk client state, crashes, cover URLs
+│   ├── test_state.py         # state.py: save data, debounce, progress interpolation
+│   ├── test_broadcast.py     # broadcast.py: fan-out, state messages, backpressure
+│   ├── test_wire_contract.py # pinned v2 payload shapes clients depend on
+│   ├── test_routes.py        # routes.py: HTTP + WS endpoints, admin API
+│   ├── test_security.py      # routes.py: host/origin gating, WS frame limits
+│   ├── test_config.py        # config.py: layering, atomic writes
+│   ├── test_protocol.py      # protocol.py: role permissions, error envelope
+│   ├── test_logs.py          # log.py + log tail endpoint
+│   └── test_manage.py        # manage.py helpers
 ├── setup.bat                 # One-click Windows installer
 ├── AGENTS.md                 # Agent instructions (this index)
 ├── CONTRIBUTING.md           # Running things, release workflow

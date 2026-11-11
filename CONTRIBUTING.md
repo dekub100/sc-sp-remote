@@ -30,12 +30,12 @@ python manage.py install
 
 ### Tests
 ```bash
-python -m pytest test_server.py -v
+python -m pytest tests/ -v
 ```
 
 ### Linting
 ```bash
-ruff check server/ manage.py test_server.py
+ruff check server/ manage.py conftest.py tests/
 ```
 
 ### Stream Deck Plugin
@@ -52,7 +52,7 @@ The `.streamDeckPlugin` file is output to the project root. It is not committed 
 
 `data/config.default.json` is tracked and holds the shipped defaults. `data/config.json` is the user config: it is created on first run from the defaults and is gitignored. Runtime values such as the auto-fetched Musixmatch token (and any admin-panel edit) are written only to the user config.
 
-- To change a shipped default, edit both `server/config.py` (`CODE_DEFAULTS`) and `data/config.default.json` — `test_server.py::TestConfigLayering` asserts they match.
+- To change a shipped default, edit both `server/config.py` (`CODE_DEFAULTS`) and `data/config.default.json` — `tests/test_config.py::TestConfigLayering` asserts they match.
 - Never force-add `data/config.json`; it is already ignored and may contain a token.
 
 ---

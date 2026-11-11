@@ -20,7 +20,7 @@ Dev tool isolates both its config (`data/dev/config.dev.json`) and all runtime d
 2. **New state field** → declare it in `SOURCES` in `state.py` (`defaults`, plus `persisted` or `runtime`, and an `update_fields` entry if clients may push it), then add it to the `nowPlaying` snapshot in `broadcast.py` and to clients. The descriptor test fails if a state key is unclassified.
 3. **New web UI element** → HTML + `ui` object in `script.js` + event listener
 4. **New OBS widget feature** → same pattern in `obs-widget/` files
-5. **Always** → add tests in `test_server.py`, run `ruff check`, run `pytest`
+5. **Always** → add tests in the matching `tests/test_<module>.py` (see `docs/agents/structure.md`), run `ruff check`, run `pytest`
 
 ## SoundCloud-Specific Notes
 
