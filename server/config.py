@@ -18,7 +18,7 @@ LOG_DIR: str = os.path.join(DATA_DIR, "logs")
 LYRICS_CACHE_DB: str = os.path.join(DATA_DIR, "lyrics_cache.db")
 
 # Authoritative defaults. data/config.default.json must contain exactly this
-# dict (enforced by test_server.py::TestConfigLayering).
+# dict (enforced by tests/test_config.py::TestConfigLayering).
 CODE_DEFAULTS: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",
