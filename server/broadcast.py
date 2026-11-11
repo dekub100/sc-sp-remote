@@ -8,9 +8,13 @@ from typing import Any, Optional
 from aiohttp import web
 from config import PROGRESS_BROADCAST_INTERVAL
 from log import logger
-from state import get_album_art_url, get_sc_cover_url, state
+from state import as_ms, as_volume, get_album_art_url, get_sc_cover_url, state
 
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
+
+# A client whose TCP buffer is full (paused OBS source, sleeping laptop, hung
+# browser tab) must never block a broadcast: send_str awaits transport drain.
+BROADCAST_SEND_TIMEOUT_SECONDS: float = 1.0
 
 
 async def _send_to_client(
@@ -19,7 +23,10 @@ async def _send_to_client(
     msg: str
 ) -> Optional[web.WebSocketResponse]:
     try:
-        await ws.send_str(msg)
+        await asyncio.wait_for(ws.send_str(msg), timeout=BROADCAST_SEND_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning(f"Broadcast: Dropping unresponsive client ({info.get('type', 'unknown')})")
+        return ws
     except ConnectionResetError:
         logger.debug(f"Broadcast: Client disconnected ({info.get('type', 'unknown')})")
         return ws
@@ -57,7 +64,7 @@ def build_spotify_state_message(progress: int) -> dict[str, Any]:
     return {
         "type": "stateUpdate",
         "source": "spotify",
-        "volume": state["volume"],
+        "volume": as_volume(state["volume"]),
         "isPlaying": state["isPlaying"],
         "trackName": state["currentTrack"]["trackName"],
         "artistName": state["currentTrack"]["artistName"],
@@ -66,8 +73,8 @@ def build_spotify_state_message(progress: int) -> dict[str, Any]:
         "albumUri": state["currentTrack"]["albumUri"],
         "artistUri": state["currentTrack"].get("artistUri", ""),
         "albumArtUrl": get_album_art_url(),
-        "progress": progress,
-        "duration": state["trackDuration"],
+        "progress": as_ms(progress),
+        "duration": as_ms(state["trackDuration"]),
         "isShuffling": state["isShuffling"],
         "repeatStatus": state["repeatStatus"],
         "isLiked": state["isLiked"],
@@ -85,9 +92,9 @@ def build_sc_state_message(progress_ms: int) -> dict[str, Any]:
         "id": state["scId"],
         "coverUrl": get_sc_cover_url(),
         "isPlaying": state["scIsPlaying"],
-        "progressMs": progress_ms,
-        "durationMs": state["scDurationMs"],
-        "volume": state["scVolume"],
+        "progressMs": as_ms(progress_ms),
+        "durationMs": as_ms(state["scDurationMs"]),
+        "volume": as_volume(state["scVolume"]),
         "isLiked": state["scIsLiked"],
         "isShuffling": state["scIsShuffling"],
         "repeatStatus": state["scRepeatStatus"],
@@ -154,18 +161,35 @@ async def broadcast_progress_update(exclude_ws: Optional[web.WebSocketResponse] 
     }, exclude_ws)
 
 
-async def broadcast_lyrics_update() -> None:
+def build_lyrics_message() -> dict[str, Any]:
+    """Single source of truth for the lyricsUpdate payload (initial + broadcast).
+
+    Clients rely on `loading` to show "downloading" instead of "no lyrics".
+    """
     lyrics: dict[str, Any] = state["lyrics"]
-    await broadcast({
+    return {
         "type": "lyricsUpdate",
-        "available": lyrics["available"],
-        "instrumental": lyrics["instrumental"],
-        "synced": lyrics["synced"],
-        "plain": lyrics["plain"],
+        "available": lyrics.get("available", False),
+        "instrumental": lyrics.get("instrumental", False),
+        "synced": lyrics.get("synced", []),
+        "plain": lyrics.get("plain", ""),
         "karaoke": lyrics.get("karaoke", []),
         "provider": lyrics.get("provider", ""),
-        "loading": lyrics["loading"]
-    })
+        "loading": lyrics.get("loading", False)
+    }
+
+
+async def broadcast_lyrics_update() -> None:
+    await broadcast(build_lyrics_message())
+
+
+async def broadcast_source_status(source: str, connected: bool) -> None:
+    """Tell clients whether a playback source's controller is attached.
+
+    Unlike the old "disconnect means paused" rule this carries no playback
+    state, so a reconnect can't pause anything.
+    """
+    await broadcast({"type": "sourceStatus", "source": source, "connected": connected})
 
 
 async def _compute_and_broadcast_progress() -> None:

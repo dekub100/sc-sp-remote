@@ -5,6 +5,7 @@
     "http://localhost:8888",
     "http://127.0.0.1:8888"
   ],
+  "allowedHosts": [],
   "defaultVolume": 0.5,
   "enableOBS": true,
   "enableWebsite": true,

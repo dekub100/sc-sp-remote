@@ -20,6 +20,7 @@ from routes import (
     handle_state,
     index_handler,
     obs_handler,
+    security_middleware,
 )
 from state import (
     cancel_pending_save,
@@ -83,7 +84,7 @@ if track_uri and track_duration > 0:
 
 
 async def main() -> None:
-    main_app: web.Application = web.Application()
+    main_app: web.Application = web.Application(middlewares=[security_middleware])
 
     main_app.router.add_get('/', index_handler)
     main_app.router.add_get('/obs', obs_handler)

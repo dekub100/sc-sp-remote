@@ -30,6 +30,7 @@ def reset_state():
             "albumName": "",
             "trackUri": "",
             "albumUri": "",
+            "artistUri": "",
             "albumArtUrl": ""
         },
         "trackProgress": 0,
@@ -49,6 +50,8 @@ def reset_state():
         "scProgressStartTimestamp": 0,
         "scVolume": 0.5,
         "scIsLiked": False,
+        "scIsShuffling": False,
+        "scRepeatStatus": 0,
         "lyrics": {
             "trackUri": "",
             "synced": [],
@@ -1556,3 +1559,398 @@ class TestHandleMessageCrash:
             mock_exc.assert_called_once()
         finally:
             handlers.MESSAGE_HANDLERS["volumeUpdate"] = original
+
+class TestInboundValidation:
+    """State is fed by WebSocket clients; bad types must be ignored, not stored."""
+
+    async def test_wrong_types_are_ignored(self, mock_ws: AsyncMock) -> None:
+        st.state["currentTrack"]["trackUri"] = "spotify:track:keep"
+        st.state["currentTrack"]["trackName"] = "Keep"
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_spotify_state_update(mock_ws, {
+                "type": "stateUpdate",
+                "isPlaying": "yes",
+                "isShuffling": 1,
+                "isLiked": "true",
+                "repeatStatus": 99,
+                "progress": "lol",
+                "duration": None,
+                "volume": [1],
+                "trackName": 5,
+                "trackUri": 7,
+                "artistName": "Artist",
+            })
+        assert st.state["isPlaying"] is False
+        assert st.state["isShuffling"] is False
+        assert st.state["isLiked"] is False
+        assert st.state["repeatStatus"] == 0
+        assert st.state["trackProgress"] == 0
+        assert st.state["trackDuration"] == 0
+        assert st.state["volume"] == 0.5
+        assert st.state["currentTrack"]["trackUri"] == "spotify:track:keep"
+        assert st.state["currentTrack"]["trackName"] == "Keep"
+        assert st.state["currentTrack"]["artistName"] == "Artist"
+
+    async def test_nan_and_infinity_are_ignored(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_spotify_state_update(mock_ws, {
+                "type": "stateUpdate",
+                "progress": float("nan"),
+                "duration": float("inf"),
+                "volume": float("nan"),
+            })
+        assert st.state["trackProgress"] == 0
+        assert st.state["trackDuration"] == 0
+        assert st.state["volume"] == 0.5
+
+    async def test_values_are_clamped(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast_spotify_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_spotify_state_update(mock_ws, {
+                "type": "stateUpdate", "volume": 5, "progress": -100, "duration": 10 ** 12,
+            })
+        assert st.state["volume"] == 1.0
+        assert st.state["trackProgress"] == 0
+        assert st.state["trackDuration"] == handlers._MAX_MS
+
+    async def test_sc_wrong_types_are_ignored(self, mock_ws: AsyncMock) -> None:
+        with patch.object(handlers, "broadcast_soundcloud_state", new_callable=AsyncMock), \
+             patch.object(handlers, "save_sc_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_sc_state_update(mock_ws, {
+                "type": "scStateUpdate",
+                "track": 1, "progressMs": "x", "durationMs": None,
+                "volume": "loud", "isPlaying": "yes", "repeatStatus": 7,
+                "coverUrl": {"a": 1},
+            })
+        assert st.state["scTrack"] == "No song playing"
+        assert st.state["scProgressMs"] == 0
+        assert st.state["scDurationMs"] == 0
+        assert st.state["scVolume"] == 0.5
+        assert st.state["scIsPlaying"] is False
+        assert st.state["scRepeatStatus"] == 0
+        assert st.state["scCoverUrl"] == ""
+
+    async def test_state_endpoint_survives_poisoned_state(self) -> None:
+        # Defensive path: even if something writes junk, /api/state must answer.
+        st.state["isPlaying"] = True
+        st.state["trackProgress"] = "lol"
+        st.state["trackDuration"] = "nope"
+        resp = await routes.handle_state(MagicMock())
+        body: dict[str, Any] = json.loads(resp.body)
+        assert resp.status == 200
+        assert body["spotify"]["progress"] == 0
+        assert body["spotify"]["duration"] == 0
+
+    async def test_volume_step_rejects_non_numeric(self, mock_ws: AsyncMock) -> None:
+        st.state["volume"] = 0.5
+        with patch.object(handlers, "broadcast_volume_update", new_callable=AsyncMock), \
+             patch.object(handlers, "save_spotify_state_debounced", new_callable=AsyncMock):
+            await handlers.handle_spotify_volume_update(mock_ws, {"command": "volumeUp", "step": "huge"})
+        assert st.state["volume"] == pytest.approx(0.55)
+
+
+class TestProgressAnchor:
+    """isPlaying is persisted but its anchor is not; never report end-of-track."""
+
+    def test_restart_without_anchor_reports_stored_progress(self) -> None:
+        st.state.update({
+            "isPlaying": True, "trackProgress": 0, "trackDuration": 200000,
+            "trackProgressStartTimestamp": 0,
+        })
+        assert st.get_interpolated_track_progress() == 0
+
+    def test_sc_restart_without_anchor_reports_stored_progress(self) -> None:
+        st.state.update({
+            "scIsPlaying": True, "scProgressMs": 0, "scDurationMs": 200000,
+            "scProgressStartTimestamp": 0,
+        })
+        assert st.get_interpolated_sc_progress() == 0
+
+    def test_anchor_still_interpolates(self) -> None:
+        import time as _time
+        st.state.update({
+            "isPlaying": True, "trackProgress": 1000, "trackDuration": 200000,
+            "trackProgressStartTimestamp": _time.time() * 1000 - 1000,
+        })
+        assert st.get_interpolated_track_progress() == pytest.approx(2000, abs=200)
+
+
+class TestLyricsMessageShape:
+    async def test_initial_state_includes_loading(self, mock_ws: AsyncMock) -> None:
+        st.state["lyrics"] = {
+            "trackUri": "spotify:track:x", "synced": [], "plain": "", "available": False,
+            "instrumental": False, "loading": True, "karaoke": [], "provider": "",
+        }
+        await handlers.handle_get_initial_state(mock_ws, {})
+        messages = [json.loads(call.args[0]) for call in mock_ws.send_str.await_args_list]
+        lyrics = next(m for m in messages if m["type"] == "lyricsUpdate")
+        assert lyrics["loading"] is True
+
+    async def test_broadcast_and_initial_payloads_match(self, mock_ws: AsyncMock) -> None:
+        with patch.object(broadcast, "broadcast", new_callable=AsyncMock) as mock_broadcast:
+            await broadcast.broadcast_lyrics_update()
+        await handlers.handle_get_initial_state(mock_ws, {})
+        messages = [json.loads(call.args[0]) for call in mock_ws.send_str.await_args_list]
+        initial = next(m for m in messages if m["type"] == "lyricsUpdate")
+        assert mock_broadcast.await_args.args[0] == initial
+
+
+class TestBroadcastBackpressure:
+    async def test_stalled_client_is_dropped_not_awaited(self) -> None:
+        class _Stalled:
+            async def send_str(self, msg: str) -> None:
+                await asyncio.sleep(30)
+
+        class _Fast:
+            def __init__(self) -> None:
+                self.messages: list[str] = []
+
+            async def send_str(self, msg: str) -> None:
+                self.messages.append(msg)
+
+        stalled, fast = _Stalled(), _Fast()
+        broadcast.CLIENTS[stalled] = {"type": "obs"}  # type: ignore[index]
+        broadcast.CLIENTS[fast] = {"type": "website"}  # type: ignore[index]
+        with patch.object(broadcast, "BROADCAST_SEND_TIMEOUT_SECONDS", 0.05):
+            await asyncio.wait_for(broadcast.broadcast({"type": "progressUpdate"}), timeout=1.0)
+        assert stalled not in broadcast.CLIENTS
+        assert fast in broadcast.CLIENTS
+        assert len(fast.messages) == 1
+
+    async def test_progress_loop_keeps_ticking_past_a_stalled_client(self) -> None:
+        class _Stalled:
+            async def send_str(self, msg: str) -> None:
+                await asyncio.sleep(30)
+
+        class _Fast:
+            def __init__(self) -> None:
+                self.count = 0
+
+            async def send_str(self, msg: str) -> None:
+                self.count += 1
+
+        stalled, fast = _Stalled(), _Fast()
+        broadcast.CLIENTS[stalled] = {"type": "obs"}  # type: ignore[index]
+        broadcast.CLIENTS[fast] = {"type": "website"}  # type: ignore[index]
+        st.state["isPlaying"] = True
+        st.state["trackDuration"] = 200000
+        with patch.object(broadcast, "BROADCAST_SEND_TIMEOUT_SECONDS", 0.05), \
+             patch.object(broadcast, "PROGRESS_BROADCAST_INTERVAL", 0.02):
+            task = asyncio.create_task(broadcast.start_progress_broadcasting())
+            await asyncio.sleep(0.2)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert fast.count >= 3
+        assert stalled not in broadcast.CLIENTS
+
+
+class TestWebSocketLifecycle:
+    @pytest.fixture
+    async def tc(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        app.router.add_get('/', routes.websocket_handler)
+        app.router.add_get('/api/state', routes.handle_state)
+        async with TestClient(TestServer(app)) as client:
+            yield client
+
+    async def _is_playing(self, tc) -> bool:
+        async with tc.get('/api/state') as resp:
+            return (await resp.json())["spotify"]["isPlaying"]
+
+    async def test_reconnect_does_not_pause_while_another_controller_is_attached(self, tc) -> None:
+        with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
+             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+            old = await tc.ws_connect('/?client=spicetify')
+            new = await tc.ws_connect('/?client=spicetify')
+            await old.send_json({"type": "stateUpdate", "isPlaying": True,
+                                 "trackName": "Song", "progress": 1000, "duration": 200000})
+            await asyncio.sleep(0.05)
+            await old.close()
+            await asyncio.sleep(0.2)
+            assert await self._is_playing(tc) is True
+            await new.close()
+
+    async def test_last_controller_disconnect_pauses(self, tc) -> None:
+        with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
+             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+            ws = await tc.ws_connect('/?client=spicetify')
+            await ws.send_json({"type": "stateUpdate", "isPlaying": True,
+                                "trackName": "Song", "progress": 1000, "duration": 200000})
+            await asyncio.sleep(0.05)
+            await ws.close()
+            await asyncio.sleep(0.2)
+            assert await self._is_playing(tc) is False
+
+    async def test_source_status_is_broadcast(self, tc) -> None:
+        with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
+             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+            observer = await tc.ws_connect('/?client=obs')
+            source = await tc.ws_connect('/?client=spicetify')
+            messages = []
+            for _ in range(10):
+                try:
+                    messages.append(await asyncio.wait_for(observer.receive_json(), timeout=1.0))
+                except asyncio.TimeoutError:
+                    break
+            connected = [m for m in messages if m["type"] == "sourceStatus" and m.get("connected")]
+            assert connected and connected[0]["source"] == "spotify"
+            await source.close()
+            await observer.close()
+
+class TestSecurityMiddleware:
+    @pytest.fixture
+    async def tc(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application(middlewares=[routes.security_middleware])
+        app.router.add_get('/api/state', routes.handle_state)
+        app.router.add_get('/api/admin/config', routes.handle_admin_config_get)
+        app.router.add_post('/api/admin/lyrics/musixmatch-token', routes.handle_admin_mxm_token_refresh)
+        app.router.add_get('/ws', routes.websocket_handler)
+        async with TestClient(TestServer(app)) as client:
+            yield client
+
+    async def test_default_host_is_allowed(self, tc) -> None:
+        resp = await tc.get('/api/state')
+        assert resp.status == 200
+
+    async def test_rebound_host_is_rejected(self, tc) -> None:
+        for host in ("attacker.example", "attacker.example:8888", "evil.test:80"):
+            resp = await tc.get('/api/state', headers={"Host": host})
+            assert resp.status == 403, host
+            resp = await tc.get('/api/admin/config', headers={"Host": host})
+            assert resp.status == 403, host
+
+    async def test_private_lan_host_is_allowed(self, tc) -> None:
+        resp = await tc.get('/api/state', headers={"Host": "192.168.1.5:8888"})
+        assert resp.status == 200
+
+    async def test_configured_allowed_hosts_are_allowed(self, tc) -> None:
+        original = list(cfg.config.get("allowedHosts") or [])
+        cfg.config["allowedHosts"] = ["myrig.local"]
+        try:
+            resp = await tc.get('/api/state', headers={"Host": "myrig.local:8888"})
+        finally:
+            cfg.config["allowedHosts"] = original
+        assert resp.status == 200
+
+    async def test_cross_site_post_is_rejected_before_handler(self, tc) -> None:
+        with patch("lyrics.refresh_musixmatch_token", new_callable=AsyncMock) as refresh:
+            resp = await tc.post('/api/admin/lyrics/musixmatch-token',
+                                 headers={"Origin": "https://evil.example"})
+            refresh.assert_not_called()
+        assert resp.status == 403
+
+    async def test_cross_site_put_is_rejected(self, tc) -> None:
+        resp = await tc.put('/api/admin/config', json={"port": 9999},
+                            headers={"Origin": "https://evil.example"})
+        assert resp.status == 403
+        assert cfg.config["port"] != 9999
+
+    async def test_sec_fetch_site_cross_site_is_rejected(self, tc) -> None:
+        resp = await tc.post('/api/admin/lyrics/musixmatch-token',
+                             headers={"Origin": f"http://127.0.0.1:{tc.server.port}",
+                                      "Sec-Fetch-Site": "cross-site"})
+        assert resp.status == 403
+
+    async def test_same_origin_post_is_allowed(self, tc) -> None:
+        origin = f"http://127.0.0.1:{tc.server.port}"
+        with patch("lyrics.refresh_musixmatch_token", new_callable=AsyncMock, return_value="abcdef"):
+            resp = await tc.post('/api/admin/lyrics/musixmatch-token', headers={"Origin": origin})
+        assert resp.status == 200
+
+    async def test_native_client_without_origin_is_allowed(self, tc) -> None:
+        with patch("lyrics.refresh_musixmatch_token", new_callable=AsyncMock, return_value="abcdef"):
+            resp = await tc.post('/api/admin/lyrics/musixmatch-token')
+        assert resp.status == 200
+
+    def test_admin_peer_must_be_loopback(self) -> None:
+        assert routes._is_loopback_peer("127.0.0.1") is True
+        assert routes._is_loopback_peer("::1") is True
+        assert routes._is_loopback_peer("192.168.1.9") is False
+        assert routes._is_loopback_peer("203.0.113.7") is False
+        assert routes._is_loopback_peer(None) is False
+
+    def test_wildcard_cors_does_not_open_the_ws_gate(self) -> None:
+        original = list(cfg.config["allowedOrigins"])
+        cfg.config["allowedOrigins"] = ["*"]
+        try:
+            request = MagicMock()
+            request.headers = {"Origin": "https://evil.example", "Host": "localhost:8888"}
+            assert routes._is_foreign_web_origin(request) is True
+        finally:
+            cfg.config["allowedOrigins"] = original
+
+    def test_lan_origin_ws_is_accepted(self) -> None:
+        request = MagicMock()
+        request.headers = {"Origin": "http://192.168.1.5:8888", "Host": "192.168.1.5:8888"}
+        assert routes._is_foreign_web_origin(request) is False
+
+    def test_mismatched_port_is_foreign(self) -> None:
+        # Loopback origins are always allowed (any port); a self-origin match
+        # elsewhere must still include the port.
+        request = MagicMock()
+        request.headers = {"Origin": "http://192.168.1.5:7777", "Host": "192.168.1.5:8888"}
+        assert routes._is_foreign_web_origin(request) is True
+
+class TestStreamDeckClient:
+    """The Stream Deck plugin is the primary client: no Origin header, commands
+    must reach only the source client, and the sender must not get an echo."""
+
+    @pytest.fixture
+    async def tc(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application(middlewares=[routes.security_middleware])
+        app.router.add_get('/', routes.websocket_handler)
+        app.router.add_get('/api/state', routes.handle_state)
+        async with TestClient(TestServer(app)) as client:
+            yield client
+
+    @staticmethod
+    async def _next_type(ws, wanted: str, timeout: float = 1.0) -> dict[str, Any]:
+        while True:
+            message: dict[str, Any] = await asyncio.wait_for(ws.receive_json(), timeout=timeout)
+            if message.get("type") == wanted:
+                return message
+
+    async def test_connect_without_origin_gets_config_and_state(self, tc) -> None:
+        deck = await tc.ws_connect('/?client=streamdeck')
+        config_msg = await self._next_type(deck, "config")
+        assert config_msg["type"] == "config"
+        await deck.send_json({"type": "getInitialState"})
+        state = await self._next_type(deck, "stateUpdate")
+        assert state["source"] == "spotify"
+        await self._next_type(deck, "scStateUpdate")
+        await self._next_type(deck, "lyricsUpdate")
+        await deck.close()
+
+    async def test_command_reaches_source_and_not_sender(self, tc) -> None:
+        deck = await tc.ws_connect('/?client=streamdeck')
+        ext = await tc.ws_connect('/?client=spicetify')
+        # Drain the sourceStatus(connected) broadcast the extension receives and
+        # the Stream Deck's initial snapshot before asserting on new traffic.
+        await self._next_type(ext, "sourceStatus")
+        await self._next_type(deck, "sourceStatus")
+        await deck.send_json({"type": "playbackControl", "command": "togglePlay"})
+        command = await self._next_type(ext, "playbackControl")
+        assert command["command"] == "togglePlay"
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(deck.receive_json(), timeout=0.3)
+        await deck.close()
+        await ext.close()
+
+    async def test_soundcloud_command_routes_to_soundcloud_only(self, tc) -> None:
+        deck = await tc.ws_connect('/?client=streamdeck')
+        sc = await tc.ws_connect('/?client=soundcloud')
+        await self._next_type(sc, "sourceStatus")
+        await deck.send_json({"type": "scPlaybackControl", "command": "next"})
+        command = await self._next_type(sc, "scPlaybackControl")
+        assert command["command"] == "next"
+        await deck.close()
+        await sc.close()

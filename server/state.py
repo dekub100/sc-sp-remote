@@ -112,6 +112,27 @@ async def save_sc_state_debounced() -> None:
     _sc_save_timer = asyncio.create_task(_actually_save_sc_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
 
 
+_MAX_MS: int = 7 * 24 * 60 * 60 * 1000  # 7 days; rejects absurd clock values
+
+
+def as_ms(value: Any, default: int = 0) -> int:
+    """Coerce a state field to a sane non-negative millisecond value.
+
+    State is fed by WebSocket clients; one bad payload must never turn every
+    /api/state request into a 500. Handlers validate before writing, this is
+    the last line of defence for restored/legacy state.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return int(max(0, min(value, _MAX_MS)))
+
+
+def as_volume(value: Any, default: float = 0.0) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    return max(0.0, min(1.0, float(value)))
+
+
 def get_interpolated_track_progress() -> int:
     """Current Spotify position in ms, interpolating from the last progress anchor.
 
@@ -119,18 +140,29 @@ def get_interpolated_track_progress() -> int:
     past PROGRESS_DELTA_THRESHOLD_MS). Fresh clients must anchor on this, not the
     raw value, or they start offset until the next play/pause.
     """
+    progress: int = as_ms(state["trackProgress"])
     if not state["isPlaying"]:
-        return state["trackProgress"]
-    elapsed = time.time() * 1000 - state["trackProgressStartTimestamp"]
-    return int(min(state["trackProgress"] + max(0, elapsed), state["trackDuration"]))
+        return progress
+    anchor: Any = state["trackProgressStartTimestamp"]
+    # isPlaying is persisted but the anchor is not, so a fresh process can have
+    # isPlaying=True with no anchor. Interpolating from 0 would report the end
+    # of the track; the stored position is the only truthful value.
+    if not isinstance(anchor, (int, float)) or isinstance(anchor, bool) or anchor <= 0:
+        return progress
+    elapsed = time.time() * 1000 - anchor
+    return int(min(progress + max(0, elapsed), as_ms(state["trackDuration"])))
 
 
 def get_interpolated_sc_progress() -> int:
     """Same as get_interpolated_track_progress but for SoundCloud."""
+    progress: int = as_ms(state["scProgressMs"])
     if not state["scIsPlaying"]:
-        return state["scProgressMs"]
-    elapsed = time.time() * 1000 - state["scProgressStartTimestamp"]
-    return int(min(state["scProgressMs"] + max(0, elapsed), state["scDurationMs"]))
+        return progress
+    anchor: Any = state["scProgressStartTimestamp"]
+    if not isinstance(anchor, (int, float)) or isinstance(anchor, bool) or anchor <= 0:
+        return progress
+    elapsed = time.time() * 1000 - anchor
+    return int(min(progress + max(0, elapsed), as_ms(state["scDurationMs"])))
 
 
 def get_album_art_url() -> str:
@@ -149,7 +181,7 @@ def get_sc_cover_url() -> str:
 
 def get_spotify_save_data() -> dict[str, Any]:
     return {
-        "volume": round(state["volume"], 2),
+        "volume": round(as_volume(state["volume"], 0.0), 2),
         "isPlaying": state["isPlaying"],
         "currentTrack": state["currentTrack"],
         "trackDuration": state["trackDuration"],
@@ -163,7 +195,7 @@ def get_sc_save_data() -> dict[str, Any]:
     return {
         "scTrack": state["scTrack"],
         "scArtist": state["scArtist"],
-        "scVolume": state["scVolume"],
+        "scVolume": as_volume(state["scVolume"], 0.0),
     }
 
 

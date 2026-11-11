@@ -17,6 +17,9 @@ config: dict[str, Any] = {
     "port": 8888,
     "host": "127.0.0.1",
     "allowedOrigins": ["http://localhost:8888", "http://127.0.0.1:8888"],
+    # Extra Host header names accepted by the anti-rebinding gate. Needed when the
+    # server is reached through a hostname (e.g. "myrig.local") instead of an IP.
+    "allowedHosts": [],
     "defaultVolume": 0.5,
     "enableOBS": True,
     "enableWebsite": True,
@@ -53,6 +56,7 @@ CONFIG_FIELD_TYPES: dict[str, type] = {
     "port": int,
     "host": str,
     "allowedOrigins": list,
+    "allowedHosts": list,
     "defaultVolume": float,
     "enableOBS": bool,
     "enableWebsite": bool,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import time
@@ -11,11 +12,14 @@ from aiohttp import web
 from broadcast import (
     CLIENTS,
     broadcast_playback_update,
+    broadcast_source_status,
 )
 from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import (
+    as_ms,
+    as_volume,
     get_album_art_url,
     get_interpolated_sc_progress,
     get_interpolated_track_progress,
@@ -62,16 +66,166 @@ def _cors_headers(request: web.Request) -> dict[str, str]:
 
 _ALLOWED_WS_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "::1", "xpui.app.spotify.com", "soundcloud.com"}
 
+_ALWAYS_ALLOWED_HOSTS: frozenset[str] = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+_WILDCARD_BINDS: frozenset[str] = frozenset({"", "0.0.0.0", "::", "*"})
+_UNSAFE_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _host_only(value: str) -> str:
+    """'[::1]:8888' -> '::1', 'localhost:8888' -> 'localhost'."""
+    value = (value or "").strip().lower()
+    if value.startswith("["):
+        end = value.find("]")
+        return value[1:end] if end != -1 else value
+    if value.count(":") == 1:
+        return value.split(":", 1)[0]
+    return value
+
+
+def _is_private_literal(host: str) -> bool:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_private or address.is_link_local
+
+
+def _is_allowed_host(host_header: str) -> bool:
+    """Reject Host headers that no local browser could have produced.
+
+    This is the anti-DNS-rebinding gate: a rebound attacker domain arrives with
+    its own name in Host, which is neither loopback, the configured bind
+    address, an entry in `allowedHosts`, nor a private IP literal.
+    """
+    host: str = _host_only(host_header)
+    if not host:
+        return False
+    if host in _ALWAYS_ALLOWED_HOSTS:
+        return True
+    configured: str = str(config.get("host", "")).strip().lower()
+    if configured and configured not in _WILDCARD_BINDS and host == configured:
+        return True
+    extra_hosts: list[Any] = config.get("allowedHosts") or []
+    if any(isinstance(extra, str) and host == extra.strip().lower() for extra in extra_hosts):
+        return True
+    return _is_private_literal(host)
+
+
+def _is_loopback_peer(remote: str | None) -> bool:
+    if not remote:
+        return False
+    try:
+        return ipaddress.ip_address(remote).is_loopback
+    except ValueError:
+        return remote == "localhost"
+
+
+def _origin_is_self(origin: str, request: web.Request, allow_wildcard: bool = True) -> bool:
+    parsed = urlparse(origin)
+    if not parsed.netloc:
+        return False
+    if parsed.netloc.lower() == (request.headers.get("Host", "") or "").lower():
+        return True
+    origins: list[Any] = config["allowedOrigins"]
+    if origin in origins:
+        return True
+    return allow_wildcard and "*" in origins
+
+
+def _forbidden(message: str) -> web.Response:
+    return web.json_response({"error": message}, status=403)
+
+
+@web.middleware
+async def security_middleware(request: web.Request, handler: Any) -> web.StreamResponse:
+    """Localhost threat-model gate for every HTTP and WebSocket request.
+
+    - Host must be a local name, a private IP literal, or explicitly allowed.
+    - Cross-site state-changing requests are refused (CSRF).
+    - /api/admin is loopback-only; LAN users keep playback, not config editing.
+    """
+    host_header: str = request.headers.get("Host", "") or ""
+    if not _is_allowed_host(host_header):
+        logger.warning(f"Rejected request with unexpected Host header: {host_header!r} ({request.path})")
+        return _forbidden("unexpected host")
+
+    if request.method in _UNSAFE_METHODS:
+        if request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
+            logger.warning(f"Rejected cross-site {request.method} {request.path}")
+            return _forbidden("cross-site request rejected")
+        origin: str = request.headers.get("Origin", "") or ""
+        if origin and not _origin_is_self(origin, request):
+            logger.warning(f"Rejected {request.method} {request.path} from origin {origin}")
+            return _forbidden("origin rejected")
+
+    if request.path.startswith("/api/admin") and not _is_loopback_peer(request.remote):
+        logger.warning(f"Rejected remote admin access from {request.remote} ({request.path})")
+        return _forbidden("admin is loopback-only")
+
+    return await handler(request)
+
+
+# A reconnect is "new socket registers, old socket closes". Pausing immediately
+# on the old close would stomp the fresh syncFullState and pause the music, so
+# wait briefly and re-check whether a controller of that type is still attached.
+DISCONNECT_PAUSE_GRACE_SECONDS: float = 1.5
+
+_SOURCE_CLIENT_TYPES: tuple[str, ...] = ("spicetify", "soundcloud")
+
+
+def _source_for_client_type(client_type: str) -> str:
+    return "soundcloud" if client_type == "soundcloud" else "spotify"
+
+
+async def _pause_source_if_alone(client_type: str) -> None:
+    """Mark a source paused once its last controller is really gone."""
+    await asyncio.sleep(DISCONNECT_PAUSE_GRACE_SECONDS)
+    if any(info.get("type") == client_type for info in CLIENTS.values()):
+        logger.info(f"Source {client_type}: controller reconnected within grace, not pausing")
+        return
+    logger.info(f"Source {client_type}: controller gone, marking paused")
+    if client_type == "spicetify":
+        state["isPlaying"] = False
+        state["trackProgressStartTimestamp"] = time.time() * 1000
+        await save_spotify_state_debounced()
+    else:
+        state["scIsPlaying"] = False
+        state["scProgressStartTimestamp"] = time.time() * 1000
+        await save_sc_state_debounced()
+
+
+# Awaiting inside the websocket handler's `finally` is unsafe: aiohttp cancels the
+# handler once the client is gone, which aborts the sleep/broadcast mid-flight.
+# Disconnect bookkeeping therefore runs in a detached, strongly-referenced task.
+_disconnect_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _handle_source_disconnect(client_type: str) -> None:
+    await _pause_source_if_alone(client_type)
+    await broadcast_playback_update()
+    await broadcast_source_status(_source_for_client_type(client_type), False)
+
+
+def _spawn_source_disconnect(client_type: str) -> None:
+    task: asyncio.Task[None] = asyncio.create_task(_handle_source_disconnect(client_type))
+    _disconnect_tasks.add(task)
+    task.add_done_callback(_disconnect_tasks.discard)
+
 
 def _is_foreign_web_origin(request: web.Request) -> bool:
     # WebSockets ignore CORS — any website you visit could open ws://localhost and send commands.
     # Allowlist known client origins (web UI, Spicetify/CEF, SoundCloud tab); everything else is blocked.
     # Native clients (streamdeck plugin etc.) send no Origin header at all.
+    # `security_middleware` has already rejected non-local Host headers, so comparing
+    # netloc against Host here is safe and keeps the UI working on a LAN bind.
     origin = request.headers.get("Origin", "")
     if not origin.startswith(("http://", "https://")):
         return False
     hostname = urlparse(origin).hostname or ""
-    return hostname not in _ALLOWED_WS_ORIGIN_HOSTS and hostname != request.host
+    if hostname in _ALLOWED_WS_ORIGIN_HOSTS:
+        return False
+    # Wildcard CORS must not open the WebSocket gate: any site could then drive playback.
+    return not _origin_is_self(origin, request, allow_wildcard=False)
 
 
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
@@ -90,10 +244,13 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
 
     logger.info(f"New connection: {client_type} (protocol v{client_version}, {request.remote})")
 
+    if client_type in _SOURCE_CLIENT_TYPES:
+        await broadcast_source_status(_source_for_client_type(client_type), True)
+
     client_config = _build_client_config(client_type)
     await ws.send_json(client_config)
 
-    if client_type not in ("spicetify", "soundcloud"):
+    if client_type not in _SOURCE_CLIENT_TYPES:
         await handle_get_initial_state(ws, {})
 
     try:
@@ -105,18 +262,11 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     finally:
         info: dict[str, Any] | None = CLIENTS.pop(ws, None)
         if info:
-            # Source controller gone: pause it so clients (web/OBS/streamdeck)
-            # stop showing phantom playback and auto-routing gets unstuck.
-            if info.get("type") == "spicetify":
-                state["isPlaying"] = False
-                state["trackProgressStartTimestamp"] = time.time() * 1000
-                await save_spotify_state_debounced()
-            elif info.get("type") == "soundcloud":
-                state["scIsPlaying"] = False
-                state["scProgressStartTimestamp"] = time.time() * 1000
-                await save_sc_state_debounced()
-            if info.get("type") in ("spicetify", "soundcloud"):
-                await broadcast_playback_update()
+            client_type = info.get("type", "")
+            if client_type in _SOURCE_CLIENT_TYPES:
+                # Source controller gone: pause it only if no other controller of
+                # that type is attached, so reconnects don't pause playback.
+                _spawn_source_disconnect(client_type)
         logger.info(f"Disconnected: {info.get('type') if info else 'unknown'}")
 
     return ws
@@ -134,11 +284,18 @@ async def handle_config(request: web.Request) -> web.Response:
 
 
 def format_ms(ms: int) -> str:
-    total_sec: int = max(0, int(ms / 1000))
+    try:
+        total_sec: int = max(0, int(float(ms) / 1000))
+    except (TypeError, ValueError):
+        total_sec = 0
     return f"{total_sec // 60}:{total_sec % 60:02d}"
 
 
 async def handle_state(request: web.Request) -> web.Response:
+    spotify_progress: int = get_interpolated_track_progress()
+    sc_progress: int = get_interpolated_sc_progress()
+    spotify_duration: int = as_ms(state["trackDuration"])
+    sc_duration: int = as_ms(state["scDurationMs"])
     return web.json_response({
         "spotify": {
             "trackName": state["currentTrack"]["trackName"],
@@ -146,15 +303,15 @@ async def handle_state(request: web.Request) -> web.Response:
             "albumName": state["currentTrack"]["albumName"],
             "trackUri": state["currentTrack"]["trackUri"],
             "albumArtUrl": get_album_art_url(),
-            "volume": state["volume"],
+            "volume": as_volume(state["volume"]),
             "isPlaying": state["isPlaying"],
             "isShuffling": state["isShuffling"],
             "repeatStatus": state["repeatStatus"],
             "isLiked": state["isLiked"],
-            "progress": get_interpolated_track_progress(),
-            "duration": state["trackDuration"],
-            "progressFmt": format_ms(get_interpolated_track_progress()),
-            "durationFmt": format_ms(state["trackDuration"])
+            "progress": spotify_progress,
+            "duration": spotify_duration,
+            "progressFmt": format_ms(spotify_progress),
+            "durationFmt": format_ms(spotify_duration)
         },
         "soundcloud": {
             "track": state["scTrack"],
@@ -162,12 +319,12 @@ async def handle_state(request: web.Request) -> web.Response:
             "album": state["scAlbum"],
             "coverUrl": get_sc_cover_url(),
             "isPlaying": state["scIsPlaying"],
-            "progressMs": get_interpolated_sc_progress(),
-            "durationMs": state["scDurationMs"],
-            "volume": state["scVolume"],
+            "progressMs": sc_progress,
+            "durationMs": sc_duration,
+            "volume": as_volume(state["scVolume"]),
             "isLiked": state["scIsLiked"],
-            "progressFmt": format_ms(get_interpolated_sc_progress()),
-            "durationFmt": format_ms(state["scDurationMs"])
+            "progressFmt": format_ms(sc_progress),
+            "durationFmt": format_ms(sc_duration)
         }
     })
 
@@ -225,7 +382,7 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
             assert hi is None or coerced <= hi
             assert key not in _CONFIG_POSITIVE_KEYS or coerced > 0
             assert key != "logLevel" or coerced in _LOG_LEVELS
-            assert key != "allowedOrigins" or all(isinstance(o, str) for o in coerced)
+            assert key not in ("allowedOrigins", "allowedHosts") or all(isinstance(o, str) for o in coerced)
         except (ValueError, TypeError, AssertionError):
             errors.append(f"{key}: invalid value")
             continue
