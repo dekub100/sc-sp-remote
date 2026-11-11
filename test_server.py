@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 import tempfile
@@ -817,22 +818,18 @@ class TestConfigEndpoint:
         req.headers = {}
         orig_port: int = cfg.config["port"]
         orig_vol: float = cfg.config["defaultVolume"]
-        orig_obs: bool = cfg.config["enableOBS"]
         cfg.config["port"] = 9999
         cfg.config["defaultVolume"] = 0.7
-        cfg.config["enableOBS"] = False
         try:
             resp = await routes.handle_config(req)
         finally:
             cfg.config["port"] = orig_port
             cfg.config["defaultVolume"] = orig_vol
-            cfg.config["enableOBS"] = orig_obs
         body: bytes = resp.body
         data: dict[str, Any] = json.loads(body)
         assert data["port"] == 9999
         assert data["defaultVolume"] == 0.7
-        assert data["enableOBS"] is False
-        assert data["enableWebsite"] is True
+        assert set(data) == {"port", "allowedOrigins", "defaultVolume"}
 
 
 class TestAdminConfigPut:
@@ -890,6 +887,40 @@ class TestAdminConfigPut:
         resp = await client.put('/api/admin/config', json={"logLevel": "DEBUG"})
         assert resp.status == 200
         assert cfg.config["logLevel"] == "DEBUG"
+
+    async def test_log_level_applies_live(self, client) -> None:
+        from log import logger
+        orig = logger.level
+        try:
+            resp = await client.put('/api/admin/config', json={"logLevel": "DEBUG"})
+            assert resp.status == 200
+            assert logger.level == logging.DEBUG
+        finally:
+            logger.setLevel(orig)
+
+    async def test_restart_required_for_process_keys(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"port": 9091})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["restartRequired"] == ["port"]
+
+    async def test_live_key_needs_no_restart(self, client) -> None:
+        resp = await client.put('/api/admin/config', json={"progressBroadcastInterval": 2.0})
+        assert resp.status == 200
+        data = await resp.json()
+        assert data["restartRequired"] == []
+
+    async def test_interval_below_admin_minimum_rejected(self, client) -> None:
+        orig = cfg.config["progressBroadcastInterval"]
+        resp = await client.put('/api/admin/config', json={"progressBroadcastInterval": 0.0001})
+        assert resp.status == 400
+        assert cfg.config["progressBroadcastInterval"] == orig
+
+    async def test_debounce_below_admin_minimum_rejected(self, client) -> None:
+        orig = cfg.config["stateSaveDebounceSeconds"]
+        resp = await client.put('/api/admin/config', json={"stateSaveDebounceSeconds": 0.1})
+        assert resp.status == 400
+        assert cfg.config["stateSaveDebounceSeconds"] == orig
 
     async def test_log_level_invalid(self, client) -> None:
         orig = cfg.config.get("logLevel")
@@ -1236,6 +1267,37 @@ class TestProviderFallback:
         assert st.state["lyrics"]["available"] is False
         assert st.state["lyrics"]["loading"] is False
 
+    async def test_missing_lyrics_negative_cache_skips_providers(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:nolrc")
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=None) as mock_mxm, \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=None) as mock_lrc, \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:nolrc", "Song", "Artist", "Album", 200000)
+            assert st.state["lyrics"]["available"] is False
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:nolrc", "Song", "Artist", "Album", 200000)
+        assert mock_mxm.await_count == 1
+        assert mock_lrc.await_count == 1
+        assert st.state["lyrics"]["available"] is False
+
+    async def test_expired_negative_cache_retries_providers(self, mxm_config: dict[str, Any]) -> None:
+        self._current_track("spotify:track:nolrc")
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=None), \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=None), \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:nolrc", "Song", "Artist", "Album", 200000)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("UPDATE lyrics_cache SET fetched_at=datetime('now', '-7 hours')")
+        conn.commit()
+        conn.close()
+        with patch.object(lyrics, "_fetch_musixmatch", new_callable=AsyncMock, return_value=None) as mock_mxm, \
+             patch.object(lyrics, "_fetch_lrclib", new_callable=AsyncMock, return_value=None), \
+             patch.object(broadcast, "broadcast_lyrics_update", new_callable=AsyncMock), \
+             patch("lyrics.LYRICS_CACHE_DB", self.db_path):
+            await lyrics.fetch_and_broadcast_lyrics("spotify:track:nolrc", "Song", "Artist", "Album", 200000)
+        assert mock_mxm.await_count == 1
+
     async def test_provider_exception_falls_through(self, mxm_config: dict[str, Any]) -> None:
         self._current_track("spotify:track:err")
         lrc_result = {"synced_raw": "[00:02.00]Ok", "plain": "", "instrumental": False, "karaoke": [], "provider": "lrclib"}
@@ -1413,7 +1475,7 @@ class TestDebouncedSave:
     async def test_spotify_debounce_collapses_rapid_calls(self) -> None:
         calls: list[dict[str, Any]] = []
         st.set_spotify_write_callback(calls.append)
-        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+        with patch.dict(st.config, {"stateSaveDebounceSeconds": 0.01}):
             for _ in range(3):
                 await st.save_spotify_state_debounced()
             await asyncio.sleep(0.05)
@@ -1423,7 +1485,7 @@ class TestDebouncedSave:
     async def test_spotify_save_fires_after_delay(self) -> None:
         calls: list[dict[str, Any]] = []
         st.set_spotify_write_callback(calls.append)
-        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+        with patch.dict(st.config, {"stateSaveDebounceSeconds": 0.01}):
             await st.save_spotify_state_debounced()
             await asyncio.sleep(0.05)
         assert len(calls) == 1
@@ -1431,7 +1493,7 @@ class TestDebouncedSave:
     async def test_cancel_prevents_save(self) -> None:
         calls: list[dict[str, Any]] = []
         st.set_spotify_write_callback(calls.append)
-        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+        with patch.dict(st.config, {"stateSaveDebounceSeconds": 0.01}):
             await st.save_spotify_state_debounced()
             st.cancel_pending_save()
             await asyncio.sleep(0.05)
@@ -1440,7 +1502,7 @@ class TestDebouncedSave:
     async def test_sc_debounce_collapses_rapid_calls(self) -> None:
         calls: list[dict[str, Any]] = []
         st.set_sc_write_callback(calls.append)
-        with patch.object(st, "STATE_SAVE_DEBOUNCE_SECONDS", 0.01):
+        with patch.dict(st.config, {"stateSaveDebounceSeconds": 0.01}):
             for _ in range(3):
                 await st.save_sc_state_debounced()
             await asyncio.sleep(0.05)
@@ -1608,6 +1670,12 @@ class TestFormatMs:
 
     def test_exact_minute(self) -> None:
         assert routes.format_ms(120000) == "2:00"
+
+    def test_hour_rollover(self) -> None:
+        assert routes.format_ms(3_600_000) == "1:00:00"
+
+    def test_hours_minutes_seconds(self) -> None:
+        assert routes.format_ms(3_723_000) == "1:02:03"
 
 
 class TestBuildClientConfig:
@@ -2108,9 +2176,9 @@ class TestBroadcastBackpressure:
         st.state["isPlaying"] = True
         st.state["trackDuration"] = 200000
         with patch.object(broadcast, "BROADCAST_SEND_TIMEOUT_SECONDS", 0.05), \
-             patch.object(broadcast, "PROGRESS_BROADCAST_INTERVAL", 0.02):
+             patch.dict(broadcast.config, {"progressBroadcastInterval": 0.02}):
             task = asyncio.create_task(broadcast.start_progress_broadcasting())
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.4)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
@@ -2353,3 +2421,93 @@ class TestStreamDeckClient:
         assert command["source"] == "soundcloud"
         await deck.close()
         await sc.close()
+
+
+class TestAtomicWrites:
+    def test_write_replaces_file(self, tmp_path: Any) -> None:
+        path = tmp_path / "state.json"
+        cfg.write_json_atomic(str(path), {"a": 1})
+        assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}
+        assert not (tmp_path / "state.json.tmp").exists()
+
+    def test_failed_write_keeps_old_file(self, tmp_path: Any) -> None:
+        path = tmp_path / "state.json"
+        path.write_text('{"old": true}', encoding="utf-8")
+        with patch.object(cfg.json, "dump", side_effect=RuntimeError("disk full")):
+            with pytest.raises(RuntimeError):
+                cfg.write_json_atomic(str(path), {"new": True})
+        assert json.loads(path.read_text(encoding="utf-8")) == {"old": True}
+
+
+class TestManageProcessWait:
+    def test_wait_returns_when_child_exits(self) -> None:
+        import subprocess
+        import sys
+
+        import manage
+
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        manage._wait_for_process(proc)
+        assert proc.returncode == 0
+
+
+class TestLogTail:
+    def test_small_file_is_complete(self, tmp_path: Any) -> None:
+        path = tmp_path / "a.log"
+        path.write_text("hello", encoding="utf-8")
+        text, truncated = routes._read_log_tail(str(path))
+        assert text == "hello"
+        assert truncated is False
+
+    def test_large_file_is_tailed(self, tmp_path: Any) -> None:
+        path = tmp_path / "big.log"
+        path.write_text("x" * (routes.LOG_TAIL_BYTES + 100), encoding="utf-8")
+        text, truncated = routes._read_log_tail(str(path))
+        assert truncated is True
+        assert text.startswith("[showing last 256 KB")
+        assert text.endswith("x" * 100)
+
+
+class TestConsoleStream:
+    def test_undecodable_character_is_replaced(self) -> None:
+        from log import _ConsoleStream
+
+        class _AsciiStream:
+            encoding = "ascii"
+
+            def __init__(self) -> None:
+                self.written: list[str] = []
+
+            def write(self, msg: str) -> None:
+                msg.encode("ascii")  # raises UnicodeEncodeError when needed
+                self.written.append(msg)
+
+            def flush(self) -> None:
+                pass
+
+        stream = _AsciiStream()
+        _ConsoleStream(stream).write("caf\u00e9")
+        assert stream.written == ["caf?"]
+
+
+class TestClientLogLimits:
+    async def test_message_is_truncated(self, mock_ws: AsyncMock) -> None:
+        handlers.CLIENTS[mock_ws] = {"type": "spicetify"}
+        with patch.object(handlers.logger, "info") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"message": "a" * 1000})
+        logged = mock_log.call_args[0][0]
+        assert "[truncated]" in logged
+        assert len(logged) < 600
+
+    async def test_flood_is_rate_limited(self, mock_ws: AsyncMock) -> None:
+        handlers.CLIENTS[mock_ws] = {"type": "spicetify"}
+        with patch.object(handlers.logger, "info") as mock_log:
+            for _ in range(handlers._CLIENT_LOG_MAX_PER_WINDOW + 5):
+                await handlers.handle_client_log(mock_ws, {"message": "spam"})
+        assert mock_log.call_count == handlers._CLIENT_LOG_MAX_PER_WINDOW
+
+    async def test_non_string_message_is_coerced(self, mock_ws: AsyncMock) -> None:
+        handlers.CLIENTS[mock_ws] = {"type": "spicetify"}
+        with patch.object(handlers.logger, "info") as mock_log:
+            await handlers.handle_client_log(mock_ws, {"message": {"a": 1}})
+        assert "a" in mock_log.call_args[0][0]

@@ -395,9 +395,32 @@ async def handle_error(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     await broadcast(error_message("client_error", str(message)))
 
 
+# A misbehaving client must not be able to flood the log file: cap each line
+# and allow a small burst per connection per window.
+_CLIENT_LOG_MAX_CHARS: int = 500
+_CLIENT_LOG_WINDOW_SECONDS: float = 10.0
+_CLIENT_LOG_MAX_PER_WINDOW: int = 20
+
+
 async def handle_client_log(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
+    info = CLIENTS.get(ws)
+    if info is not None:
+        now = time.monotonic()
+        if now - float(info.get("logWindowStart", 0.0)) > _CLIENT_LOG_WINDOW_SECONDS:
+            info["logWindowStart"] = now
+            info["logCount"] = 0
+        if int(info.get("logCount", 0)) >= _CLIENT_LOG_MAX_PER_WINDOW:
+            return
+        info["logCount"] = int(info.get("logCount", 0)) + 1
+
     level = data.get("level", "info")
+    if not isinstance(level, str):
+        level = "info"
     message = data.get("message", "")
+    if not isinstance(message, str):
+        message = str(message)
+    if len(message) > _CLIENT_LOG_MAX_CHARS:
+        message = message[:_CLIENT_LOG_MAX_CHARS] + "...[truncated]"
     client_type = CLIENTS.get(ws, {}).get("type", "unknown")
     log_msg = f"[{client_type}] {message}"
     if level == "error":

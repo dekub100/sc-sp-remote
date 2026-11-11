@@ -27,8 +27,6 @@ CODE_DEFAULTS: dict[str, Any] = {
     # server is reached through a hostname (e.g. "myrig.local") instead of an IP.
     "allowedHosts": [],
     "defaultVolume": 0.5,
-    "enableOBS": True,
-    "enableWebsite": True,
     "enableAlbumArt": True,
     "logLevel": "INFO",
     "backupCount": 3,
@@ -63,6 +61,20 @@ def _read_json_object(path: str) -> dict[str, Any]:
     return {}
 
 
+def write_json_atomic(path: str, data: dict[str, Any]) -> None:
+    """Write a JSON file atomically (temp file + os.replace).
+
+    A crash mid-write must never leave a truncated state/config file: the old
+    file stays intact until the new one is fully flushed to disk.
+    """
+    tmp_path: str = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+
+
 def load_config(
     default_path: str = DEFAULT_CONFIG_PATH,
     user_path: str = CONFIG_PATH,
@@ -82,17 +94,11 @@ def ensure_user_config(path: str | None = None) -> bool:
     parent: str = os.path.dirname(target)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(target, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-        f.write("\n")
+    write_json_atomic(target, config)
     return True
 
 
 config: dict[str, Any] = load_config()
-
-# Derived from user config so admin docs stay truthful (applied at startup).
-STATE_SAVE_DEBOUNCE_SECONDS: float = float(config["stateSaveDebounceSeconds"])
-PROGRESS_BROADCAST_INTERVAL: float = float(config["progressBroadcastInterval"])
 
 
 CONFIG_FIELD_TYPES: dict[str, type] = {
@@ -101,8 +107,6 @@ CONFIG_FIELD_TYPES: dict[str, type] = {
     "allowedOrigins": list,
     "allowedHosts": list,
     "defaultVolume": float,
-    "enableOBS": bool,
-    "enableWebsite": bool,
     "enableAlbumArt": bool,
     "enableLyrics": bool,
     "logLevel": str,

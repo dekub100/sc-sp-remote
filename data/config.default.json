@@ -7,8 +7,6 @@
   ],
   "allowedHosts": [],
   "defaultVolume": 0.5,
-  "enableOBS": true,
-  "enableWebsite": true,
   "enableAlbumArt": true,
   "logLevel": "INFO",
   "backupCount": 3,

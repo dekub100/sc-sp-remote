@@ -324,10 +324,19 @@ def init_lyrics_cache() -> None:
     logger.info(f"Lyrics cache: Initialized at {LYRICS_CACHE_DB}")
 
 
+# A "no lyrics anywhere" answer is cached too, so replaying a track without
+# lyrics does not hammer both providers every time. Sentinel provider + TTL.
+NEGATIVE_CACHE_PROVIDER: str = "__none__"
+NEGATIVE_CACHE_TTL_SECONDS: float = 6 * 60 * 60
+
+
 def get_cached_lyrics(params: dict[str, Any]) -> Optional[tuple[Any, ...]]:
+    """Return (synced, plain, instrumental, karaoke, provider, age_seconds)."""
     conn: sqlite3.Connection = _get_conn()
     row: Optional[tuple[Any, ...]] = conn.execute(
-        "SELECT synced_lyrics, plain_lyrics, instrumental, karaoke, provider FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
+        "SELECT synced_lyrics, plain_lyrics, instrumental, karaoke, provider, "
+        "(julianday('now') - julianday(fetched_at)) * 86400.0 "
+        "FROM lyrics_cache WHERE artist_name=? AND track_name=? AND album_name=? AND duration=?",
         (params["artist_name"], params["track_name"], params["album_name"], params["duration"])
     ).fetchone()
     return row
@@ -358,7 +367,22 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
 
     cached = get_cached_lyrics(params)
     if cached:
-        synced_raw, plain, instrumental, karaoke_json, provider = cached
+        synced_raw, plain, instrumental, karaoke_json, provider, age_seconds = cached
+        if provider == NEGATIVE_CACHE_PROVIDER:
+            if age_seconds is not None and age_seconds < NEGATIVE_CACHE_TTL_SECONDS:
+                if not _track_still_current(track_uri):
+                    return
+                logger.info(f"Lyrics: Negative cache hit for '{track_name}'")
+                state["lyrics"] = {
+                    "trackUri": track_uri, "synced": [], "plain": "",
+                    "available": False, "instrumental": False, "karaoke": [],
+                    "provider": "", "loading": False,
+                }
+                await broadcast_lyrics_update()
+                return
+            cached = None  # expired: try the providers again
+    if cached:
+        synced_raw, plain, instrumental, karaoke_json, provider, _age_seconds = cached
         synced: list[dict[str, Any]] = parse_synced_lyrics(synced_raw) if synced_raw else []
         karaoke: list[dict[str, Any]] = []
         if karaoke_json:
@@ -434,6 +458,9 @@ async def fetch_and_broadcast_lyrics(track_uri: str, track_name: str, artist_nam
             await broadcast_lyrics_update()
         else:
             logger.info(f"Lyrics: Not found for '{track_name}'")
+            # Cache the negative answer (with a TTL) so a lyric-less track does
+            # not re-query both providers every time it reappears.
+            set_cached_lyrics(params, None, None, False, "", NEGATIVE_CACHE_PROVIDER)
             if _track_still_current(track_uri):
                 state["lyrics"] = {"trackUri": track_uri, "synced": [], "plain": "", "available": False, "instrumental": False, "karaoke": [], "provider": "", "loading": False}
                 await broadcast_lyrics_update()

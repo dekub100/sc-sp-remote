@@ -14,9 +14,9 @@ from broadcast import (
     broadcast_now_playing,
     broadcast_source_status,
 )
-from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config
+from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, config, write_json_atomic
 from handlers import handle_get_initial_state, handle_message
-from log import logger
+from log import logger, set_log_level
 from protocol import PROTOCOL_VERSION, error_message
 from state import (
     SOURCE_BY_CLIENT_TYPE,
@@ -32,8 +32,7 @@ from state import (
 
 
 def _write_config_to_disk() -> None:
-    with open(CONFIG_PATH, "w") as f:
-        json.dump(config, f, indent=2)
+    write_json_atomic(CONFIG_PATH, config)
 
 
 def _build_client_config(client_type: str) -> dict[str, Any]:
@@ -290,8 +289,6 @@ async def handle_config(request: web.Request) -> web.Response:
         "port": config["port"],
         "allowedOrigins": config["allowedOrigins"],
         "defaultVolume": config["defaultVolume"],
-        "enableOBS": config.get("enableOBS", True),
-        "enableWebsite": config.get("enableWebsite", True)
     }, headers=headers)
 
 
@@ -300,7 +297,10 @@ def format_ms(ms: int) -> str:
         total_sec: int = max(0, int(float(ms) / 1000))
     except (TypeError, ValueError):
         total_sec = 0
-    return f"{total_sec // 60}:{total_sec % 60:02d}"
+    hours, rem = divmod(total_sec, 3600)
+    if hours:
+        return f"{hours}:{rem // 60:02d}:{rem % 60:02d}"
+    return f"{rem // 60}:{rem % 60:02d}"
 
 
 async def handle_state(request: web.Request) -> web.Response:
@@ -364,13 +364,23 @@ _CONFIG_LIMITS: dict[str, tuple[Any, Any]] = {
     "defaultVolume": (0.0, 1.0),
     "backupCount": (0, None),
 }
-_CONFIG_POSITIVE_KEYS: frozenset[str] = frozenset({
-    "progressBroadcastInterval", "stateSaveDebounceSeconds", "lyricsFetchTimeoutSeconds",
-    "spicetifyPollingIntervalMs", "spicetifyReconnectBaseDelayMs", "spicetifyReconnectMaxDelayMs",
-    "spicetifyProgressDeltaThresholdMs", "spicetifyCommandFeedbackDelayMs",
-    "soundcloudPollingIntervalMs",
-})
+# Lower bounds matching the `min` attributes in web/admin/admin.html. Without
+# them a value like 0.0001 is accepted and the loops hammer.
+_CONFIG_MINIMUMS: dict[str, float] = {
+    "progressBroadcastInterval": 0.1,
+    "stateSaveDebounceSeconds": 0.5,
+    "lyricsFetchTimeoutSeconds": 5,
+    "spicetifyPollingIntervalMs": 100,
+    "spicetifyReconnectBaseDelayMs": 200,
+    "spicetifyReconnectMaxDelayMs": 1000,
+    "spicetifyProgressDeltaThresholdMs": 500,
+    "spicetifyCommandFeedbackDelayMs": 50,
+    "soundcloudPollingIntervalMs": 100,
+}
 _LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
+# Changing these needs a new process (bind address, listen port, log retention
+# sweep at startup). Everything else applies live.
+_RESTART_REQUIRED_KEYS: frozenset[str] = frozenset({"port", "host", "backupCount"})
 
 
 async def handle_admin_config_put(request: web.Request) -> web.Response:
@@ -392,7 +402,8 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
             lo, hi = _CONFIG_LIMITS.get(key, (None, None))
             assert lo is None or coerced >= lo
             assert hi is None or coerced <= hi
-            assert key not in _CONFIG_POSITIVE_KEYS or coerced > 0
+            minimum = _CONFIG_MINIMUMS.get(key)
+            assert minimum is None or coerced >= minimum
             assert key != "logLevel" or coerced in _LOG_LEVELS
             assert key not in ("allowedOrigins", "allowedHosts") or all(isinstance(o, str) for o in coerced)
         except (ValueError, TypeError, AssertionError):
@@ -410,8 +421,15 @@ async def handle_admin_config_put(request: web.Request) -> web.Response:
     except Exception as e:
         return web.json_response({"error": f"Failed to save config: {str(e)}"}, status=500, headers=_cors_headers(request))
 
+    if "logLevel" in updates:
+        set_log_level(updates["logLevel"])
     logger.info(f"Admin: Config updated ({', '.join(updates.keys())})")
-    return web.json_response({"status": "ok", "updated": list(updates.keys())}, headers=_cors_headers(request))
+    restart_required: list[str] = [key for key in updates if key in _RESTART_REQUIRED_KEYS]
+    return web.json_response({
+        "status": "ok",
+        "updated": list(updates.keys()),
+        "restartRequired": restart_required,
+    }, headers=_cors_headers(request))
 
 
 async def handle_admin_mxm_token_refresh(request: web.Request) -> web.Response:
@@ -444,6 +462,30 @@ async def handle_admin_logs_list(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500, headers=_cors_headers(request))
 
 
+LOG_TAIL_BYTES: int = 256 * 1024
+
+
+def _read_log_tail(path: str) -> tuple[str, bool]:
+    """Read the last LOG_TAIL_BYTES of a log file (blocking; run in executor).
+
+    Log files are per-session and can grow to many MB; reading them whole in
+    the event loop stalls every connected client. Returns (text, truncated).
+    """
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        truncated = size > LOG_TAIL_BYTES
+        f.seek(max(0, size - LOG_TAIL_BYTES))
+        data = f.read()
+    text = data.decode("utf-8", errors="replace")
+    # Match text-mode reads (and the Windows file handler's CRLF output) so a
+    # log tail never shows doubled line breaks.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if truncated:
+        text = f"[showing last {LOG_TAIL_BYTES // 1024} KB of {size} bytes]\n" + text
+    return text, truncated
+
+
 async def handle_admin_log_file(request: web.Request) -> web.Response:
     filename = request.match_info["filename"]
     if ".." in filename or "/" in filename or "\\" in filename:
@@ -454,8 +496,8 @@ async def handle_admin_log_file(request: web.Request) -> web.Response:
         return web.json_response({"error": "Log file not found"}, status=404, headers=_cors_headers(request))
 
     try:
-        with open(path, "r") as f:
-            content = f.read()
+        loop = asyncio.get_running_loop()
+        content, _truncated = await loop.run_in_executor(None, _read_log_tail, path)
         return web.Response(text=content, content_type="text/plain", headers=_cors_headers(request))
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500, headers=_cors_headers(request))

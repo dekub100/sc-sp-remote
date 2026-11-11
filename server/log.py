@@ -15,7 +15,10 @@ class _ConsoleStream:
         try:
             self.stream.write(msg)
         except UnicodeEncodeError:
-            self.stream.write(msg.encode('utf-8', errors='replace').decode('utf-8'))
+            # Re-encode with the stream's own codec; errors="replace" guarantees
+            # the fallback cannot raise the same UnicodeEncodeError again.
+            encoding = getattr(self.stream, "encoding", None) or "utf-8"
+            self.stream.write(msg.encode(encoding, errors="replace").decode(encoding))
     def flush(self):
         self.stream.flush()
 
@@ -26,6 +29,11 @@ log_file: str = os.path.join(LOG_DIR, f"server_{session_timestamp}.log")
 log_level: int = getattr(logging, config["logLevel"].upper(), logging.INFO)
 logger: logging.Logger = logging.getLogger("ScSpRemote")
 logger.setLevel(log_level)
+
+
+def set_log_level(level: str) -> None:
+    """Apply a log level edited in the admin UI without a restart."""
+    logger.setLevel(getattr(logging, str(level).upper(), logging.INFO))
 
 formatter: logging.Formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 

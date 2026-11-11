@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
-from config import SC_STATE_FILE, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
+from config import SC_STATE_FILE, STATE_FILE, config, write_json_atomic
 from log import logger
 
 _MAX_MS: int = 7 * 24 * 60 * 60 * 1000  # 7 days; rejects absurd clock values
@@ -209,8 +209,7 @@ def set_sc_write_callback(callback: Optional[Callable[[dict[str, Any]], None]]) 
 
 
 def _write_json_file(path: str, data: dict[str, Any]) -> None:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    write_json_atomic(path, data)
 
 
 def write_source_state_now(source: str) -> None:
@@ -260,9 +259,12 @@ async def save_source_state_debounced(source: str) -> None:
     runtime: _SaveRuntime = _save_runtime[source]
     if runtime.timer:
         runtime.timer.cancel()
-    runtime.timer = asyncio.create_task(
-        _actually_save_after_delay(SOURCES[source], float(STATE_SAVE_DEBOUNCE_SECONDS))
-    )
+    # Read the debounce at call time so an admin edit applies without a restart.
+    try:
+        delay: float = float(config.get("stateSaveDebounceSeconds", 2.0))
+    except (TypeError, ValueError):
+        delay = 2.0
+    runtime.timer = asyncio.create_task(_actually_save_after_delay(SOURCES[source], max(0.0, delay)))
 
 
 async def save_spotify_state_debounced() -> None:

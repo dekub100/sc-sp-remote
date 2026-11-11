@@ -3,12 +3,21 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
+from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, start_progress_broadcasting
 from config import PROJECT_ROOT, config, ensure_user_config
 from log import logger
-from lyrics import _close_connection, _close_session, get_cached_lyrics, init_lyrics_cache, parse_synced_lyrics
+from lyrics import (
+    NEGATIVE_CACHE_PROVIDER,
+    _close_connection,
+    _close_session,
+    get_cached_lyrics,
+    init_lyrics_cache,
+    parse_synced_lyrics,
+)
 from routes import (
     handle_admin_config_get,
     handle_admin_config_put,
@@ -44,8 +53,10 @@ if track_uri and track_duration > 0:
         "album_name": state["currentTrack"]["albumName"],
         "duration": max(1, round(track_duration / 1000))
     })
-    if cached:
-        synced_raw, plain, instrumental, karaoke_json, provider = cached
+    # A negative-cache row means "known to have no lyrics"; leave the default
+    # unavailable state alone.
+    if cached and cached[4] != NEGATIVE_CACHE_PROVIDER:
+        synced_raw, plain, instrumental, karaoke_json, provider, _age = cached
         synced = parse_synced_lyrics(synced_raw) if synced_raw else []
         karaoke = []
         if karaoke_json:
@@ -66,8 +77,39 @@ if track_uri and track_duration > 0:
         logger.info(f"Lyrics: Loaded from cache for '{state['currentTrack']['trackName']}' ({len(synced)} synced lines)")
 
 
+def _install_stop_handlers(stop_event: asyncio.Event) -> None:
+    """Turn SIGTERM/SIGBREAK into a graceful shutdown.
+
+    Ctrl+C keeps the normal KeyboardInterrupt path (`asyncio.run` cancels the
+    main task and the finally block saves). SIGTERM covers `manage.py` on
+    POSIX/service managers; SIGBREAK is what the Windows service sends
+    (CTRL_BREAK_EVENT) because it has no console Ctrl+C.
+    """
+    loop = asyncio.get_running_loop()
+
+    def _request_stop(*_args: Any) -> None:
+        loop.call_soon_threadsafe(stop_event.set)
+
+    for name in ("SIGTERM", "SIGBREAK"):
+        sig = getattr(signal, name, None)
+        if sig is None:
+            continue
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except (NotImplementedError, RuntimeError, ValueError):
+            # Windows has no asyncio signal support; plain signal.signal works
+            # for SIGBREAK (delivered by CTRL_BREAK_EVENT) and SIGTERM.
+            try:
+                signal.signal(sig, _request_stop)
+            except (ValueError, OSError):
+                pass
+
+
 async def main() -> None:
     ensure_user_config()
+
+    stop_event: asyncio.Event = asyncio.Event()
+    _install_stop_handlers(stop_event)
 
     main_app: web.Application = web.Application(middlewares=[security_middleware])
 
@@ -104,7 +146,7 @@ async def main() -> None:
 
         progress_task: asyncio.Task[None] = asyncio.create_task(start_progress_broadcasting())
 
-        await asyncio.sleep(365 * 86400)
+        await stop_event.wait()
     except (asyncio.CancelledError, KeyboardInterrupt):
         logger.info("Server: Stopping...")
     finally:
@@ -124,11 +166,14 @@ async def main() -> None:
 
         if CLIENTS:
             logger.debug(f"Server: Closing {len(CLIENTS)} active connections...")
-            for ws in list(CLIENTS.keys()):
-                try:
-                    asyncio.create_task(ws.close(code=1001, message='Server shutting down'))
-                except Exception:
-                    pass
+            # Await the closes: creating tasks and immediately cleaning up the
+            # runner drops the close frames on the floor.
+            await asyncio.gather(*(
+                asyncio.wait_for(
+                    ws.close(code=1001, message='Server shutting down'), timeout=2.0
+                )
+                for ws in list(CLIENTS.keys())
+            ), return_exceptions=True)
 
         if 'progress_task' in locals():
             logger.debug("Server: Cancelling progress broadcasting task...")

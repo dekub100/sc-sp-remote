@@ -6,7 +6,7 @@ import time
 from typing import Any, Optional
 
 from aiohttp import web
-from config import PROGRESS_BROADCAST_INTERVAL
+from config import config
 from log import logger
 from protocol import PROTOCOL_VERSION
 from state import (
@@ -222,4 +222,10 @@ async def start_progress_broadcasting() -> None:
     while True:
         if any(state[spec.playing_key] for spec in SOURCES.values()):
             await _compute_and_broadcast_progress()
-        await asyncio.sleep(PROGRESS_BROADCAST_INTERVAL)
+        # Read at use time so the admin edit applies without a restart. A
+        # hand-edited bad value must not kill the progress loop.
+        try:
+            interval: float = float(config.get("progressBroadcastInterval", 1.0))
+        except (TypeError, ValueError):
+            interval = 1.0
+        await asyncio.sleep(max(0.1, interval))

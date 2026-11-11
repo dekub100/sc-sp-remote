@@ -21,6 +21,7 @@ import json
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -39,6 +40,51 @@ WATCH_DIRS = [
 SERVER_SCRIPT = os.path.join(PROJECT_ROOT, "server", "server.py")
 
 SERVICE_COMMANDS = ["install", "update", "start", "stop", "remove", "restart"]
+
+# Only the service host needs a private process group: SvcStop has no console
+# Ctrl+C, so it asks the child to stop with CTRL_BREAK_EVENT. Interactive
+# `run`/`dev` children stay in the console group and receive Ctrl+C directly.
+_SERVICE_CREATIONFLAGS = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+
+
+def _stop_process(proc, timeout=10.0):
+    """Ask the service's server child to exit, then wait/kill as a fallback."""
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            proc.terminate()  # SIGTERM is handled by the server's stop handler
+    except (OSError, ValueError):
+        proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        # Second Ctrl+C (or a hung child): stop waiting and force it down.
+        proc.kill()
+        proc.wait()
+
+
+def _wait_for_process(proc):
+    """Wait for an interactive child that shares the console's process group.
+
+    The console delivers Ctrl+C to the child as well, so it is already running
+    its graceful shutdown. Give it time to finish before forcing it down.
+    """
+    while True:
+        try:
+            proc.wait(timeout=0.2)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+        except KeyboardInterrupt:
+            try:
+                proc.wait(timeout=10)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                proc.kill()
+                proc.wait()
+            return
 
 
 # --- shared helpers -----------------------------------------------------------
@@ -72,11 +118,7 @@ def _run_command(command):
 
 def cmd_run(args):
     proc = subprocess.Popen([sys.executable, SERVER_SCRIPT], cwd=PROJECT_ROOT)
-    try:
-        proc.wait()
-    except KeyboardInterrupt:
-        proc.terminate()
-        proc.wait()
+    _wait_for_process(proc)
 
 
 # --- dev ----------------------------------------------------------------------
@@ -108,11 +150,7 @@ def _start_server(port, host, dev_config_path):
         [sys.executable, SERVER_SCRIPT],
         env=env, cwd=PROJECT_ROOT,
     )
-    try:
-        proc.wait()
-    except KeyboardInterrupt:
-        proc.terminate()
-        proc.wait()
+    _wait_for_process(proc)
 
 
 def _run_server_process(port, host, dev_config_path):
@@ -349,8 +387,7 @@ else:
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
             win32event.SetEvent(self.hWaitStop)
-            if self.process:
-                self.process.terminate()
+            _stop_process(self.process)
 
         def SvcDoRun(self):
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -363,7 +400,9 @@ else:
             if not python_exe.endswith("python.exe"):
                 python_exe = os.path.join(os.path.dirname(python_exe), "python.exe")
 
-            self.process = subprocess.Popen([python_exe, SERVER_SCRIPT], cwd=PROJECT_ROOT)
+            self.process = subprocess.Popen(
+                [python_exe, SERVER_SCRIPT], cwd=PROJECT_ROOT, creationflags=_SERVICE_CREATIONFLAGS
+            )
             crash_count = 0
 
             while True:
@@ -377,12 +416,13 @@ else:
                                           0xF000,
                                           (f"Server process died (attempt {crash_count}). Restarting in {backoff}s...", ''))
                     time.sleep(backoff)
-                    self.process = subprocess.Popen([python_exe, SERVER_SCRIPT], cwd=PROJECT_ROOT)
+                    self.process = subprocess.Popen(
+                        [python_exe, SERVER_SCRIPT], cwd=PROJECT_ROOT, creationflags=_SERVICE_CREATIONFLAGS
+                    )
                 else:
                     crash_count = 0
 
-            if self.process:
-                self.process.terminate()
+            _stop_process(self.process)
 
 
 
