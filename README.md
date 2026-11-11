@@ -36,7 +36,7 @@ Configure the Spotify extension from the profile menu → **Remote Config** (set
 
 ## Configuration
 
-Edit `data/config.json` or use the admin panel at `http://localhost:8888/admin`.
+Edit `data/config.json` or use the admin panel at `http://localhost:8888/admin`. The user config is created on first run from the tracked defaults in `data/config.default.json`.
 
 Full reference: [`docs/troubleshooting.md`](docs/troubleshooting.md#config-reference)
 

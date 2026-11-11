@@ -48,19 +48,18 @@ npx --package=@elgato/cli --yes streamdeck pack streamdeck-plugin/com.dekub.sc-s
 ```
 The `.streamDeckPlugin` file is output to the project root. It is not committed to the repo — only included in GitHub releases.
 
-### Config Hygiene
+### Config Files
 
-`data/config.json` is the tracked default config — it must contain only defaults. Never commit user data in it (Musixmatch tokens, custom ports, personal origins, etc.). The server writes runtime values (like the auto-fetched Musixmatch token) to this file at runtime, so **always reset it to defaults before committing**:
+`data/config.default.json` is tracked and holds the shipped defaults. `data/config.json` is the user config: it is created on first run from the defaults and is gitignored. Runtime values such as the auto-fetched Musixmatch token (and any admin-panel edit) are written only to the user config.
 
-- `"musixmatchToken": ""` (never commit a real token)
-
-If you've run the server locally and it changed `data/config.json`, restore just that file before staging: `git checkout -- data/config.json`.
+- To change a shipped default, edit both `server/config.py` (`CODE_DEFAULTS`) and `data/config.default.json` — `test_server.py::TestConfigLayering` asserts they match.
+- Never force-add `data/config.json`; it is already ignored and may contain a token.
 
 ---
 
 ## CI / CD
 
-Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13. Pushing a tag matching `v*` (e.g., `v2.0.0`) also builds the release zip and creates a GitHub release automatically.
+Pushing to `main` triggers lint + tests on Python 3.9, 3.11, and 3.13 (Ubuntu), a Windows job (import + lint + tests) and a Stream Deck job (`npm ci`, typecheck, build). Pushing a tag matching `v*` (e.g., `v2.0.0`) also builds the release zip and creates a GitHub release automatically.
 
 The workflow is at `.github/workflows/ci.yml`.
 

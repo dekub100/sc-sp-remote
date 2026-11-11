@@ -92,7 +92,7 @@ If port 8888 is in use, change it in `data/config.json`. Then open Spotify, clic
 
 ## Config reference
 
-All settings live in `data/config.json` or can be edited live via the admin panel at `http://localhost:8888/admin`.
+All settings live in `data/config.json` (created on first run from the tracked `data/config.default.json`) or can be edited live via the admin panel at `http://localhost:8888/admin`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|

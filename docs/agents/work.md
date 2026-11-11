@@ -12,7 +12,7 @@ python manage.py dev --port 7777            # Custom port
 python manage.py dev --no-reload            # No file watcher
 ```
 
-Dev tool uses isolated `config.dev.json` so it doesn't interfere with a production server running as a service. The extension reads host/port from localStorage via the in-app Remote Config menu — no file patching needed.
+Dev tool isolates both its config (`data/dev/config.dev.json`) and all runtime data (`data/dev/` state, logs, lyrics cache — via `SC_SP_REMOTE_DATA_DIR`), so it can run next to a production service. The extension reads host/port from localStorage via the in-app Remote Config menu — no file patching needed.
 
 ## Adding Features
 

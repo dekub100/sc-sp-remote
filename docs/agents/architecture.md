@@ -35,7 +35,7 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Client types** via query param (`?client=spicetify|soundcloud|website|obs|streamdeck`)
 - **Targeted broadcast** — playback commands go ONLY to the target client type (`target_type` in `broadcast()`); the sender is always excluded
 - **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows)
-- **`SC_SP_REMOTE_CONFIG` env var** — overrides config path
+- **Layered config** — code defaults ← tracked `data/config.default.json` ← gitignored user `data/config.json` (created on first run). `SC_SP_REMOTE_CONFIG` overrides the user-config path; `SC_SP_REMOTE_DATA_DIR` redirects all runtime data (state, logs, cache) for dev/tests.
 - **Debounced state saves** (2s inactivity)
 - **Disconnect is not "paused"** — a source controller disconnect broadcasts `sourceStatus{connected:false}` and only pauses playback after a 1.5 s grace, re-checked against the client list, so reconnects don't pause the music
 - **Bounded broadcast** — every WebSocket send has a 1 s timeout; an unresponsive client is dropped instead of stalling the 1 Hz progress loop
