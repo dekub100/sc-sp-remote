@@ -28,7 +28,8 @@
 │   ├── state.py              # SOURCES descriptor, flat state, JSON persistence, debounced saves
 │   ├── broadcast.py          # CLIENTS dict, broadcast functions, progress interpolation
 │   ├── lyrics.py             # Lyrics providers (Musixmatch + LRCLIB), token mgmt, SQLite cache
-│   ├── handlers.py           # Message handlers + dispatch table (16 types)
+│   ├── protocol.py           # Wire v2: version, per-role allowlist, command vocabulary
+│   ├── handlers.py           # Message handlers + dispatch table (10 types)
 │   └── routes.py             # WS handler, HTTP endpoints, admin config
 ├── manage.py                 # CLI: run / dev / install / service subcommands
 ├── web/

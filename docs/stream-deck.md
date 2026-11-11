@@ -30,6 +30,8 @@ The Source setting is stored per action instance, so you can have separate butto
 
 Download `com.dekub.sc-sp-remote.streamDeckPlugin` from the [releases page](https://github.com/dekub100/sc-sp-remote/releases) and double-click to install.
 
+> **Protocol v2:** the plugin connects with `protocolVersion=2`. A plugin build older than the v2 server is rejected on connect and cannot control playback; rebuild/reinstall the plugin when the server is upgraded.
+
 ## Building from Source
 
 ```bash

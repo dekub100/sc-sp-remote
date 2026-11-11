@@ -31,9 +31,10 @@ OBS Widget (obs-script.js) ─────────────────�
 - **Single port** (8888) for HTTP + WebSocket
 - **Server split into modules** — `server.py` is a thin coordinator
 - **No discovery** — clients connect directly to main port
-- **Full-snapshot broadcasts** — state/progress messages carry the whole source snapshot (the SoundCloud 500 ms heartbeat is change-gated by a fingerprint, so unchanged heartbeats are not rebroadcast)
-- **Client types** via query param (`?client=spicetify|soundcloud|website|obs|streamdeck`)
-- **Targeted broadcast** — playback commands go ONLY to the target client type (`target_type` in `broadcast()`); the sender is always excluded
+- **Full-snapshot state** — every `nowPlaying` carries the whole source snapshot (the SoundCloud 500 ms heartbeat is change-gated by a fingerprint, so unchanged heartbeats are not rebroadcast); the 1 Hz `progress` message carries only position/duration/playing/timestamp
+- **Client types** via query param (`?client=spicetify|soundcloud|website|obs|streamdeck`) + required `protocolVersion=2`
+- **Protocol v2** — every message is `{"v":2,"type":...,"source":...,"state":{...}}`; source clients push `nowPlaying`/`volume`/`playback`/`progress`/`shuffle`/`repeat`/`like`, controllers send one `command`, and `protocol.py` enforces the per-role allowlist before a handler runs
+- **Targeted broadcast** — commands go ONLY to the target source client type (`target_type` in `broadcast()`); the sender is always excluded
 - **Dual-file state** — `state_spotify.json` + `state_soundcloud.json` (separate save flows driven by the `SOURCES` descriptor; flat `state` keys stay unchanged)
 - **Layered config** — code defaults ← tracked `data/config.default.json` ← gitignored user `data/config.json` (created on first run). `SC_SP_REMOTE_CONFIG` overrides the user-config path; `SC_SP_REMOTE_DATA_DIR` redirects all runtime data (state, logs, cache) for dev/tests.
 - **Debounced state saves** (2s inactivity)
@@ -66,27 +67,37 @@ state = {
 
 ```
 
-## Message Types
+## Wire Protocol (v2)
 
-| Type | Direction | Purpose |
-|---|---|---|
-| `getInitialState` | Client→Server | Request full state dump |
-| `stateUpdate`/`trackUpdate` | Spicetify→Server | Spotify snapshot |
-| `volumeUpdate` | Spicetify→Server | Spotify volume |
-| `playbackUpdate` | Spicetify→Server | Spotify play/pause/progress |
-| `shuffleUpdate`/`repeatUpdate`/`likeUpdate` | Spicetify→Server | Spotify state |
-| `progressUpdate` | Spicetify→Server | Spotify progress sync |
-| `clientLog` | Any→Server | Client-side log messages (useful for SC which can't access DevTools) |
-| **SoundCloud** | | |
-| `scStateUpdate` | SC Plugin→Server | SC track/artist/progress + shuffle/repeat (normalized to Spotify's 0=off, 1=all, 2=one scale) |
-| `scVolumeUpdate` | SC Plugin→Server | SC volume |
-| `scPlaybackControl` | Web/StreamDeck→Server→SC Plugin | Play/pause/next/prev/toggleShuffle/toggleRepeat/like (server routes by source) |
-| **Commands** | | |
-| `playbackControl` | Web→Server→Spicetify | Play/pause/next/prev/seek |
-| `like` | Web→Server | Like current track (source-aware) |
-| **Server→All** | | |
-| `lyricsUpdate` | Server→All | Lyrics data (`synced`/`plain`/`karaoke`, `provider` attribution, `loading`) |
-| `sourceStatus` | Server→All | `{source, connected}` — a playback source's controller attached/detached (never means "paused") |
-| `error` | Any | Error relay |
+Every frame is a JSON object with `v: 2`, `type`, and (for per-source messages) `source`.
+State lives under `state`; a source's `nowPlaying` is a full snapshot, the partial
+updates from a source contain only the fields that changed. A connection whose
+`protocolVersion` query param is below 2 is sent an `error` (`code: "protocol_version"`)
+and closed with 1002.
+
+| Type | Direction | Allowed sender | Purpose |
+|---|---|---|---|
+| `config` | Server→Client | — | Per-client intervals, sent once on connect |
+| `nowPlaying` | Source→Server | `spicetify`, `soundcloud` | Partial/full source snapshot (`track*`, `isPlaying`, `progress`, `duration`, `volume`, `isLiked`, `isShuffling`, `repeatStatus`) |
+| `volume` | Source→Server | `spicetify`, `soundcloud` | `state:{volume}` |
+| `playback` | Source→Server | `spicetify`, `soundcloud` | `state:{isPlaying, progress}` |
+| `progress` | Source→Server | `spicetify`, `soundcloud` | `state:{progress, duration}` |
+| `shuffle` / `repeat` / `like` | Source→Server | `spicetify`, `soundcloud` | `state:{isShuffling}` / `{repeatStatus}` / `{isLiked}` |
+| `command` | Controller→Server→Source | `website`, `obs`, `streamdeck` | `command` + `source`; server whitelists args and forwards to that source only |
+| `getInitialState` | Controller→Server | `website`, `obs`, `streamdeck` | Ask for the full snapshot (also sent automatically on connect) |
+| `nowPlaying` | Server→Controllers | — | Full snapshot for one source |
+| `progress` | Server→All | — | `state:{progress, duration, isPlaying, timestamp}` (1 Hz while playing) |
+| `lyrics` | Server→All | — | `state:{synced, plain, karaoke, provider, loading, ...}` |
+| `sourceStatus` | Server→All | — | `state:{connected}` — a source controller attached/detached (never means "paused") |
+| `clientLog` | Any→Server | all | Client-side log line (useful for SC, which has no DevTools) |
+| `error` | Both | — | `{code, message}`; violations never mutate state |
+
+Commands: `play`, `pause`, `togglePlay`, `next`, `previous`, `seek` (`position`),
+`seekForward`/`seekBack` (`offset`), `toggleShuffle`, `toggleRepeat`, `like`,
+`volumeUp`/`volumeDown` (`step`), `setVolume` (`volume`). The vocabulary and the
+per-role allowlist live in `server/protocol.py`.
+
+`/api/state` is unchanged: it still returns the flat `spotify`/`soundcloud` blocks
+(Streamer.bot templates depend on those key names).
 
 

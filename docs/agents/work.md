@@ -16,8 +16,8 @@ Dev tool isolates both its config (`data/dev/config.dev.json`) and all runtime d
 
 ## Adding Features
 
-1. **New message type** → add to `MESSAGE_HANDLERS` in `handlers.py`, add handler, update client(s)
-2. **New state field** → declare it in `SOURCES` in `state.py` (`defaults`, plus `persisted` or `runtime`), then use it in broadcast/HTTP payloads. The descriptor test fails if a state key is unclassified.
+1. **New message type** → add to `MESSAGE_HANDLERS` in `handlers.py`, add it to the right role in `protocol.py` (`SOURCE_MESSAGE_TYPES` / `CONTROLLER_MESSAGE_TYPES`), add the handler, bump `PROTOCOL_VERSION` if the frame shape changes, update all clients, and add a permission test
+2. **New state field** → declare it in `SOURCES` in `state.py` (`defaults`, plus `persisted` or `runtime`, and an `update_fields` entry if clients may push it), then add it to the `nowPlaying` snapshot in `broadcast.py` and to clients. The descriptor test fails if a state key is unclassified.
 3. **New web UI element** → HTML + `ui` object in `script.js` + event listener
 4. **New OBS widget feature** → same pattern in `obs-widget/` files
 5. **Always** → add tests in `test_server.py`, run `ruff check`, run `pytest`
