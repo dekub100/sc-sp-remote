@@ -35,8 +35,6 @@ async function loadConfig() {
     document.getElementById('cfg-port').value = cfg.port;
     document.getElementById('cfg-origins').value = (cfg.allowedOrigins || []).join(', ');
     document.getElementById('cfg-volume').value = cfg.defaultVolume;
-    document.getElementById('cfg-obs').checked = !!cfg.enableOBS;
-    document.getElementById('cfg-website').checked = !!cfg.enableWebsite;
     document.getElementById('cfg-album-art').checked = cfg.enableAlbumArt !== false;
     document.getElementById('cfg-log-level').value = cfg.logLevel;
     document.getElementById('cfg-backup').value = cfg.backupCount;
@@ -72,8 +70,6 @@ async function saveConfig(e) {
     port: parseInt(document.getElementById('cfg-port').value),
     allowedOrigins: document.getElementById('cfg-origins').value.split(',').map(s => s.trim()).filter(Boolean),
     defaultVolume: parseFloat(document.getElementById('cfg-volume').value),
-    enableOBS: document.getElementById('cfg-obs').checked,
-    enableWebsite: document.getElementById('cfg-website').checked,
     enableAlbumArt: document.getElementById('cfg-album-art').checked,
     enableLyrics: document.getElementById('cfg-lyrics').checked,
     logLevel: document.getElementById('cfg-log-level').value,
@@ -97,7 +93,13 @@ async function saveConfig(e) {
     });
     const data = await res.json();
     if (res.ok) {
-      showConfigStatus('~~ Config saved!! Reconnect clients to apply. ~~', 'success');
+      const restart = Array.isArray(data.restartRequired) ? data.restartRequired : [];
+      showConfigStatus(
+        restart.length
+          ? '~~ Saved. Restart the server to apply: ' + restart.join(', ') + ' ~~'
+          : '~~ Config saved and applied. ~~',
+        'success'
+      );
     } else {
       showConfigStatus('Error: ' + (data.error || 'Save failed'), 'error');
     }
@@ -109,36 +111,56 @@ async function saveConfig(e) {
   }
 }
 
+function showLogMessage(text, className) {
+  ui.logList.replaceChildren();
+  const p = document.createElement('p');
+  p.className = className;
+  p.textContent = text;
+  ui.logList.append(p);
+}
+
 async function loadLogs() {
   try {
     const res = await fetch(`${API}/api/admin/logs`);
     if (!res.ok) {
-      ui.logList.innerHTML = '<p class="error">Error loading logs: HTTP ' + res.status + '</p>';
+      showLogMessage('Error loading logs: HTTP ' + res.status, 'error');
       return;
     }
     const data = await res.json();
     renderLogList(data.logs || []);
   } catch (e) {
-    ui.logList.innerHTML = '<p class="error">Error loading logs: ' + e.message + '</p>';
+    showLogMessage('Error loading logs: ' + e.message, 'error');
   }
 }
 
 function renderLogList(logs) {
+  // Build nodes with textContent: filenames come from disk and must never be
+  // parsed as HTML.
+  ui.logList.replaceChildren();
   if (!logs.length) {
-    ui.logList.innerHTML = '<p class="empty">No log files found :(</p>';
+    showLogMessage('No log files found :(', 'empty');
     return;
   }
-  ui.logList.innerHTML = logs.map(log => {
+
+  logs.forEach(log => {
     const date = new Date(log.modified * 1000);
     const size = log.size > 1024 ? (log.size / 1024).toFixed(1) + ' KB' : log.size + ' B';
-    return '<div class="log-item" data-name="' + log.name + '">' +
-      '<span class="log-name">' + log.name + '</span>' +
-      '<span class="log-meta">' + size + ' | ' + date.toLocaleString() + '</span>' +
-      '</div>';
-  }).join('');
 
-  ui.logList.querySelectorAll('.log-item').forEach(item => {
-    item.addEventListener('click', () => openLog(item.dataset.name));
+    const item = document.createElement('div');
+    item.className = 'log-item';
+    item.dataset.name = log.name;
+
+    const name = document.createElement('span');
+    name.className = 'log-name';
+    name.textContent = log.name;
+
+    const meta = document.createElement('span');
+    meta.className = 'log-meta';
+    meta.textContent = size + ' | ' + date.toLocaleString();
+
+    item.append(name, meta);
+    item.addEventListener('click', () => openLog(log.name));
+    ui.logList.append(item);
   });
 }
 

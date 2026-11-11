@@ -153,6 +153,9 @@
       }
       this._connecting = true;
       if (this.ws) {
+        // Mark this specific socket: its onclose must not schedule a reconnect
+        // on top of the connect we are doing right now.
+        this.ws._intentionalClose = true;
         this.ws.close();
       }
 
@@ -227,6 +230,11 @@
       console.warn(`[RemoteVolume] Socket closed. code=${code} reason="${reason}"`);
       this._connecting = false;
       this.stopServices();
+      // A close we initiated from connect() must not trigger a second socket.
+      if (event && event.target && event.target._intentionalClose) {
+        console.log("[RemoteVolume] Intentional close, not reconnecting");
+        return;
+      }
       if (code === 1000) {
         console.log("[RemoteVolume] Normal closure, not reconnecting");
         return;

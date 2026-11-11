@@ -130,10 +130,6 @@ function setLyricLineText(text) {
   setLyricLineContent(text, text.length > 0);
 }
 
-function escapeHtml(text) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 function updateCurrentKaraokeLine(progressMs) {
   const lines = lyricsState.karaoke;
   let lineIndex = -1;
@@ -363,7 +359,8 @@ function handleMessage(data) {
 }
 
 function connect() {
-  ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=obs&protocolVersion=2`);
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${wsProtocol}://${window.location.host}/?client=obs&protocolVersion=2`);
 
   ws.onmessage = (event) => {
     let data;

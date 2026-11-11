@@ -1,6 +1,7 @@
 // Main website script for sc-sp-remote (dual-source)
 let ws;
-let isSeeking = false;
+// Per-source: a drag on the SoundCloud slider must not freeze the Spotify one.
+const seeking = { spotify: false, soundcloud: false };
 let activeSource = "spotify";
 
 // Spotify interpolation state
@@ -311,7 +312,7 @@ function debounce(fn, delay) {
 // Smooth interpolation loop
 function animate() {
     // Spotify interpolation
-    if (activeSource === 'spotify' && !isSeeking) {
+    if (activeSource === 'spotify' && !seeking.spotify) {
         if (spotifyState.isPlaying) {
             const { currentProgress } = interpolateProgress(spotifyState);
             ui.progressBar.value = currentProgress;
@@ -324,7 +325,7 @@ function animate() {
         }
     }
     // SoundCloud interpolation
-    if (activeSource === 'soundcloud' && !isSeeking) {
+    if (activeSource === 'soundcloud' && !seeking.soundcloud) {
         if (scState.isPlaying) {
             const now = Date.now();
             const elapsed = now - scState.clientTimestamp;
@@ -397,7 +398,7 @@ function applySpotifyNowPlaying(s) {
             console.warn(`[SP-DEBUG] Large progress jump: ${formatTime(prevProgress)} -> ${formatTime(s.progress)} (delta: ${jump}ms)`);
         }
 
-        if (!isSeeking) {
+        if (!seeking.spotify) {
             ui.progressBar.max = spotifyState.duration;
             ui.durationTime.textContent = formatTime(spotifyState.duration);
         }
@@ -428,7 +429,7 @@ function applySoundCloudNowPlaying(s) {
         scState.durationMs = s.duration;
     }
 
-    if (!isSeeking) {
+    if (!seeking.soundcloud) {
         ui.scProgressBar.max = scState.durationMs;
         ui.scProgressBar.value = scState.progressMs;
         ui.scCurrentTime.textContent = formatTime(scState.progressMs);
@@ -468,7 +469,7 @@ function applyProgress(source, s) {
             ui.playPauseBtn.querySelector('.fa-pause').style.display = s.isPlaying ? 'inline-block' : 'none';
         }
         spotifyState.timestamp = Date.now();
-        if (!isSeeking) {
+        if (!seeking.spotify) {
             ui.progressBar.max = spotifyState.duration;
             ui.durationTime.textContent = formatTime(spotifyState.duration);
         }
@@ -482,7 +483,7 @@ function applyProgress(source, s) {
         }
         scState.timestamp = Date.now();
         scState.clientTimestamp = Date.now();
-        if (!isSeeking) {
+        if (!seeking.soundcloud) {
             ui.scProgressBar.max = scState.durationMs;
             ui.scDurationTime.textContent = formatTime(scState.durationMs);
         }
@@ -490,7 +491,10 @@ function applyProgress(source, s) {
 }
 
 function connect() {
-    ws = new WebSocket(`ws://${window.location.hostname}:${window.location.port}/?client=website&protocolVersion=2`);
+    // `location.host` keeps the port; the scheme must follow the page so a
+    // reverse proxy serving HTTPS doesn't get a blocked mixed-content socket.
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${wsProtocol}://${window.location.host}/?client=website&protocolVersion=2`);
 
     ws.onopen = () => {
         ui.container.classList.remove('hidden');
@@ -565,14 +569,17 @@ ui.volumeSlider.oninput = (e) => {
     sendSpotifyVolume(val);
 };
 
-ui.progressBar.onmousedown = () => isSeeking = true;
-ui.progressBar.onmouseup = (e) => {
-    isSeeking = false;
-    const newPos = parseInt(e.target.value);
+// `change` fires on commit (mouse/touch/keyboard), unlike `mouseup` which is
+// never delivered when the pointer is released outside the slider.
+ui.progressBar.addEventListener('mousedown', () => { seeking.spotify = true; });
+ui.progressBar.addEventListener('change', (e) => {
+    seeking.spotify = false;
+    const newPos = parseInt(e.target.value, 10);
+    if (Number.isNaN(newPos)) return;
     spotifyState.progress = newPos;
     spotifyState.timestamp = Date.now();
     send({type: 'command', source: 'spotify', command: 'seek', position: newPos});
-};
+});
 ui.progressBar.oninput = (e) => ui.currentTime.textContent = formatTime(e.target.value);
 
 // --- SoundCloud Event Listeners ---
@@ -590,15 +597,22 @@ ui.scVolumeSlider.oninput = (e) => {
     sendScVolume(val);
 };
 
-ui.scProgressBar.onmousedown = () => isSeeking = true;
-ui.scProgressBar.onmouseup = (e) => {
-    isSeeking = false;
-    const newPos = parseInt(e.target.value);
+ui.scProgressBar.addEventListener('mousedown', () => { seeking.soundcloud = true; });
+ui.scProgressBar.addEventListener('change', (e) => {
+    seeking.soundcloud = false;
+    const newPos = parseInt(e.target.value, 10);
+    if (Number.isNaN(newPos)) return;
     scState.progressMs = newPos;
     scState.timestamp = Date.now();
     send({type: 'command', source: 'soundcloud', command: 'seek', position: newPos});
-};
+});
 ui.scProgressBar.oninput = (e) => ui.scCurrentTime.textContent = formatTime(e.target.value);
+
+// Safety net: releasing the pointer anywhere ends the seek lock.
+document.addEventListener('mouseup', () => {
+    seeking.spotify = false;
+    seeking.soundcloud = false;
+});
 
 document.addEventListener('DOMContentLoaded', () => {
     connect();

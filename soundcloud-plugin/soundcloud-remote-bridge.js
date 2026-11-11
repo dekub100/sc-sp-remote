@@ -24,10 +24,16 @@ module.exports = {
                 var MAX_RECONNECT = 10000;
                 var pollInterval = null;
                 var lastTrackId = '';
+                // Set by cleanup so a closing socket cannot schedule a reconnect.
+                var stopping = false;
+                // Last volume we could actually read; used when the SC slider
+                // is collapsed and no media element exists.
+                var lastVolume = 0.5;
 
                 /* ─── Media element tracking ───────────────────────────────────── */
 
                 var _trackedMedia = [];
+                var _mutationObserver = null;
 
                 function _scanMediaElements(root) {
                     root = root || document;
@@ -61,6 +67,7 @@ module.exports = {
                 // MutationObserver for elements added after page load
                 (function() {
                     var mo = new MutationObserver(function(muts) {
+                        if (stopping) return;
                         for (var m = 0; m < muts.length; m++) {
                             var nodes = muts[m].addedNodes;
                             for (var n = 0; n < nodes.length; n++) {
@@ -79,6 +86,7 @@ module.exports = {
                             }
                         }
                     });
+                    _mutationObserver = mo;
                     if (document.body) {
                         mo.observe(document.body, { childList: true, subtree: true });
                     } else {
@@ -90,7 +98,16 @@ module.exports = {
 
                 _scanMediaElements();
 
+                function _pruneMedia() {
+                    // SPA navigation leaves detached <audio> nodes behind; drop
+                    // them instead of tracking them forever.
+                    _trackedMedia = _trackedMedia.filter(function(m) {
+                        return m && m.isConnected;
+                    });
+                }
+
                 function _bestMedia() {
+                    _pruneMedia();
                     // Prefer an element that's actively playing
                     for (var i = 0; i < _trackedMedia.length; i++) {
                         var m = _trackedMedia[i];
@@ -148,10 +165,16 @@ module.exports = {
                     if (progress && bg) {
                         var ph = progress.getBoundingClientRect().height;
                         var bh = bg.getBoundingClientRect().height;
-                        if (bh > 0) return ph / bh;  // 0.0 – 1.0
+                        if (bh > 0) {
+                            lastVolume = Math.max(0, Math.min(1, ph / bh));  // 0.0 – 1.0
+                            return lastVolume;
+                        }
                     }
                     var m = _bestMedia();
-                    return m ? m.volume : 1;
+                    if (m && typeof m.volume === 'number' && isFinite(m.volume)) {
+                        lastVolume = Math.max(0, Math.min(1, m.volume));
+                    }
+                    return lastVolume;
                 }
 
                 function _getRepeatStatus() {
@@ -383,7 +406,10 @@ module.exports = {
                             break;
                         }
                         case 'setVolume': {
-                            if (cmd.volume !== undefined) scSetVolume(Number(cmd.volume));
+                            if (cmd.volume !== undefined) {
+                                lastVolume = Math.max(0, Math.min(1, Number(cmd.volume)));
+                                scSetVolume(lastVolume);
+                            }
                             break;
                         }
                         case 'like': {
@@ -410,6 +436,7 @@ module.exports = {
                 /* ─── WebSocket ────────────────────────────────────────────────── */
 
                 function connect() {
+                    if (stopping) return;
                     try {
                         ws = new WebSocket(SERVER_URL);
                     } catch (e) {
@@ -419,6 +446,7 @@ module.exports = {
                     }
 
                     ws.onopen = function() {
+                        if (stopping) { ws.close(); return; }
                         reconnectDelay = 1000;
                         var state = getState();
                         ws.send(JSON.stringify(state));
@@ -445,6 +473,7 @@ module.exports = {
 
                     ws.onclose = function() {
                         stopPolling();
+                        if (stopping) return;
                         scheduleReconnect();
                     };
 
@@ -452,6 +481,7 @@ module.exports = {
                 }
 
                 function scheduleReconnect() {
+                    if (stopping) return;
                     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT);
                     setTimeout(connect, reconnectDelay);
                 }
@@ -477,8 +507,14 @@ module.exports = {
                 connect();
 
                 window.__scrpc_cleanup_soundcloud_remote_bridge = function() {
+                    stopping = true;
                     stopPolling();
                     if (ws) { ws.close(); ws = null; }
+                    // Put the page back the way we found it (plugin reload/disable).
+                    document.createElement = _origCreateElement;
+                    HTMLMediaElement.prototype.play = _origPlay;
+                    if (_mutationObserver) { _mutationObserver.disconnect(); _mutationObserver = null; }
+                    _trackedMedia = [];
                     delete window.__scRemoteLoaded;
                 };
             })();
