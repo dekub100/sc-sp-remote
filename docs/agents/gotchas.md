@@ -49,3 +49,4 @@
 47. **Disconnect ≠ paused** — reconnects close the old socket after the new one registers. Pausing immediately stomps the fresh `syncFullState` and pauses the music, so the pause is delayed by `DISCONNECT_PAUSE_GRACE_SECONDS` and re-checked against `CLIENTS`.
 48. **`Host` and `Origin` are checked in one middleware** (`security_middleware`), not per-route — the WS upgrade is a plain GET, so route-level checks would miss it. `/api/admin/*` additionally requires a loopback peer.
 49. **`"*"` in `allowedOrigins` opens CORS only, never the WebSocket gate** — otherwise any website could drive playback.
+50. **Every state key must be declared in `SOURCES`** (`server/state.py`) as either `persisted` or `runtime`. The old per-source read/save/broadcast/interpolate helpers now derive from that table; `TestSourceDescriptor` fails if a key is unclassified. Flat `state["sc*"]` keys are unchanged on purpose.

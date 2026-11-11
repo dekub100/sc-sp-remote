@@ -25,7 +25,7 @@
 │   ├── server.py             # Entry point, routes, main()
 │   ├── config.py             # Paths, defaults, layered config loading
 │   ├── log.py                # Logger setup, rotation
-│   ├── state.py              # State dict, JSON persistence, debounced saves
+│   ├── state.py              # SOURCES descriptor, flat state, JSON persistence, debounced saves
 │   ├── broadcast.py          # CLIENTS dict, broadcast functions, progress interpolation
 │   ├── lyrics.py             # Lyrics providers (Musixmatch + LRCLIB), token mgmt, SQLite cache
 │   ├── handlers.py           # Message handlers + dispatch table (16 types)

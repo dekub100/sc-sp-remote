@@ -17,7 +17,7 @@ Dev tool isolates both its config (`data/dev/config.dev.json`) and all runtime d
 ## Adding Features
 
 1. **New message type** → add to `MESSAGE_HANDLERS` in `handlers.py`, add handler, update client(s)
-2. **New state field** → add to `state` in `state.py`, update broadcast functions and save data getters
+2. **New state field** → declare it in `SOURCES` in `state.py` (`defaults`, plus `persisted` or `runtime`), then use it in broadcast/HTTP payloads. The descriptor test fails if a state key is unclassified.
 3. **New web UI element** → HTML + `ui` object in `script.js` + event listener
 4. **New OBS widget feature** → same pattern in `obs-widget/` files
 5. **Always** → add tests in `test_server.py`, run `ruff check`, run `pytest`
@@ -33,7 +33,7 @@ Dev tool isolates both its config (`data/dev/config.dev.json`) and all runtime d
 
 - Don't test DOM rendering (browser/Spotify, painful to mock) — but DO test pure JS helpers if they get extracted
 - DO test: message handlers, inbound validation, broadcasting/backpressure, config, lyrics cache, HTTP endpoints, the WS lifecycle (`TestWebSocketLifecycle`, `TestStreamDeckClient`)
-- `reset_state` fixture runs before every test — it must list every state key, including `artistUri` and the `sc*` fields
+- The autouse `reset_state` fixture calls `reset_source_state()` for both sources, restoring `SOURCES[...].defaults`
 - Mock `broadcast_*` functions to avoid real WebSocket connections; use real `TestClient`/`TestServer` sockets for lifecycle tests
 - Prefer real sockets over mocks for anything that depends on connect/disconnect ordering
 - Beware: `await` inside the websocket handler's `finally` is cancelled when the client disconnects — use a detached task (see `_spawn_source_disconnect`)
