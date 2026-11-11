@@ -21,49 +21,10 @@ import server
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    st.state.update({
-        "volume": 0.5,
-        "isPlaying": False,
-        "currentTrack": {
-            "trackName": "No song playing",
-            "artistName": "",
-            "albumName": "",
-            "trackUri": "",
-            "albumUri": "",
-            "artistUri": "",
-            "albumArtUrl": ""
-        },
-        "trackProgress": 0,
-        "trackDuration": 0,
-        "trackProgressStartTimestamp": 0,
-        "isShuffling": False,
-        "repeatStatus": 0,
-        "isLiked": False,
-        "scTrack": "No song playing",
-        "scArtist": "",
-        "scAlbum": "",
-        "scId": "",
-        "scCoverUrl": "",
-        "scIsPlaying": False,
-        "scProgressMs": 0,
-        "scDurationMs": 0,
-        "scProgressStartTimestamp": 0,
-        "scVolume": 0.5,
-        "scIsLiked": False,
-        "scIsShuffling": False,
-        "scRepeatStatus": 0,
-        "lyrics": {
-            "trackUri": "",
-            "synced": [],
-            "plain": "",
-            "available": False,
-            "instrumental": False,
-            "loading": False
-        },
-    })
+    st.reset_source_state("spotify")
+    st.reset_source_state("soundcloud")
     broadcast.CLIENTS.clear()
-    st._spotify_save_timer = None
-    st._sc_save_timer = None
+    st.cancel_pending_save()
     # The SC delta gate keeps a module-level fingerprint; clear it so test
     # order can never leak one test's broadcast decisions into the next.
     handlers._last_sc_fingerprint = None
@@ -139,11 +100,10 @@ def test_get_spotify_save_data_shape() -> None:
     }
 
 
-def test_write_spotify_state_to_disk(tmp_path: Any) -> None:
+def test_write_state_to_disk(tmp_path: Any) -> None:
     state_file = tmp_path / "state_spotify.json"
     data: dict[str, Any] = {"volume": 0.5, "isPlaying": False}
-    with patch.object(server, "STATE_FILE", str(state_file)):
-        server._write_spotify_state_to_disk(data)
+    st._write_json_file(str(state_file), data)
     assert state_file.exists()
     assert json.loads(state_file.read_text()) == data
 
@@ -1262,8 +1222,8 @@ class TestDebouncedSave:
         st.set_sc_write_callback(lambda d: None)
         yield
         st.cancel_pending_save()
-        st._spotify_write_callback = None
-        st._sc_write_callback = None
+        st.set_write_callback("spotify", None)
+        st.set_write_callback("soundcloud", None)
 
     async def test_spotify_debounce_collapses_rapid_calls(self) -> None:
         calls: list[dict[str, Any]] = []
@@ -1559,6 +1519,154 @@ class TestBuildStateMessages:
             assert key in msg
 
 
+class TestWireContract:
+    """Pin the exact payload shapes so the Phase 5 refactor cannot change the wire."""
+
+    SPOTIFY_KEYS = {
+        "type", "source", "volume", "isPlaying", "trackName", "artistName",
+        "albumName", "trackUri", "albumUri", "artistUri", "albumArtUrl",
+        "progress", "duration", "isShuffling", "repeatStatus", "isLiked", "timestamp",
+    }
+    SC_KEYS = {
+        "type", "source", "track", "artist", "album", "id", "coverUrl", "isPlaying",
+        "progressMs", "durationMs", "volume", "isLiked", "isShuffling", "repeatStatus",
+        "timestamp",
+    }
+    LYRICS_KEYS = {"type", "available", "instrumental", "synced", "plain", "karaoke", "provider", "loading"}
+
+    def test_spotify_state_message(self) -> None:
+        msg = broadcast.build_spotify_state_message(1234)
+        assert set(msg) == self.SPOTIFY_KEYS
+        assert msg["type"] == "stateUpdate" and msg["source"] == "spotify"
+        assert msg["progress"] == 1234
+
+    def test_sc_state_message(self) -> None:
+        msg = broadcast.build_sc_state_message(5678)
+        assert set(msg) == self.SC_KEYS
+        assert msg["type"] == "scStateUpdate" and msg["source"] == "soundcloud"
+        assert msg["progressMs"] == 5678
+
+    def test_lyrics_message(self) -> None:
+        assert set(broadcast.build_lyrics_message()) == self.LYRICS_KEYS
+
+    async def test_volume_messages(self) -> None:
+        sent: list[dict[str, Any]] = []
+
+        async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
+            sent.append(message)
+
+        with patch.object(broadcast, "broadcast", capture):
+            await broadcast.broadcast_volume_update()
+        assert [m["type"] for m in sent] == ["volumeUpdate", "scVolumeUpdate"]
+        assert set(sent[0]) == {"type", "source", "volume"}
+        assert set(sent[1]) == {"type", "source", "volume"}
+        assert sent[1]["source"] == "soundcloud"
+
+    async def test_playback_messages(self) -> None:
+        sent: list[dict[str, Any]] = []
+
+        async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
+            sent.append(message)
+
+        with patch.object(broadcast, "broadcast", capture):
+            await broadcast.broadcast_playback_update()
+        assert [m["type"] for m in sent] == ["playbackUpdate", "scPlaybackUpdate"]
+        assert set(sent[0]) == {"type", "source", "isPlaying", "progress", "timestamp"}
+        assert set(sent[1]) == {"type", "source", "isPlaying", "progressMs", "timestamp"}
+
+    async def test_progress_messages(self) -> None:
+        sent: list[dict[str, Any]] = []
+
+        async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
+            sent.append(message)
+
+        with patch.object(broadcast, "broadcast", capture):
+            await broadcast.broadcast_progress_update()
+        assert [m["type"] for m in sent] == ["progressUpdate", "scProgressUpdate"]
+        assert set(sent[0]) == {"type", "source", "progress", "duration", "isPlaying", "timestamp"}
+        assert set(sent[1]) == {"type", "source", "progressMs", "durationMs", "isPlaying", "timestamp"}
+
+    async def test_progress_loop_messages(self) -> None:
+        st.state["isPlaying"] = True
+        st.state["scIsPlaying"] = True
+        st.state["trackProgressStartTimestamp"] = 1.0
+        st.state["scProgressStartTimestamp"] = 1.0
+        sent: list[dict[str, Any]] = []
+
+        async def capture(message: dict[str, Any], exclude_ws: Any = None, target_type: Any = None) -> None:
+            sent.append(message)
+
+        with patch.object(broadcast, "broadcast", capture):
+            await broadcast._compute_and_broadcast_progress()
+        assert [m["type"] for m in sent] == ["progressUpdate", "scProgressUpdate"]
+        assert set(sent[0]) == {"type", "source", "progress", "duration", "isPlaying", "timestamp"}
+        assert set(sent[1]) == {"type", "source", "progressMs", "durationMs", "isPlaying", "timestamp"}
+
+    async def test_api_state_shape_is_stable(self) -> None:
+        st.state["isPlaying"] = False
+        st.state["scIsPlaying"] = False
+        req = MagicMock()
+        body: bytes = (await routes.handle_state(req)).body
+        assert body == (await routes.handle_state(req)).body
+        data: dict[str, Any] = json.loads(body)
+        assert list(data) == ["spotify", "soundcloud"]
+        assert set(data["spotify"]) == {
+            "trackName", "artistName", "albumName", "trackUri", "albumArtUrl",
+            "volume", "isPlaying", "isShuffling", "repeatStatus", "isLiked",
+            "progress", "duration", "progressFmt", "durationFmt",
+        }
+        assert set(data["soundcloud"]) == {
+            "track", "artist", "album", "coverUrl", "isPlaying", "progressMs",
+            "durationMs", "volume", "isLiked", "progressFmt", "durationFmt",
+        }
+
+
+class TestSourceDescriptor:
+    def test_persisted_and_runtime_partition_state(self) -> None:
+        for spec in st.SOURCES.values():
+            assert set(spec.persisted).isdisjoint(spec.runtime)
+            assert set(spec.persisted) | set(spec.runtime) == set(spec.defaults)
+            for key in spec.persisted + spec.runtime:
+                assert key in st.state
+
+    def test_client_type_mapping(self) -> None:
+        assert st.SOURCE_BY_CLIENT_TYPE["spicetify"].key == "spotify"
+        assert st.SOURCE_BY_CLIENT_TYPE["soundcloud"].key == "soundcloud"
+
+    def test_reset_source_state(self) -> None:
+        st.state["volume"] = 0.9
+        st.state["trackProgress"] = 123
+        st.reset_source_state("spotify")
+        assert st.state["volume"] == st.SOURCES["spotify"].defaults["volume"]
+        assert st.state["trackProgress"] == 0
+        st.state["scTrack"] = "Other"
+        st.reset_source_state("soundcloud")
+        assert st.state["scTrack"] == "No song playing"
+
+    def test_save_data_uses_serializers(self) -> None:
+        st.state["volume"] = 0.777
+        assert st.get_spotify_save_data()["volume"] == 0.78
+        st.state["scVolume"] = 1.7
+        assert st.get_sc_save_data()["scVolume"] == 1.0
+
+    def test_interpolation_accepts_now(self) -> None:
+        st.state.update({
+            "isPlaying": True, "trackProgress": 1000, "trackDuration": 200000,
+            "trackProgressStartTimestamp": 5000,
+        })
+        assert st.get_interpolated_progress("spotify", 6000) == 2000
+
+    def test_write_source_state_now_uses_callback(self) -> None:
+        calls: list[dict[str, Any]] = []
+        st.set_write_callback("spotify", calls.append)
+        try:
+            st.write_source_state_now("spotify")
+        finally:
+            st.set_write_callback("spotify", None)
+        assert len(calls) == 1
+        assert calls[0] == st.get_spotify_save_data()
+
+
 class TestCoverSizeNormalization:
     def test_thumbnail_size_replaced(self) -> None:
         result = handlers._COVER_SIZE_RE.sub("-t500x500", "https://i1.sndcdn.com/artworks-abc-t100x100.jpg")
@@ -1795,7 +1903,7 @@ class TestWebSocketLifecycle:
 
     async def test_reconnect_does_not_pause_while_another_controller_is_attached(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
-             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+             patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
             old = await tc.ws_connect('/?client=spicetify')
             new = await tc.ws_connect('/?client=spicetify')
             await old.send_json({"type": "stateUpdate", "isPlaying": True,
@@ -1808,7 +1916,7 @@ class TestWebSocketLifecycle:
 
     async def test_last_controller_disconnect_pauses(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
-             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+             patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
             ws = await tc.ws_connect('/?client=spicetify')
             await ws.send_json({"type": "stateUpdate", "isPlaying": True,
                                 "trackName": "Song", "progress": 1000, "duration": 200000})
@@ -1819,7 +1927,7 @@ class TestWebSocketLifecycle:
 
     async def test_source_status_is_broadcast(self, tc) -> None:
         with patch.object(routes, "DISCONNECT_PAUSE_GRACE_SECONDS", 0.05), \
-             patch.object(routes, "save_spotify_state_debounced", new_callable=AsyncMock):
+             patch.object(routes, "save_source_state_debounced", new_callable=AsyncMock):
             observer = await tc.ws_connect('/?client=obs')
             source = await tc.ws_connect('/?client=spicetify')
             messages = []

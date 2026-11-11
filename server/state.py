@@ -1,116 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from config import SC_STATE_FILE, STATE_FILE, STATE_SAVE_DEBOUNCE_SECONDS, config
 from log import logger
-
-state: dict[str, Any] = {
-    # Spotify state (from Spicetify extension)
-    "volume": config["defaultVolume"],
-    "isPlaying": False,
-    "currentTrack": {
-        "trackName": "No song playing",
-        "artistName": "",
-        "albumName": "",
-        "trackUri": "",
-        "albumUri": "",
-        "artistUri": "",
-        "albumArtUrl": ""
-    },
-    "trackProgress": 0,
-    "trackDuration": 0,
-    "trackProgressStartTimestamp": 0,
-    "isShuffling": False,
-    "repeatStatus": 0,
-    "isLiked": False,
-    "lyrics": {
-        "trackUri": "",
-        "synced": [],
-        "plain": "",
-        "available": False,
-        "instrumental": False,
-        "loading": False
-    },
-    # SoundCloud state (from soundcloud-rpc plugin)
-    "scTrack": "No song playing",
-    "scArtist": "",
-    "scAlbum": "",
-    "scId": "",
-    "scCoverUrl": "",
-    "scIsPlaying": False,
-    "scProgressMs": 0,
-    "scDurationMs": 0,
-    "scProgressStartTimestamp": 0,
-    "scVolume": 0.5,
-    "scIsLiked": False,
-    "scIsShuffling": False,
-    "scRepeatStatus": 0,
-}
-
-_spotify_save_timer: Optional[asyncio.Task[None]] = None
-_sc_save_timer: Optional[asyncio.Task[None]] = None
-_spotify_write_callback: Optional[Callable[[dict[str, Any]], None]] = None
-_sc_write_callback: Optional[Callable[[dict[str, Any]], None]] = None
-
-
-def set_spotify_write_callback(callback: Callable[[dict[str, Any]], None]) -> None:
-    global _spotify_write_callback
-    _spotify_write_callback = callback
-
-
-def set_sc_write_callback(callback: Callable[[dict[str, Any]], None]) -> None:
-    global _sc_write_callback
-    _sc_write_callback = callback
-
-
-def read_spotify_state_from_file() -> None:
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                saved_state: dict[str, Any] = json.load(f)
-                state["volume"] = saved_state.get("volume", state["volume"])
-                state["isPlaying"] = saved_state.get("isPlaying", state["isPlaying"])
-                state["currentTrack"].update(saved_state.get("currentTrack", {}))
-                state["trackDuration"] = saved_state.get("trackDuration", state["trackDuration"])
-                state["isShuffling"] = saved_state.get("isShuffling", state["isShuffling"])
-                state["repeatStatus"] = saved_state.get("repeatStatus", state["repeatStatus"])
-                state["isLiked"] = saved_state.get("isLiked", state["isLiked"])
-                logger.info("Server: Loaded Spotify state from state_spotify.json")
-        except Exception as e:
-            logger.error(f"Server: Error reading Spotify state file: {e}")
-
-
-def read_sc_state_from_file() -> None:
-    if os.path.exists(SC_STATE_FILE):
-        try:
-            with open(SC_STATE_FILE, "r") as f:
-                saved_state: dict[str, Any] = json.load(f)
-                state["scTrack"] = saved_state.get("scTrack", state["scTrack"])
-                state["scArtist"] = saved_state.get("scArtist", state["scArtist"])
-                state["scVolume"] = saved_state.get("scVolume", state["scVolume"])
-                logger.info("Server: Loaded SoundCloud state from state_soundcloud.json")
-        except Exception as e:
-            logger.error(f"Server: Error reading SoundCloud state file: {e}")
-
-
-async def save_spotify_state_debounced() -> None:
-    global _spotify_save_timer
-    if _spotify_save_timer:
-        _spotify_save_timer.cancel()
-    _spotify_save_timer = asyncio.create_task(_actually_save_spotify_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
-
-
-async def save_sc_state_debounced() -> None:
-    global _sc_save_timer
-    if _sc_save_timer:
-        _sc_save_timer.cancel()
-    _sc_save_timer = asyncio.create_task(_actually_save_sc_after_delay(STATE_SAVE_DEBOUNCE_SECONDS))
-
 
 _MAX_MS: int = 7 * 24 * 60 * 60 * 1000  # 7 days; rejects absurd clock values
 
@@ -133,107 +32,341 @@ def as_volume(value: Any, default: float = 0.0) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def get_interpolated_track_progress() -> int:
-    """Current Spotify position in ms, interpolating from the last progress anchor.
+@dataclass(frozen=True)
+class SourceSpec:
+    """Everything the server needs to know about one playback source.
 
-    Raw state["trackProgress"] can be 0-2s stale (the extension only re-anchors
-    past PROGRESS_DELTA_THRESHOLD_MS). Fresh clients must anchor on this, not the
-    raw value, or they start offset until the next play/pause.
+    State stays flat (`state["volume"]`, `state["scVolume"]`, ...); this table
+    names the fields so read/save/interpolate/broadcast/reset can be shared
+    instead of duplicated per source.
     """
-    progress: int = as_ms(state["trackProgress"])
-    if not state["isPlaying"]:
+
+    key: str
+    label: str
+    client_type: str
+    state_file: str
+    persisted: tuple[str, ...]
+    runtime: tuple[str, ...]
+    playing_key: str
+    progress_key: str
+    duration_key: str
+    anchor_key: str
+    volume_key: str
+    volume_msg_type: str
+    playback_msg_type: str
+    progress_msg_type: str
+    progress_field: str
+    duration_field: str
+    cover_path: tuple[str, ...]
+    update_fields: tuple[tuple[str, str, str], ...]
+    track_fields: tuple[str, ...] = ()
+    cover_field: Optional[str] = None
+    defaults: dict[str, Any] = field(default_factory=dict)
+    serializers: dict[str, Callable[[Any], Any]] = field(default_factory=dict)
+
+
+_SPOTIFY_DEFAULTS: dict[str, Any] = {
+    "volume": config["defaultVolume"],
+    "isPlaying": False,
+    "currentTrack": {
+        "trackName": "No song playing",
+        "artistName": "",
+        "albumName": "",
+        "trackUri": "",
+        "albumUri": "",
+        "artistUri": "",
+        "albumArtUrl": "",
+    },
+    "trackProgress": 0,
+    "trackDuration": 0,
+    "trackProgressStartTimestamp": 0,
+    "isShuffling": False,
+    "repeatStatus": 0,
+    "isLiked": False,
+    "lyrics": {
+        "trackUri": "",
+        "synced": [],
+        "plain": "",
+        "available": False,
+        "instrumental": False,
+        "loading": False,
+    },
+}
+
+_SOUNDCLOUD_DEFAULTS: dict[str, Any] = {
+    "scTrack": "No song playing",
+    "scArtist": "",
+    "scAlbum": "",
+    "scId": "",
+    "scCoverUrl": "",
+    "scIsPlaying": False,
+    "scProgressMs": 0,
+    "scDurationMs": 0,
+    "scProgressStartTimestamp": 0,
+    "scVolume": 0.5,
+    "scIsLiked": False,
+    "scIsShuffling": False,
+    "scRepeatStatus": 0,
+}
+
+SOURCES: dict[str, SourceSpec] = {
+    "spotify": SourceSpec(
+        key="spotify",
+        label="Spotify",
+        client_type="spicetify",
+        state_file=STATE_FILE,
+        persisted=(
+            "volume", "isPlaying", "currentTrack", "trackDuration",
+            "isShuffling", "repeatStatus", "isLiked",
+        ),
+        runtime=("trackProgress", "trackProgressStartTimestamp", "lyrics"),
+        playing_key="isPlaying",
+        progress_key="trackProgress",
+        duration_key="trackDuration",
+        anchor_key="trackProgressStartTimestamp",
+        volume_key="volume",
+        volume_msg_type="volumeUpdate",
+        playback_msg_type="playbackUpdate",
+        progress_msg_type="progressUpdate",
+        progress_field="progress",
+        duration_field="duration",
+        cover_path=("currentTrack", "albumArtUrl"),
+        update_fields=(
+            ("volume", "volume", "volume"),
+            ("isPlaying", "isPlaying", "bool"),
+            ("isShuffling", "isShuffling", "bool"),
+            ("repeatStatus", "repeatStatus", "repeat"),
+            ("isLiked", "isLiked", "bool"),
+            ("duration", "trackDuration", "ms"),
+            ("progress", "trackProgress", "ms"),
+        ),
+        track_fields=("trackName", "artistName", "albumName", "albumUri", "artistUri", "albumArtUrl"),
+        defaults=_SPOTIFY_DEFAULTS,
+        serializers={"volume": lambda value: round(as_volume(value, 0.0), 2)},
+    ),
+    "soundcloud": SourceSpec(
+        key="soundcloud",
+        label="SoundCloud",
+        client_type="soundcloud",
+        state_file=SC_STATE_FILE,
+        persisted=("scTrack", "scArtist", "scVolume"),
+        runtime=(
+            "scAlbum", "scId", "scCoverUrl", "scIsPlaying", "scProgressMs",
+            "scDurationMs", "scProgressStartTimestamp", "scIsLiked",
+            "scIsShuffling", "scRepeatStatus",
+        ),
+        playing_key="scIsPlaying",
+        progress_key="scProgressMs",
+        duration_key="scDurationMs",
+        anchor_key="scProgressStartTimestamp",
+        volume_key="scVolume",
+        volume_msg_type="scVolumeUpdate",
+        playback_msg_type="scPlaybackUpdate",
+        progress_msg_type="scProgressUpdate",
+        progress_field="progressMs",
+        duration_field="durationMs",
+        cover_path=("scCoverUrl",),
+        update_fields=(
+            ("track", "scTrack", "text"),
+            ("artist", "scArtist", "text"),
+            ("album", "scAlbum", "text"),
+            ("id", "scId", "text"),
+            ("isPlaying", "scIsPlaying", "bool"),
+            ("progressMs", "scProgressMs", "ms"),
+            ("durationMs", "scDurationMs", "ms"),
+            ("volume", "scVolume", "volume"),
+            ("isLiked", "scIsLiked", "bool"),
+            ("isShuffling", "scIsShuffling", "bool"),
+            ("repeatStatus", "scRepeatStatus", "repeat"),
+        ),
+        cover_field="coverUrl",
+        defaults=_SOUNDCLOUD_DEFAULTS,
+        serializers={"scVolume": as_volume},
+    ),
+}
+
+SOURCE_BY_CLIENT_TYPE: dict[str, SourceSpec] = {
+    spec.client_type: spec for spec in SOURCES.values()
+}
+
+
+def _initial_state() -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for spec in SOURCES.values():
+        merged.update(copy.deepcopy(spec.defaults))
+    return merged
+
+
+state: dict[str, Any] = _initial_state()
+
+
+@dataclass
+class _SaveRuntime:
+    timer: Optional[asyncio.Task[None]] = None
+    callback: Optional[Callable[[dict[str, Any]], None]] = None
+
+
+_save_runtime: dict[str, _SaveRuntime] = {key: _SaveRuntime() for key in SOURCES}
+
+
+def set_write_callback(source: str, callback: Optional[Callable[[dict[str, Any]], None]]) -> None:
+    _save_runtime[source].callback = callback
+
+
+def set_spotify_write_callback(callback: Optional[Callable[[dict[str, Any]], None]]) -> None:
+    set_write_callback("spotify", callback)
+
+
+def set_sc_write_callback(callback: Optional[Callable[[dict[str, Any]], None]]) -> None:
+    set_write_callback("soundcloud", callback)
+
+
+def _write_json_file(path: str, data: dict[str, Any]) -> None:
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def write_source_state_now(source: str) -> None:
+    """Write one source's persisted state synchronously (startup/shutdown/tests)."""
+    spec: SourceSpec = SOURCES[source]
+    callback = _save_runtime[source].callback
+    data: dict[str, Any] = get_source_save_data(source)
+    if callback is None:
+        _write_json_file(spec.state_file, data)
+    else:
+        callback(data)
+
+
+def read_source_state_from_file(source: str) -> None:
+    spec: SourceSpec = SOURCES[source]
+    if not os.path.exists(spec.state_file):
+        return
+    try:
+        with open(spec.state_file, "r") as f:
+            saved_state: dict[str, Any] = json.load(f)
+            for key in spec.persisted:
+                if key not in saved_state:
+                    continue
+                if key == "currentTrack":
+                    state[key].update(saved_state[key] or {})
+                else:
+                    state[key] = saved_state[key]
+            logger.info(f"Server: Loaded {spec.label} state from {os.path.basename(spec.state_file)}")
+    except Exception as e:
+        logger.error(f"Server: Error reading {spec.label} state file: {e}")
+
+
+def read_spotify_state_from_file() -> None:
+    read_source_state_from_file("spotify")
+
+
+def read_sc_state_from_file() -> None:
+    read_source_state_from_file("soundcloud")
+
+
+def reset_source_state(source: str) -> None:
+    """Restore one source to its initial values (used by the test fixture)."""
+    state.update(copy.deepcopy(SOURCES[source].defaults))
+
+
+async def save_source_state_debounced(source: str) -> None:
+    runtime: _SaveRuntime = _save_runtime[source]
+    if runtime.timer:
+        runtime.timer.cancel()
+    runtime.timer = asyncio.create_task(
+        _actually_save_after_delay(SOURCES[source], float(STATE_SAVE_DEBOUNCE_SECONDS))
+    )
+
+
+async def save_spotify_state_debounced() -> None:
+    await save_source_state_debounced("spotify")
+
+
+async def save_sc_state_debounced() -> None:
+    await save_source_state_debounced("soundcloud")
+
+
+def get_source_save_data(source: str) -> dict[str, Any]:
+    spec: SourceSpec = SOURCES[source]
+    data: dict[str, Any] = {}
+    for key in spec.persisted:
+        value: Any = state[key]
+        serializer = spec.serializers.get(key)
+        data[key] = serializer(value) if serializer else value
+    return data
+
+
+def get_spotify_save_data() -> dict[str, Any]:
+    return get_source_save_data("spotify")
+
+
+def get_sc_save_data() -> dict[str, Any]:
+    return get_source_save_data("soundcloud")
+
+
+def get_interpolated_progress(source: str, now_ms: Optional[float] = None) -> int:
+    """Current position in ms, interpolating from the last progress anchor."""
+    spec: SourceSpec = SOURCES[source]
+    progress: int = as_ms(state[spec.progress_key])
+    if not state[spec.playing_key]:
         return progress
-    anchor: Any = state["trackProgressStartTimestamp"]
+    anchor: Any = state[spec.anchor_key]
     # isPlaying is persisted but the anchor is not, so a fresh process can have
     # isPlaying=True with no anchor. Interpolating from 0 would report the end
     # of the track; the stored position is the only truthful value.
     if not isinstance(anchor, (int, float)) or isinstance(anchor, bool) or anchor <= 0:
         return progress
-    elapsed = time.time() * 1000 - anchor
-    return int(min(progress + max(0, elapsed), as_ms(state["trackDuration"])))
+    now: float = now_ms if now_ms is not None else time.time() * 1000
+    elapsed = now - anchor
+    return int(min(progress + max(0, elapsed), as_ms(state[spec.duration_key])))
+
+
+def get_interpolated_track_progress() -> int:
+    return get_interpolated_progress("spotify")
 
 
 def get_interpolated_sc_progress() -> int:
-    """Same as get_interpolated_track_progress but for SoundCloud."""
-    progress: int = as_ms(state["scProgressMs"])
-    if not state["scIsPlaying"]:
-        return progress
-    anchor: Any = state["scProgressStartTimestamp"]
-    if not isinstance(anchor, (int, float)) or isinstance(anchor, bool) or anchor <= 0:
-        return progress
-    elapsed = time.time() * 1000 - anchor
-    return int(min(progress + max(0, elapsed), as_ms(state["scDurationMs"])))
+    return get_interpolated_progress("soundcloud")
+
+
+def get_source_cover_url(source: str) -> str:
+    """Album art URL for a source, or "" when the cover toggle is off (stream safety)."""
+    if not config.get("enableAlbumArt", True):
+        return ""
+    value: Any = state
+    for key in SOURCES[source].cover_path:
+        value = value[key]
+    return value
 
 
 def get_album_art_url() -> str:
-    """Spotify album art URL, or "" when the cover toggle is off (stream safety)."""
-    if not config.get("enableAlbumArt", True):
-        return ""
-    return state["currentTrack"]["albumArtUrl"]
+    return get_source_cover_url("spotify")
 
 
 def get_sc_cover_url() -> str:
-    """SoundCloud cover URL, gated by the same cover toggle."""
-    if not config.get("enableAlbumArt", True):
-        return ""
-    return state["scCoverUrl"]
+    return get_source_cover_url("soundcloud")
 
 
-def get_spotify_save_data() -> dict[str, Any]:
-    return {
-        "volume": round(as_volume(state["volume"], 0.0), 2),
-        "isPlaying": state["isPlaying"],
-        "currentTrack": state["currentTrack"],
-        "trackDuration": state["trackDuration"],
-        "isShuffling": state["isShuffling"],
-        "repeatStatus": state["repeatStatus"],
-        "isLiked": state["isLiked"],
-    }
-
-
-def get_sc_save_data() -> dict[str, Any]:
-    return {
-        "scTrack": state["scTrack"],
-        "scArtist": state["scArtist"],
-        "scVolume": as_volume(state["scVolume"], 0.0),
-    }
-
-
-async def _actually_save_spotify_after_delay(delay: float) -> None:
+async def _actually_save_after_delay(spec: SourceSpec, delay: float) -> None:
     try:
         await asyncio.sleep(delay)
-        if _spotify_write_callback:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _spotify_write_callback, get_spotify_save_data())
-        logger.info("Server: Saved Spotify state to state_spotify.json (debounced)")
+        callback = _save_runtime[spec.key].callback
+        data: dict[str, Any] = get_source_save_data(spec.key)
+        loop = asyncio.get_running_loop()
+        if callback is None:
+            await loop.run_in_executor(None, _write_json_file, spec.state_file, data)
+        else:
+            await loop.run_in_executor(None, callback, data)
+        logger.info(f"Server: Saved {spec.label} state to {os.path.basename(spec.state_file)} (debounced)")
     except asyncio.CancelledError:
         pass
     except Exception as e:
-        logger.error(f"Server: Error in debounced Spotify save: {e}")
-
-
-async def _actually_save_sc_after_delay(delay: float) -> None:
-    try:
-        await asyncio.sleep(delay)
-        if _sc_write_callback:
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, _sc_write_callback, get_sc_save_data())
-        logger.info("Server: Saved SoundCloud state to state_soundcloud.json (debounced)")
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logger.error(f"Server: Error in debounced SoundCloud save: {e}")
+        logger.error(f"Server: Error in debounced {spec.label} save: {e}")
 
 
 def cancel_pending_save() -> None:
-    global _spotify_save_timer, _sc_save_timer
-    if _spotify_save_timer:
-        _spotify_save_timer.cancel()
-        _spotify_save_timer = None
-    if _sc_save_timer:
-        _sc_save_timer.cancel()
-        _sc_save_timer = None
+    for runtime in _save_runtime.values():
+        if runtime.timer:
+            runtime.timer.cancel()
+            runtime.timer = None
     logger.debug("Server: Pending save timers cancelled.")
-
-
-

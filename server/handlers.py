@@ -25,6 +25,7 @@ from config import config
 from log import logger
 from lyrics import fetch_and_broadcast_lyrics
 from state import (
+    SOURCES,
     get_interpolated_sc_progress,
     get_interpolated_track_progress,
     save_sc_state_debounced,
@@ -72,6 +73,34 @@ def _repeat(value: Any) -> Optional[int]:
     return int(number)
 
 
+_FIELD_COERCERS: dict[str, Any] = {
+    "ms": _ms,
+    "volume": _volume,
+    "bool": _bool,
+    "text": _text,
+    "repeat": _repeat,
+}
+
+
+def _apply_fields(data: dict[str, Any], fields: tuple[tuple[str, str, str], ...]) -> None:
+    """Copy the valid fields from a source's descriptor into flat state."""
+    for wire_key, state_key, kind in fields:
+        value = _FIELD_COERCERS[kind](data.get(wire_key))
+        if value is not None:
+            state[state_key] = value
+
+
+def _next_volume(current: float, data: dict[str, Any]) -> float:
+    step: Optional[float] = _volume(data.get("step"))
+    volume_step: float = step if step is not None else 0.05
+    if data.get("command") == "volumeUp":
+        return min(1.0, current + volume_step)
+    if data.get("command") == "volumeDown":
+        return max(0.0, current - volume_step)
+    volume: Optional[float] = _volume(data.get("volume"))
+    return volume if volume is not None else current
+
+
 async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     await ws.send_str(json.dumps(build_spotify_state_message(get_interpolated_track_progress())))
     await ws.send_str(json.dumps(build_sc_state_message(get_interpolated_sc_progress())))
@@ -81,38 +110,18 @@ async def handle_get_initial_state(ws: web.WebSocketResponse, data: dict[str, An
 # --- Spotify handlers ---
 
 async def handle_spotify_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    volume: Optional[float] = _volume(data.get("volume"))
-    if volume is not None:
-        state["volume"] = volume
-    is_playing: Optional[bool] = _bool(data.get("isPlaying"))
-    if is_playing is not None:
-        state["isPlaying"] = is_playing
-    is_shuffling: Optional[bool] = _bool(data.get("isShuffling"))
-    if is_shuffling is not None:
-        state["isShuffling"] = is_shuffling
-    repeat_status: Optional[int] = _repeat(data.get("repeatStatus"))
-    if repeat_status is not None:
-        state["repeatStatus"] = repeat_status
-    is_liked: Optional[bool] = _bool(data.get("isLiked"))
-    if is_liked is not None:
-        state["isLiked"] = is_liked
+    spotify = SOURCES["spotify"]
+    _apply_fields(data, spotify.update_fields)
 
     track: dict[str, Any] = state["currentTrack"]
     prev_uri: str = track["trackUri"]
     new_uri: str = _text(data.get("trackUri")) or prev_uri
 
-    for key in ("trackName", "artistName", "albumName", "albumUri", "artistUri", "albumArtUrl"):
+    for key in spotify.track_fields:
         value: Optional[str] = _text(data.get(key))
         if value is not None:
             track[key] = value
     track["trackUri"] = new_uri
-
-    duration: Optional[int] = _ms(data.get("duration"))
-    if duration is not None:
-        state["trackDuration"] = duration
-    progress: Optional[int] = _ms(data.get("progress"))
-    if progress is not None:
-        state["trackProgress"] = progress
     state["trackProgressStartTimestamp"] = time.time() * 1000
 
     if new_uri and new_uri != prev_uri and new_uri != state["lyrics"]["trackUri"]:
@@ -145,16 +154,7 @@ def _lyrics_task_done(task: asyncio.Task[None]) -> None:
 
 
 async def handle_spotify_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    step: Optional[float] = _volume(data.get("step"))
-    volume_step: float = step if step is not None else 0.05
-    if data.get("command") == "volumeUp":
-        state["volume"] = min(1.0, state["volume"] + volume_step)
-    elif data.get("command") == "volumeDown":
-        state["volume"] = max(0.0, state["volume"] - volume_step)
-    else:
-        volume: Optional[float] = _volume(data.get("volume"))
-        if volume is not None:
-            state["volume"] = volume
+    state["volume"] = _next_volume(state["volume"], data)
     await save_spotify_state_debounced()
     await broadcast_volume_update()
 
@@ -222,34 +222,14 @@ def _sc_fingerprint() -> tuple:
 async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
     global _last_sc_fingerprint
 
-    for key, state_key in (("track", "scTrack"), ("artist", "scArtist"), ("album", "scAlbum"), ("id", "scId")):
-        text_value: Optional[str] = _text(data.get(key))
-        if text_value is not None:
-            state[state_key] = text_value
-    cover_url: Optional[str] = _text(data.get("coverUrl"))
+    soundcloud = SOURCES["soundcloud"]
+    progress_ms: Optional[int] = _ms(data.get("progressMs"))
+    is_playing: Optional[bool] = _bool(data.get("isPlaying"))
+    _apply_fields(data, soundcloud.update_fields)
+
+    cover_url: Optional[str] = _text(data.get(soundcloud.cover_field or "coverUrl"))
     if cover_url is not None:
         state["scCoverUrl"] = _COVER_SIZE_RE.sub("-t500x500", cover_url)
-    is_playing: Optional[bool] = _bool(data.get("isPlaying"))
-    if is_playing is not None:
-        state["scIsPlaying"] = is_playing
-    progress_ms: Optional[int] = _ms(data.get("progressMs"))
-    if progress_ms is not None:
-        state["scProgressMs"] = progress_ms
-    duration_ms: Optional[int] = _ms(data.get("durationMs"))
-    if duration_ms is not None:
-        state["scDurationMs"] = duration_ms
-    volume: Optional[float] = _volume(data.get("volume"))
-    if volume is not None:
-        state["scVolume"] = volume
-    is_liked: Optional[bool] = _bool(data.get("isLiked"))
-    if is_liked is not None:
-        state["scIsLiked"] = is_liked
-    is_shuffling: Optional[bool] = _bool(data.get("isShuffling"))
-    if is_shuffling is not None:
-        state["scIsShuffling"] = is_shuffling
-    repeat_status: Optional[int] = _repeat(data.get("repeatStatus"))
-    if repeat_status is not None:
-        state["scRepeatStatus"] = repeat_status
     if progress_ms is not None or is_playing is not None:
         state["scProgressStartTimestamp"] = time.time() * 1000
 
@@ -261,16 +241,7 @@ async def handle_sc_state_update(ws: web.WebSocketResponse, data: dict[str, Any]
 
 
 async def handle_sc_volume_update(ws: web.WebSocketResponse, data: dict[str, Any]) -> None:
-    step: Optional[float] = _volume(data.get("step"))
-    volume_step: float = step if step is not None else 0.05
-    if data.get("command") == "volumeUp":
-        state["scVolume"] = min(1.0, state["scVolume"] + volume_step)
-    elif data.get("command") == "volumeDown":
-        state["scVolume"] = max(0.0, state["scVolume"] - volume_step)
-    else:
-        volume: Optional[float] = _volume(data.get("volume"))
-        if volume is not None:
-            state["scVolume"] = volume
+    state["scVolume"] = _next_volume(state["scVolume"], data)
     await save_sc_state_debounced()
     await broadcast({
         "type": "scVolumeUpdate",

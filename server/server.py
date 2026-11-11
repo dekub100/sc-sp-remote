@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Any
 
 from aiohttp import web
 from broadcast import CLIENTS, start_progress_broadcasting
-from config import PROJECT_ROOT, SC_STATE_FILE, STATE_FILE, config, ensure_user_config
+from config import PROJECT_ROOT, config, ensure_user_config
 from log import logger
 from lyrics import _close_connection, _close_session, get_cached_lyrics, init_lyrics_cache, parse_synced_lyrics
 from routes import (
@@ -24,28 +23,12 @@ from routes import (
 )
 from state import (
     cancel_pending_save,
-    get_sc_save_data,
-    get_spotify_save_data,
     read_sc_state_from_file,
     read_spotify_state_from_file,
-    set_sc_write_callback,
-    set_spotify_write_callback,
+    write_source_state_now,
 )
 
-
-def _write_spotify_state_to_disk(data: dict[str, Any]) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-def _write_sc_state_to_disk(data: dict[str, Any]) -> None:
-    with open(SC_STATE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
 init_lyrics_cache()
-set_spotify_write_callback(_write_spotify_state_to_disk)
-set_sc_write_callback(_write_sc_state_to_disk)
 read_spotify_state_from_file()
 read_sc_state_from_file()
 
@@ -129,8 +112,8 @@ async def main() -> None:
 
         cancel_pending_save()
 
-        _write_spotify_state_to_disk(get_spotify_save_data())
-        _write_sc_state_to_disk(get_sc_save_data())
+        write_source_state_now("spotify")
+        write_source_state_now("soundcloud")
         logger.info("Server: State saved to disk.")
 
         await _close_session()

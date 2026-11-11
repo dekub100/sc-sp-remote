@@ -18,14 +18,14 @@ from config import CONFIG_FIELD_TYPES, CONFIG_PATH, LOG_DIR, PROJECT_ROOT, confi
 from handlers import handle_get_initial_state, handle_message
 from log import logger
 from state import (
+    SOURCE_BY_CLIENT_TYPE,
     as_ms,
     as_volume,
     get_album_art_url,
     get_interpolated_sc_progress,
     get_interpolated_track_progress,
     get_sc_cover_url,
-    save_sc_state_debounced,
-    save_spotify_state_debounced,
+    save_source_state_debounced,
     state,
 )
 
@@ -173,10 +173,6 @@ DISCONNECT_PAUSE_GRACE_SECONDS: float = 1.5
 _SOURCE_CLIENT_TYPES: tuple[str, ...] = ("spicetify", "soundcloud")
 
 
-def _source_for_client_type(client_type: str) -> str:
-    return "soundcloud" if client_type == "soundcloud" else "spotify"
-
-
 async def _pause_source_if_alone(client_type: str) -> None:
     """Mark a source paused once its last controller is really gone."""
     await asyncio.sleep(DISCONNECT_PAUSE_GRACE_SECONDS)
@@ -184,14 +180,10 @@ async def _pause_source_if_alone(client_type: str) -> None:
         logger.info(f"Source {client_type}: controller reconnected within grace, not pausing")
         return
     logger.info(f"Source {client_type}: controller gone, marking paused")
-    if client_type == "spicetify":
-        state["isPlaying"] = False
-        state["trackProgressStartTimestamp"] = time.time() * 1000
-        await save_spotify_state_debounced()
-    else:
-        state["scIsPlaying"] = False
-        state["scProgressStartTimestamp"] = time.time() * 1000
-        await save_sc_state_debounced()
+    spec = SOURCE_BY_CLIENT_TYPE[client_type]
+    state[spec.playing_key] = False
+    state[spec.anchor_key] = time.time() * 1000
+    await save_source_state_debounced(spec.key)
 
 
 # Awaiting inside the websocket handler's `finally` is unsafe: aiohttp cancels the
@@ -203,7 +195,7 @@ _disconnect_tasks: set[asyncio.Task[None]] = set()
 async def _handle_source_disconnect(client_type: str) -> None:
     await _pause_source_if_alone(client_type)
     await broadcast_playback_update()
-    await broadcast_source_status(_source_for_client_type(client_type), False)
+    await broadcast_source_status(SOURCE_BY_CLIENT_TYPE[client_type].key, False)
 
 
 def _spawn_source_disconnect(client_type: str) -> None:
@@ -245,7 +237,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     logger.info(f"New connection: {client_type} (protocol v{client_version}, {request.remote})")
 
     if client_type in _SOURCE_CLIENT_TYPES:
-        await broadcast_source_status(_source_for_client_type(client_type), True)
+        await broadcast_source_status(SOURCE_BY_CLIENT_TYPE[client_type].key, True)
 
     client_config = _build_client_config(client_type)
     await ws.send_json(client_config)

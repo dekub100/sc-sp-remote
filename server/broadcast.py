@@ -8,7 +8,15 @@ from typing import Any, Optional
 from aiohttp import web
 from config import PROGRESS_BROADCAST_INTERVAL
 from log import logger
-from state import as_ms, as_volume, get_album_art_url, get_sc_cover_url, state
+from state import (
+    SOURCES,
+    as_ms,
+    as_volume,
+    get_album_art_url,
+    get_interpolated_progress,
+    get_sc_cover_url,
+    state,
+)
 
 CLIENTS: dict[web.WebSocketResponse, dict[str, Any]] = {}
 
@@ -111,54 +119,37 @@ async def broadcast_soundcloud_state(exclude_ws: Optional[web.WebSocketResponse]
 
 
 async def broadcast_volume_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
-    await broadcast({
-        "type": "volumeUpdate",
-        "source": "spotify",
-        "volume": state["volume"]
-    }, exclude_ws)
-    await broadcast({
-        "type": "scVolumeUpdate",
-        "source": "soundcloud",
-        "volume": state["scVolume"]
-    }, exclude_ws)
+    for spec in SOURCES.values():
+        await broadcast({
+            "type": spec.volume_msg_type,
+            "source": spec.key,
+            "volume": state[spec.volume_key]
+        }, exclude_ws)
 
 
 async def broadcast_playback_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
     now = time.time() * 1000
-    await broadcast({
-        "type": "playbackUpdate",
-        "source": "spotify",
-        "isPlaying": state["isPlaying"],
-        "progress": state["trackProgress"],
-        "timestamp": now
-    }, exclude_ws)
-    await broadcast({
-        "type": "scPlaybackUpdate",
-        "source": "soundcloud",
-        "isPlaying": state["scIsPlaying"],
-        "progressMs": state["scProgressMs"],
-        "timestamp": now
-    }, exclude_ws)
+    for spec in SOURCES.values():
+        await broadcast({
+            "type": spec.playback_msg_type,
+            "source": spec.key,
+            "isPlaying": state[spec.playing_key],
+            spec.progress_field: state[spec.progress_key],
+            "timestamp": now
+        }, exclude_ws)
 
 
 async def broadcast_progress_update(exclude_ws: Optional[web.WebSocketResponse] = None) -> None:
     now = time.time() * 1000
-    await broadcast({
-        "type": "progressUpdate",
-        "source": "spotify",
-        "progress": state["trackProgress"],
-        "duration": state["trackDuration"],
-        "isPlaying": state["isPlaying"],
-        "timestamp": now
-    }, exclude_ws)
-    await broadcast({
-        "type": "scProgressUpdate",
-        "source": "soundcloud",
-        "progressMs": state["scProgressMs"],
-        "durationMs": state["scDurationMs"],
-        "isPlaying": state["scIsPlaying"],
-        "timestamp": now
-    }, exclude_ws)
+    for spec in SOURCES.values():
+        await broadcast({
+            "type": spec.progress_msg_type,
+            "source": spec.key,
+            spec.progress_field: state[spec.progress_key],
+            spec.duration_field: state[spec.duration_key],
+            "isPlaying": state[spec.playing_key],
+            "timestamp": now
+        }, exclude_ws)
 
 
 def build_lyrics_message() -> dict[str, Any]:
@@ -194,26 +185,15 @@ async def broadcast_source_status(source: str, connected: bool) -> None:
 
 async def _compute_and_broadcast_progress() -> None:
     now: float = time.time() * 1000
-    if state["isPlaying"]:
-        spotify_elapsed: float = now - state["trackProgressStartTimestamp"]
-        spotify_interpolated: float = min(state["trackProgress"] + spotify_elapsed, state["trackDuration"])
+    for spec in SOURCES.values():
+        if not state[spec.playing_key]:
+            continue
         await broadcast({
-            "type": "progressUpdate",
-            "source": "spotify",
-            "progress": int(spotify_interpolated),
-            "duration": state["trackDuration"],
-            "isPlaying": state["isPlaying"],
-            "timestamp": now
-        })
-    if state["scIsPlaying"]:
-        sc_elapsed: float = now - state["scProgressStartTimestamp"]
-        sc_interpolated: float = min(state["scProgressMs"] + sc_elapsed, state["scDurationMs"])
-        await broadcast({
-            "type": "scProgressUpdate",
-            "source": "soundcloud",
-            "progressMs": int(sc_interpolated),
-            "durationMs": state["scDurationMs"],
-            "isPlaying": state["scIsPlaying"],
+            "type": spec.progress_msg_type,
+            "source": spec.key,
+            spec.progress_field: get_interpolated_progress(spec.key, now),
+            spec.duration_field: state[spec.duration_key],
+            "isPlaying": state[spec.playing_key],
             "timestamp": now
         })
 
