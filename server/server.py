@@ -105,8 +105,16 @@ def _install_stop_handlers(stop_event: asyncio.Event) -> None:
                 pass
 
 
+def _ensure_user_config_or_default() -> None:
+    """Create the user config on first run; a read-only install must still start."""
+    try:
+        ensure_user_config()
+    except OSError as e:
+        logger.warning(f"Server: Could not create user config ({e}); using defaults")
+
+
 async def main() -> None:
-    ensure_user_config()
+    _ensure_user_config_or_default()
 
     stop_event: asyncio.Event = asyncio.Event()
     _install_stop_handlers(stop_event)

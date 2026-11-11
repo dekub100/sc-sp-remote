@@ -2115,6 +2115,27 @@ class TestProgressAnchor:
         })
         assert st.get_interpolated_track_progress() == pytest.approx(2000, abs=200)
 
+    def test_restore_marks_playing_source_paused_without_anchor(self) -> None:
+        path = st.SOURCES["spotify"].state_file
+        original = None
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                original = f.read()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"isPlaying": True, "volume": 0.7, "trackDuration": 200000}, f)
+            st.state["isPlaying"] = False
+            st.state["trackProgressStartTimestamp"] = 0
+            st.read_spotify_state_from_file()
+            assert st.state["isPlaying"] is False
+            assert st.state["volume"] == 0.7
+        finally:
+            if original is None:
+                os.remove(path)
+            else:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(original)
+
 
 class TestLyricsMessageShape:
     async def test_initial_state_includes_loading(self, mock_ws: AsyncMock) -> None:
@@ -2437,6 +2458,34 @@ class TestAtomicWrites:
             with pytest.raises(RuntimeError):
                 cfg.write_json_atomic(str(path), {"new": True})
         assert json.loads(path.read_text(encoding="utf-8")) == {"old": True}
+
+
+class TestUserConfigGuard:
+    def test_read_only_config_creation_is_non_fatal(self) -> None:
+        with patch.object(server, "ensure_user_config", side_effect=PermissionError("read-only")), \
+             patch.object(server.logger, "warning") as mock_warning:
+            server._ensure_user_config_or_default()
+        assert mock_warning.called
+
+
+class TestWebSocketMessageLimit:
+    async def test_oversized_message_closes_with_1009(self) -> None:
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        app = web.Application()
+        app.router.add_get('/', routes.websocket_handler)
+        async with TestClient(TestServer(app)) as tc:
+            ws = await tc.ws_connect('/?client=streamdeck&protocolVersion=2')
+            await ws.send_str("x" * (routes.MAX_WS_MESSAGE_BYTES + 1))
+            for _ in range(20):
+                msg = await ws.receive(timeout=2)
+                if msg.type == web.WSMsgType.CLOSE:
+                    assert msg.data == 1009
+                    break
+                assert msg.type == web.WSMsgType.TEXT
+            else:
+                pytest.fail("server never closed the oversized connection")
+            await ws.close()
 
 
 class TestManageProcessWait:

@@ -228,11 +228,16 @@ def _is_foreign_web_origin(request: web.Request) -> bool:
     return not _origin_is_self(origin, request, allow_wildcard=False)
 
 
+# Inbound snapshots are a few KB; this bounds a malicious/broken client without
+# getting anywhere near legitimate traffic. aiohttp's default is 4 MB.
+MAX_WS_MESSAGE_BYTES: int = 256 * 1024
+
+
 async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     if _is_foreign_web_origin(request):
         logger.warning(f"Rejected WebSocket connection from foreign origin: {request.headers.get('Origin')}")
         raise web.HTTPForbidden(text="foreign origin rejected")
-    ws: web.WebSocketResponse = web.WebSocketResponse()
+    ws: web.WebSocketResponse = web.WebSocketResponse(max_msg_size=MAX_WS_MESSAGE_BYTES)
     await ws.prepare(request)
 
     client_type: str = request.query.get("client", "unknown")

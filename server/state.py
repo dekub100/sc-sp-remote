@@ -237,6 +237,11 @@ def read_source_state_from_file(source: str) -> None:
                     state[key].update(saved_state[key] or {})
                 else:
                     state[key] = saved_state[key]
+            # isPlaying is persisted but the progress anchor is runtime-only.
+            # A restored "playing" source has no truthful position, so report
+            # it paused until the source client reconnects and re-syncs.
+            if state[spec.playing_key] and not state[spec.anchor_key]:
+                state[spec.playing_key] = False
             logger.info(f"Server: Loaded {spec.label} state from {os.path.basename(spec.state_file)}")
     except Exception as e:
         logger.error(f"Server: Error reading {spec.label} state file: {e}")
