@@ -27,7 +27,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Lint
-        run: ruff check server/ manage.py test_server.py
+        run: ruff check server/ manage.py conftest.py tests/
 
       - name: Check JS syntax
         run: |
@@ -36,7 +36,7 @@ jobs:
           done
 
       - name: Test
-        run: python -m pytest test_server.py -v
+        run: python -m pytest tests/ -v
 
   # The project ships a Windows service, a setup.bat installer and pywin32-only
   # code paths, so the Linux matrix above cannot see regressions in those.
@@ -58,10 +58,10 @@ jobs:
         run: python -c "import manage, sys; sys.path.insert(0, 'server'); import server"
 
       - name: Lint
-        run: ruff check server/ manage.py test_server.py
+        run: ruff check server/ manage.py conftest.py tests/
 
       - name: Test
-        run: python -m pytest test_server.py -q
+        run: python -m pytest tests/ -q
 
   streamdeck:
     runs-on: ubuntu-latest
